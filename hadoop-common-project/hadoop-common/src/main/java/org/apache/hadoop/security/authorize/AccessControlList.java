@@ -40,6 +40,9 @@ import org.apache.hadoop.util.StringUtils;
 /**
  * Class representing a configured access control list.
  */
+//表示一个配置的访问控制列表 (ACL)。
+// 它用于定义哪些用户或组可以访问某个资源。在 Apache YARN 中，ACL 控制谁可以访问服务或者执行特定的操作。
+// 该类通过存储允许访问的用户和组的集合来实现这一目标。如果设置了通配符 ACL (*)，表示所有用户都可以访问
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public class AccessControlList implements Writable {
@@ -54,17 +57,23 @@ public class AccessControlList implements Writable {
   }
 
   // Indicates an ACL string that represents access to all users
+  //表示一个特殊的字符串，表示所有用户都可以访问。值为 *
   public static final String WILDCARD_ACL_VALUE = "*";
+  //初始化容量，指集合的初始大小，用于优化集合的性能
   private static final int INITIAL_CAPACITY = 256;
+  //用于表示是否使用真实用户 ACL，值为 ~
   public static final String USE_REAL_ACLS = "~";
 
   // Set of users who are granted access.
+  //存储允许访问的用户集合。这个集合中的每个元素都是一个用户的名字
   private Collection<String> users;
   // Set of groups which are granted access
+  //存储允许访问的组集合。这个集合中的每个元素都是一个组的名字
   private Collection<String> groups;
   // Whether all users are granted access.
+  //布尔值，表示是否所有用户都被允许访问。如果为 true，表示任何用户都可以访问
   private boolean allAllowed;
-
+  //用于获取用户所属的组。它是基于 Configuration 配置获取的
   private Groups groupsMapping = Groups.getUserToGroupsMappingService(new Configuration());
 
   /**

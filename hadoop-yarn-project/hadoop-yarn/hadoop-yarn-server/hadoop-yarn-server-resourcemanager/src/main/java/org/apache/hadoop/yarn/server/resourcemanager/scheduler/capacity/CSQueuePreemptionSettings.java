@@ -17,11 +17,13 @@
 package org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity;
 
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-
+//管理 YARN CapacityScheduler 中队列的抢占 (Preemption) 相关配置
 public class CSQueuePreemptionSettings {
+  //是否禁用了跨队列抢占（如果整个系统禁用了抢占，则所有队列都无法被抢占）
   private final boolean preemptionDisabled;
   // Indicates if the in-queue preemption setting is ever disabled within the
   // hierarchy of this queue.
+  //是否禁用了队列内抢占（检查队列层级结构中是否有队列禁用了抢占）
   private final boolean intraQueuePreemptionDisabledInHierarchy;
 
   public CSQueuePreemptionSettings(

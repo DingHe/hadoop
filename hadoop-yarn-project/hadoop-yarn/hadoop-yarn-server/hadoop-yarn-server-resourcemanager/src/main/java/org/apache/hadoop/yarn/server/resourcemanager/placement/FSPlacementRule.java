@@ -34,6 +34,10 @@ import java.io.IOException;
 /**
  * Abstract base for all {@link FairScheduler} Placement Rules.
  */
+//用于定义 FairScheduler 调度器的队列分配规则。
+// 它继承自 PlacementRule，并且为具体的调度规则提供了基础功能。
+// 这个类的作用是为与公平调度器 (FairScheduler) 配合使用的队列调度规则提供支持，
+// 允许用户根据某些条件（如配置文件中的设置）决定应用程序应该调度到哪个队列
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
 public abstract class FSPlacementRule extends PlacementRule {
@@ -42,8 +46,11 @@ public abstract class FSPlacementRule extends PlacementRule {
 
   // Flag to show if the rule can create a queue
   @VisibleForTesting
+  //表示当前规则是否允许创建新队列。它的默认值为 true，表示规则允许创建队列
   protected boolean createQueue = true;
+  //QueueManager 负责管理 FairScheduler 中的所有队列。在规则初始化时，它会被设置为 FairScheduler 中的队列管理器
   private QueueManager queueManager;
+  //指向父规则的引用。父规则负责动态地生成父队列，具体的父队列创建规则由此规则的父规则负责
   private PlacementRule parentRule;
 
   /**
@@ -123,6 +130,7 @@ public abstract class FSPlacementRule extends PlacementRule {
    * @return <code>true</code> in all cases
    * @throws IOException for any errors
    */
+  //负责初始化 FairScheduler 调度规则。它确保在规则应用之前进行基本的检查和初始化
   @Override
   public boolean initialize(ResourceScheduler scheduler) throws IOException {
     if (!(scheduler instanceof FairScheduler)) {
@@ -134,7 +142,7 @@ public abstract class FSPlacementRule extends PlacementRule {
       throw new IOException("Parent rule may not be the same type as the " +
           "child rule: " + getName());
     }
-
+    //从调度器中获取队列管理器
     FairScheduler fs = (FairScheduler) scheduler;
     queueManager = fs.getQueueManager();
 

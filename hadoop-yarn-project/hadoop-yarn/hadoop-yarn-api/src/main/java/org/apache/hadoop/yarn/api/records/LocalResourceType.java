@@ -45,6 +45,7 @@ import org.apache.hadoop.yarn.api.ContainerManagementProtocol;
  * @see ApplicationSubmissionContext
  * @see ContainerManagementProtocol#startContainers(org.apache.hadoop.yarn.api.protocolrecords.StartContainersRequest)
  */
+//资源类型可以是普通文件、归档文件或混合类型（部分文件解压）
 @Public
 @Stable
 public enum LocalResourceType {
@@ -52,12 +53,12 @@ public enum LocalResourceType {
   /**
    * Archive, which is automatically unarchived by the <code>NodeManager</code>.
    */
-  ARCHIVE,
+  ARCHIVE, //表示资源是一个 归档文件（例如 .tar、.zip、.jar）。当 NodeManager 本地化该资源时，它会自动解压归档文件
   
   /**
    * Regular file i.e. uninterpreted bytes.
    */
-  FILE,
+  FILE,  //普通文件，即没有任何解压的操作，资源以原始的二进制字节流存在
   
   /**
    * A hybrid between archive and file.  Only part of the file is unarchived,
@@ -66,5 +67,5 @@ public enum LocalResourceType {
    * in #{@link LocalResource}.  Currently only jars support pattern, all
    * others will be treated like a #{@link LocalResourceType#ARCHIVE}.
    */
-  PATTERN
+  PATTERN // 混合类型，即既像归档文件一样包含多个文件，也有像普通文件一样的特点。这个类型用于支持部分解压的资源（目前只支持 JAR 文件）
 }

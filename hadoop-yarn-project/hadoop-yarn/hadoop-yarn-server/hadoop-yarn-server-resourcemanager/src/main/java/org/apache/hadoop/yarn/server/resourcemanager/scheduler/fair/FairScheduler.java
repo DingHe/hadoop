@@ -139,6 +139,10 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
  * referred to as "root.queue1", and a queue named "queue2" under a queue
  * named "parent1" would be referred to as "root.parent1.queue2".
  */
+//用于在多个队列之间调度资源。
+// 它跟踪每个队列使用的资源，并通过将任务分配给资源使用量最远低于理想公平分配的队列来实现公平调度。
+// 该调度器支持层次化队列，每个队列继承自名为 "root" 的队列，资源分配是公平的，然后递归地将资源分配给子队列。
+// 只有叶子队列中的应用程序才能进行调度
 @LimitedPrivate("yarn")
 @Unstable
 @SuppressWarnings("unchecked")
@@ -148,75 +152,94 @@ public class FairScheduler extends
 
   private FSContext context;
   private YarnAuthorizationProvider authorizer;
+  //表示资源的增量分配量
   private Resource incrAllocation;
+  //管理队列的操作和资源调度
   private QueueManager queueMgr;
+  //指示是否使用端口号作为节点名称的一部分
   private boolean usePortForNodeName;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(FairScheduler.class);
   private static final Logger STATE_DUMP_LOG =
       LoggerFactory.getLogger(FairScheduler.class.getName() + ".statedump");
-
+  //默认资源计算器，决定资源分配的优先级
   private static final ResourceCalculator RESOURCE_CALCULATOR =
       new DefaultResourceCalculator();
+  //计算占主导资源的优先级
   private static final ResourceCalculator DOMINANT_RESOURCE_CALCULATOR =
       new DominantResourceCalculator();
   
   // Value that container assignment methods return when a container is
   // reserved
+  //表示一个预留的容器，容器尚未分配资源
   public static final Resource CONTAINER_RESERVED = Resources.createResource(-1);
-
+  //调试输出频率，控制调度更新输出日志的频率
   private final int UPDATE_DEBUG_FREQUENCY = 25;
   private int updatesToSkipForDebug = UPDATE_DEBUG_FREQUENCY;
-
+  //调度线程
   @Deprecated
   @VisibleForTesting
   Thread schedulingThread;
-
+  //抢占线程，处理资源抢占
   Thread preemptionThread;
 
   // Aggregate metrics
+  //表示根队列的资源调度指标
   FSQueueMetrics rootMetrics;
+  //用于跟踪调度操作的持续时间
   FSOpDurations fsOpDurations;
-
+  //表示可预留节点的比例
   private float reservableNodesRatio; // percentage of available nodes
                                       // an app can be reserved on
-
+  //表示是否根据任务大小为队列分配权重
   protected boolean sizeBasedWeight; // Give larger weights to larger jobs
   // Continuous Scheduling enabled or not
   @Deprecated
   protected boolean continuousSchedulingEnabled;
   // Sleep time for each pass in continuous scheduling
+  //表示是否启用连续调度
   @Deprecated
   protected volatile int continuousSchedulingSleepMs;
   // Node available resource comparator
+  //用于比较节点上可用资源的大小
   private Comparator<FSSchedulerNode> nodeAvailableResourceComparator =
           new NodeAvailableResourceComparator();
+  //表示节点局部性阈值，影响节点选择的优先级
   protected double nodeLocalityThreshold; // Cluster threshold for node locality
+  //表示机架局部性阈值，影响机架选择的优先级
   protected double rackLocalityThreshold; // Cluster threshold for rack locality
   @Deprecated
+  //表示节点局部性延迟
   protected long nodeLocalityDelayMs; // Delay for node locality
   @Deprecated
+  //表示机架局部性延迟
   protected long rackLocalityDelayMs; // Delay for rack locality
+  //表示是否在每次心跳中分配多个容器
   protected boolean assignMultiple; // Allocate multiple containers per
                                     // heartbeat
 
   @VisibleForTesting
+      //表示是否动态调整最大分配容器数
   boolean maxAssignDynamic;
+  //表示每次心跳最多分配的容器数
   protected int maxAssign; // Max containers to assign per heartbeat
-
+  //控制每个应用程序最大同时运行数量
   @VisibleForTesting
   final MaxRunningAppsEnforcer maxRunningEnforcer;
-
+  //加载资源分配文件
   private AllocationFileLoaderService allocsLoader;
   @VisibleForTesting
+  //存储资源分配的配置信息
   volatile AllocationConfiguration allocConf;
 
   // Container size threshold for making a reservation.
+  //容器大小阈值，用于确定是否可以进行资源预留
   @VisibleForTesting
   Resource reservationThreshold;
-
+  //表示是否支持资源迁移
   private boolean migration;
+  //是否禁用终止规则检查
   private boolean noTerminalRuleCheck;
 
   public FairScheduler() {
@@ -240,9 +263,10 @@ public class FairScheduler extends
     return Resources.greaterThanOrEqual(resourceCalculator,
         getClusterResource(), resource, reservationThreshold);
   }
-
+  //验证 FairSchedulerConfiguration 配置对象中的资源调度相关设置是否有效，确保配置的内存、虚拟核心和资源增量符合预期的要求
   private void validateConf(FairSchedulerConfiguration config) {
     // validate scheduler memory allocation setting
+    //获取配置中的最小内存 (minMem) 和最大内存 (maxMem)
     int minMem =
         config.getInt(YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_MB,
             YarnConfiguration.DEFAULT_RM_SCHEDULER_MINIMUM_ALLOCATION_MB);
@@ -260,7 +284,7 @@ public class FairScheduler extends
         + "and the maximum allocation value must be greater than or equal to"
         + "the minimum allocation value.");
     }
-
+    //检查资源调度器的增量内存配置（incrementMem），确保其大于0，如果小于或等于0，也会抛出异常
     long incrementMem = config.getIncrementAllocation().getMemorySize();
     if (incrementMem <= 0) {
       throw new YarnRuntimeException("Invalid resource scheduler memory"
@@ -270,6 +294,7 @@ public class FairScheduler extends
     }
 
     // validate scheduler vcores allocation setting
+    //获取配置中的最小虚拟核心数 (minVcores) 和最大虚拟核心数 (maxVcores)，并检查它们的有效性
     int minVcores =
         config.getInt(YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_VCORES,
             YarnConfiguration.DEFAULT_RM_SCHEDULER_MINIMUM_ALLOCATION_VCORES);
@@ -472,11 +497,19 @@ public class FairScheduler extends
    * @param isAppRecovering true, app recover; false, app not recover.
    * @param placementContext application placement context.
    */
+  //将新的应用程序添加到调度器中，并根据配置和规则进行一系列验证和处理。
+  // 它负责管理应用程序的队列分配、资源验证、访问控制等，确保应用程序能够在符合规定的条件下被接纳并启动
+  //applicationId：应用程序的唯一标识符
+  //queueName：应用程序提交的队列名称
+  //user：提交应用程序的用户
+  //isAppRecovering：一个布尔值，指示应用程序是否正在恢复中（即，是否为已存在的应用程序的恢复操作）
+  //placementContext：应用程序的放置上下文，包含调度器决定应用程序放置策略的相关信息
   protected void addApplication(ApplicationId applicationId,
       String queueName, String user, boolean isAppRecovering,
       ApplicationPlacementContext placementContext) {
     // If the  placement was rejected the placementContext will be null.
     // We ignore placement rules on recovery.
+    //如果应用程序不是在恢复过程中且 placementContext 为 null，则表示该应用程序被放置规则拒绝，抛出拒绝信息并返回
     if (!isAppRecovering && placementContext == null) {
       String message = "Reject application " + applicationId +
           " submitted by user " + user +
@@ -490,6 +523,7 @@ public class FairScheduler extends
       // Assign the app to the queue creating and prevent queue delete.
       // This will re-create the queue on restore, however this could fail if
       // the config was changed.
+      //通过队列管理器 queueMgr 获取指定的队列（FSLeafQueue）。如果队列不存在且不是恢复操作，抛出错误信息并返回
       FSLeafQueue queue = queueMgr.getLeafQueue(queueName, true,
           applicationId);
       if (queue == null) {
@@ -507,6 +541,7 @@ public class FairScheduler extends
 
       // Skip ACL check for recovering applications: they have been accepted
       // in the queue already recovery should not break that.
+      //对于非恢复状态的应用程序，方法会检查用户是否有权限提交应用程序到指定的队列中。如果用户没有权限，则拒绝应用程序，并从队列中移除
       if (!isAppRecovering) {
         // Enforce ACLs: 2nd check, there could be a time laps between the app
         // creation in the RMAppManager and getting here. That means we could

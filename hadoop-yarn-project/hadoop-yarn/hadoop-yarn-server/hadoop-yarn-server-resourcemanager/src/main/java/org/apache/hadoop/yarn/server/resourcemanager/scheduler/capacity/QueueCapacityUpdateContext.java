@@ -28,10 +28,13 @@ import java.util.List;
  * A storage that encapsulates intermediate calculation values throughout a
  * full queue capacity update phase.
  */
+//存储和管理队列容量更新过程中的中间计算值，它在 YARN CapacityScheduler 的队列容量更新阶段（queue capacity update phase）发挥作用
 public class QueueCapacityUpdateContext {
+  //记录 更新后的整个集群资源信息，用于计算调度容量
   private final Resource updatedClusterResource;
+  //节点标签管理器，它负责管理集群中 不同标签（Label）的节点资源
   private final RMNodeLabelsManager labelsManager;
-
+  //存储 队列更新过程中的警告信息，如资源分配异常、配置错误等
   private final List<QueueUpdateWarning> warnings = new ArrayList<QueueUpdateWarning>();
 
   public QueueCapacityUpdateContext(Resource updatedClusterResource,

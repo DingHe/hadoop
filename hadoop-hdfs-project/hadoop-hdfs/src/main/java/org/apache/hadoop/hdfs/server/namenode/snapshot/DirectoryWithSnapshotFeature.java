@@ -39,12 +39,14 @@ import static org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot.NO_SNAPSH
  * directory. In particular, it contains a directory diff list recording changes
  * made to the directory and its children for each snapshot.
  */
+//用于存储和处理指定目录下建立的所有快照，记录目录快照间进行的添加、删除和修改目录项的操作
 @InterfaceAudience.Private
 public class DirectoryWithSnapshotFeature implements INode.Feature {
   /**
    * The difference between the current state and a previous snapshot
    * of the children list of an INodeDirectory.
    */
+  //描述InodeDirectory的子目录项集合children字段的当前状态和上一个快照版本状态之间的差异
   static class ChildrenDiff extends Diff<byte[], INode> {
     ChildrenDiff() {}
 
@@ -56,6 +58,7 @@ public class DirectoryWithSnapshotFeature implements INode.Feature {
      * Replace the given child from the created list.
      * @return true if the child is replaced; false if the child is not found.
      */
+    //将 created 列表中的 oldChild 节点替换为 newChild
     private boolean replaceCreated(final INode oldChild, final INode newChild) {
       final List<INode> list = getCreatedUnmodifiable();
       final int i = search(list, oldChild.getLocalNameBytes());
@@ -69,6 +72,7 @@ public class DirectoryWithSnapshotFeature implements INode.Feature {
     }
 
     /** clear the created list */
+    //销毁 created 列表中的所有元素，并收回它们所占的资源
     private void destroyCreatedList(INode.ReclaimContext reclaimContext,
         final INodeDirectory currentINode) {
       for (INode c : getCreatedUnmodifiable()) {
@@ -80,6 +84,7 @@ public class DirectoryWithSnapshotFeature implements INode.Feature {
     }
 
     /** clear the deleted list */
+    //销毁 deleted 列表中的所有元素，并收回它们所占的资源
     private void destroyDeletedList(INode.ReclaimContext reclaimContext) {
       for (INode d : getDeletedUnmodifiable()) {
         d.destroyAndCollectBlocks(reclaimContext);
@@ -88,6 +93,7 @@ public class DirectoryWithSnapshotFeature implements INode.Feature {
     }
 
     /** Serialize {@link #created} */
+    //序列化 created 列表，对于每个 INode，只需要保存其本地名称的字节表示
     private void writeCreated(DataOutput out) throws IOException {
       final List<INode> created = getCreatedUnmodifiable();
       out.writeInt(created.size());
@@ -100,6 +106,7 @@ public class DirectoryWithSnapshotFeature implements INode.Feature {
     }
 
     /** Serialize {@link #deleted} */
+    //序列化 deleted 列表，对于每个 INode，调用 FSImageSerialization.saveINode2Image() 方法序列化其详细信息
     private void writeDeleted(DataOutput out,
         ReferenceMap referenceMap) throws IOException {
       final List<INode> deleted = getDeletedUnmodifiable();
@@ -117,6 +124,7 @@ public class DirectoryWithSnapshotFeature implements INode.Feature {
     }
 
     /** Get the list of INodeDirectory contained in the deleted list */
+    //获取 deleted 列表中的所有目录类型的 INode，并将它们添加到传入的 dirList 中
     private void getDirsInDeleted(List<INodeDirectory> dirList) {
       for (INode node : getDeletedUnmodifiable()) {
         if (node.isDirectory()) {
@@ -129,18 +137,23 @@ public class DirectoryWithSnapshotFeature implements INode.Feature {
   /**
    * The difference of an {@link INodeDirectory} between two snapshots.
    */
+  //描述InodeDirectory在两个快照版本之间的状态差异
   public static class DirectoryDiff extends
       AbstractINodeDiff<INodeDirectory, INodeDirectoryAttributes, DirectoryDiff> {
     /** The size of the children list at snapshot creation time. */
+    //快照创建时子目录的数目
     private final int childrenSize;
     /** The children list diff. */
+    //当前快照与上一个快照间子目录集合的变化，也就是children字段的变化情况
     private final ChildrenDiff diff;
+    //标记当前目录是否为快照根目录。如果该目录是快照的根目录，则此标志为 true，否则为 false
     private boolean isSnapshotRoot = false;
     
     private DirectoryDiff(int snapshotId, INodeDirectory dir) {
       this(snapshotId, dir, new ChildrenDiff());
     }
-
+    //snapshotId：当前差异对应的快照 ID
+    //diff：当前快照与上一个快照之间的子目录差异（ChildrenDiff）
     public DirectoryDiff(int snapshotId, INodeDirectory dir,
         ChildrenDiff diff) {
       super(snapshotId, null, null);
@@ -148,6 +161,9 @@ public class DirectoryWithSnapshotFeature implements INode.Feature {
       this.diff = diff;
     }
     /** Constructor used by FSImage loading */
+    //isSnapshotRoot：是否是快照的根目录
+    //posteriorDiff：后续差异（即在当前差异之后发生的差异）
+    //snapshotINode：当前快照对应的目录节点的属性（INodeDirectoryAttributes）
     DirectoryDiff(int snapshotId, INodeDirectoryAttributes snapshotINode,
         DirectoryDiff posteriorDiff, int childrenSize, List<INode> createdList,
         List<INode> deletedList, boolean isSnapshotRoot) {

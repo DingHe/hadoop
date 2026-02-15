@@ -27,7 +27,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-/**
+/** 代表资源的数量
  * Represents a simple resource floating point value grouped by resource names.
  */
 public class ResourceVector implements Iterable<Map.Entry<String, Double>> {
@@ -53,6 +53,7 @@ public class ResourceVector implements Iterable<Map.Entry<String, Double>> {
    * @param value the value to set all resources to
    * @return uniform resource vector
    */
+  //按照value，给每种资源都配置
   public static ResourceVector of(double value) {
     ResourceVector emptyResourceVector = new ResourceVector();
     for (ResourceInformation resource : ResourceUtils.getResourceTypesArray()) {

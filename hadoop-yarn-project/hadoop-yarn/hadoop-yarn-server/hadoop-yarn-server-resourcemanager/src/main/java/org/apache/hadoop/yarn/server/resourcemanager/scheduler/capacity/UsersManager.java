@@ -160,7 +160,9 @@ public class UsersManager implements AbstractUsersManager {
     ResourceUsage userResourceUsage = new ResourceUsage();
     String userName = null;
     volatile Resource userResourceLimit = Resource.newInstance(0, 0);
+    //等待提交的应用数量
     private volatile AtomicInteger pendingApplications = new AtomicInteger(0);
+    //活动的应用数量
     private volatile AtomicInteger activeApplications = new AtomicInteger(0);
 
     private UsageRatios userUsageRatios = new UsageRatios();

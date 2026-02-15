@@ -40,6 +40,11 @@ import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerUtils;
  * Node Sorting Manager which runs all sorter threads and policies.
  * @param <N> extends SchedulerNode
  */
+//负责管理多节点调度排序（Multi-Node Sorting）。它的作用包括：
+//管理多个节点排序策略：允许不同的调度策略（MultiNodePolicySpec）对 YARN 集群中的节点进行排序，决定资源分配的优先级。
+//维护 MultiNodeSorter 实例：每种调度策略都会有一个 MultiNodeSorter，该类负责启动、管理和停止这些排序器。
+//提供按策略排序的节点迭代器：用于遍历节点时，会根据策略进行排序，并过滤掉可能失效的节点。
+//支持 YARN 多节点调度：启用 multiNodePlacementEnabled 后，可以应用多个节点排序策略
 public class MultiNodeSortingManager<N extends SchedulerNode>
     extends AbstractService {
 
@@ -47,10 +52,14 @@ public class MultiNodeSortingManager<N extends SchedulerNode>
       .getLogger(MultiNodeSortingManager.class);
 
   private RMContext rmContext;
+  //维护所有正在运行的 MultiNodeSorter，键为策略名称，值为排序器实例
   private Map<String, MultiNodeSorter<N>> runningMultiNodeSorters;
+  //存储所有配置的多节点调度策略。
   private Set<MultiNodePolicySpec> policySpecs = new HashSet<MultiNodePolicySpec>();
   private Configuration conf;
+  //指示是否启用了多节点调度功能。
   private boolean multiNodePlacementEnabled;
+  //允许跳过心跳超时的节点的间隔时间（单位：毫秒）。
   private long skipNodeInterval;
 
   public MultiNodeSortingManager() {

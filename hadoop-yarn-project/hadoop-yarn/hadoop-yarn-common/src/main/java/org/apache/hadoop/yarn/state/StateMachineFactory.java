@@ -41,19 +41,25 @@ import org.apache.hadoop.classification.InterfaceStability.Evolving;
  * @param <EVENT> The event object.
  *
  */
+// 用于构建有限状态机（FSM，Finite State Machine）的工厂类。
+// 它的作用是定义状态机的转换规则，并提供一个灵活的方式来创建和管理状态机实例
+//OPERAND  表示状态机操作的目标对象，即状态机应用在哪个类上
+//STATE  表示状态机可能的所有状态
+//EVENTTYPE  表示触发状态转换的事件类型
+//EVENT  表示具体的事件对象，封装了事件的详细信息
 @Public
 @Evolving
 final public class StateMachineFactory
              <OPERAND, STATE extends Enum<STATE>,
               EVENTTYPE extends Enum<EVENTTYPE>, EVENT> {
-
+  //维护状态转换规则的链表，每个节点包含一个 ApplicableTransition（适用的状态转换）
   private final TransitionsListNode transitionsListNode;
-
+  //维护状态机的转换表，STATE 作为外层键，EVENTTYPE 作为内层键，对应的 Transition 处理转换逻辑。
   private Map<STATE, Map<EVENTTYPE,
     Transition<OPERAND, STATE, EVENTTYPE, EVENT>>> stateMachineTable;
-
+  //记录状态机的默认初始状态。
   private STATE defaultInitialState;
-
+  //指示是否优化状态机，如果为 true，则 stateMachineTable 会被初始化
   private final boolean optimized;
 
   /**
@@ -91,13 +97,14 @@ final public class StateMachineFactory
       stateMachineTable = null;
     }
   }
-
+  //接口定义了可应用的状态转换（Applicable Transition），用于在 StateMachineFactory 上应用某种状态转换规则
   private interface ApplicableTransition
              <OPERAND, STATE extends Enum<STATE>,
               EVENTTYPE extends Enum<EVENTTYPE>, EVENT> {
+    //用于将某种状态转换逻辑应用到 StateMachineFactory 上，相当于向状态机工厂动态添加状态转换规则
     void apply(StateMachineFactory<OPERAND, STATE, EVENTTYPE, EVENT> subject);
   }
-
+  //存储状态转换规则的链表节点。它的作用是构建一个链表结构，记录 StateMachineFactory 内部所有的 ApplicableTransition 规则
   private class TransitionsListNode {
     final ApplicableTransition<OPERAND, STATE, EVENTTYPE, EVENT> transition;
     final TransitionsListNode next;
@@ -109,13 +116,14 @@ final public class StateMachineFactory
       this.next = next;
     }
   }
-
+  //主要作用是在 StateMachineFactory 的状态机表 (stateMachineTable) 中注册状态转换
   static private class ApplicableSingleOrMultipleTransition
              <OPERAND, STATE extends Enum<STATE>,
               EVENTTYPE extends Enum<EVENTTYPE>, EVENT>
           implements ApplicableTransition<OPERAND, STATE, EVENTTYPE, EVENT> {
-    final STATE preState;
-    final EVENTTYPE eventType;
+    final STATE preState;//表示状态转换前的状态
+    final EVENTTYPE eventType; //表示触发状态转换的事件类型
+    //保存状态转换的逻辑，当状态机处理 eventType 时，根据 transition 计算新的状态
     final Transition<OPERAND, STATE, EVENTTYPE, EVENT> transition;
 
     ApplicableSingleOrMultipleTransition
@@ -129,6 +137,7 @@ final public class StateMachineFactory
     @Override
     public void apply
              (StateMachineFactory<OPERAND, STATE, EVENTTYPE, EVENT> subject) {
+      //获取状态转换映射表
       Map<EVENTTYPE, Transition<OPERAND, STATE, EVENTTYPE, EVENT>> transitionMap
         = subject.stateMachineTable.get(preState);
       if (transitionMap == null) {
@@ -224,6 +233,7 @@ final public class StateMachineFactory
    * @param eventType stimulus for the transition
    * @param hook transition hook
    */
+  //用于在现有的状态机工厂中添加新的状态转换
   public StateMachineFactory
              <OPERAND, STATE, EVENTTYPE, EVENT>
           addTransition(STATE preState, STATE postState,
@@ -287,15 +297,19 @@ final public class StateMachineFactory
    * @param cause causal eventType context
    * @return transitioned state
    */
+  // 根据当前的状态 (oldState)、事件类型 (eventType) 和事件对象 (event)，执行状态机的状态转换。
+  // 该方法查找当前状态下与事件类型对应的转换逻辑，并执行转换。如果找不到匹配的转换
   private STATE doTransition
            (OPERAND operand, STATE oldState, EVENTTYPE eventType, EVENT event)
       throws InvalidStateTransitionException {
     // We can assume that stateMachineTable is non-null because we call
     //  maybeMakeStateMachineTable() when we build an InnerStateMachine ,
     //  and this code only gets called from inside a working InnerStateMachine .
+    //根据当前状态（oldState）查找状态机表中该状态对应的转换映射
     Map<EVENTTYPE, Transition<OPERAND, STATE, EVENTTYPE, EVENT>> transitionMap
       = stateMachineTable.get(oldState);
     if (transitionMap != null) {
+      //如果找到了 oldState 状态下的转换映射（即 transitionMap != null），接着根据事件类型（eventType）获取对应的转换逻辑（transition）
       Transition<OPERAND, STATE, EVENTTYPE, EVENT> transition
           = transitionMap.get(eventType);
       if (transition != null) {
@@ -310,8 +324,11 @@ final public class StateMachineFactory
       makeStateMachineTable();
     }
   }
-
+  // 构建状态机的转换表（stateMachineTable）。
+  // 它通过遍历已定义的所有状态转换（存储在 transitionsListNode 中）并逐一应用这些转换，
+  // 最终构建一个有效的状态机表。该表映射了每个状态和事件类型对应的转换逻辑
   private void makeStateMachineTable() {
+    //表示一个可以应用的状态转换。栈用于按顺序存储这些转换，并确保按逆序应用它们
     Stack<ApplicableTransition<OPERAND, STATE, EVENTTYPE, EVENT>> stack =
       new Stack<ApplicableTransition<OPERAND, STATE, EVENTTYPE, EVENT>>();
 
@@ -336,17 +353,21 @@ final public class StateMachineFactory
       stack.pop().apply(this);
     }
   }
-
+  //定义了状态机的核心状态转换逻辑。
+  //它的作用是根据输入事件 (EVENT) 触发状态机从 oldState 过渡到新的 STATE
   private interface Transition<OPERAND, STATE extends Enum<STATE>,
           EVENTTYPE extends Enum<EVENTTYPE>, EVENT> {
     STATE doTransition(OPERAND operand, STATE oldState,
                        EVENT event, EVENTTYPE eventType);
   }
-
+  //封装了状态机的单个状态转换逻辑
+  //负责将 oldState 迁移到 postState，并在状态转换前 执行 hook 回调（如果存在）
   private class SingleInternalArc
                     implements Transition<OPERAND, STATE, EVENTTYPE, EVENT> {
-
+    //状态转换后的目标状态
     private STATE postState;
+    //状态转换时执行的回调逻辑
+    //定义了一个 状态转换前执行的回调
     private SingleArcTransition<OPERAND, EVENT> hook; // transition hook
 
     SingleInternalArc(STATE postState,
@@ -364,11 +385,13 @@ final public class StateMachineFactory
       return postState;
     }
   }
-
+  //处理的是多个可能的后续状态的转换，与 SingleInternalArc（单一后续状态）不同。
+  //它允许一个状态在接收到事件后，根据 MultipleArcTransition 逻辑，转换到多个可能的后续状态之一，并确保转换后的状态是合法的
   private class MultipleInternalArc
               implements Transition<OPERAND, STATE, EVENTTYPE, EVENT>{
 
     // Fields
+    // 存储合法的后续状态集合。状态机转换时，最终状态必须是该集合中的一个，否则会抛出异常
     private Set<STATE> validPostStates;
     private MultipleArcTransition<OPERAND, EVENT, STATE> hook;  // transition hook
 
@@ -452,12 +475,21 @@ final public class StateMachineFactory
 
   private static final NoopStateTransitionListener NOOP_LISTENER =
       new NoopStateTransitionListener();
-
+  // 实现了 StateMachine<STATE, EVENTTYPE, EVENT> 接口，
+  // 并维护了实体对象（operand）、当前状态（currentState）、前一个状态（previousState）以及状态变更监听器（listener）
+  //该类的主要作用
+  //维护状态机的当前状态和前一个状态
+  //处理状态转换逻辑，并调用 StateMachineFactory 进行状态变更
+  //触发状态变更监听器，在状态变更前后执行回调操作
   private class InternalStateMachine
         implements StateMachine<STATE, EVENTTYPE, EVENT> {
+    //表示状态机操作的目标对象，即状态机所管理的实体
     private final OPERAND operand;
+    //记录当前状态
     private STATE currentState;
+    //存储前一个状态，用于跟踪状态的变化
     private STATE previousState;
+    //监听状态变更事件，并在状态转换前后执行相应的回调操作
     private final StateTransitionListener<OPERAND, EVENT, STATE> listener;
 
     InternalStateMachine(OPERAND operand, STATE initialState) {

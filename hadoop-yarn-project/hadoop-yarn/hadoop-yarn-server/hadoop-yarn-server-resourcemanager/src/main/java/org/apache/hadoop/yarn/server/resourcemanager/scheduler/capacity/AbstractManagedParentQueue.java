@@ -35,12 +35,19 @@ import java.util.Map;
  * From the user perspective this is equivalent to a LeafQueue,
  * but functionality wise is a sub-class of ParentQueue
  */
+//充当自动创建的子叶队列（AutoCreatedLeafQueue）的管理容器，
+// 从用户的角度来看，它的功能与 LeafQueue 类似，但实际上它是 ParentQueue 的子类，具备父队列的功能
+  //管理自动创建的子队列（LeafQueue），允许动态添加或删除子队列
+  //管理子队列的容量，提供方法计算所有子队列的总容量
+  //提供子队列配置模板，以便新创建的子队列继承默认配置
+  //支持动态修改队列的资源分配，确保子队列的容量变更符合调度策略
 public abstract class AbstractManagedParentQueue extends AbstractParentQueue {
 
   private static final Logger LOG = LoggerFactory.getLogger(
       AbstractManagedParentQueue.class);
-
+  //存储自动创建的 LeafQueue 的默认配置
   protected AutoCreatedLeafQueueConfig leafQueueTemplate;
+  // 负责定义自动创建队列的管理策略
   protected AutoCreatedQueueManagementPolicy queueManagementPolicy = null;
 
   public AbstractManagedParentQueue(CapacitySchedulerQueueContext queueContext,

@@ -36,11 +36,14 @@ import java.util.Arrays;
  */
 public class EnumCounters<E extends Enum<E>> {
   /** The class of the enum. */
-  private final Class<E> enumClass;
+  private final Class<E> enumClass;//存储了泛型 E 的 Class 对象，E 是枚举类型
   /** An array of longs corresponding to the enum type. */
+  //存储了每个枚举常量对应的计数值。数组的大小与枚举类型的常量数目一致，每个数组元素对应一个枚举常量的计数
   private final long[] counters;
 
-  /**
+  /**构造函数用于根据传入的枚举类型 enumClass 创建一个计数器。
+   * 它通过反射获取枚举类型的常量数组（enumClass.getEnumConstants()），
+   * 并初始化计数器数组 counters 的大小为枚举常量的数量
    * Construct counters for the given enum constants.
    * @param enumClass the enum class of the counters.
    */
@@ -50,7 +53,8 @@ public class EnumCounters<E extends Enum<E>> {
     this.enumClass = enumClass;
     this.counters = new long[enumConstants.length];
   }
-
+  //与上一个构造函数类似，除了初始化计数器外，它还会将计数器的初始值设置为 defaultVal，
+  // 通过调用 reset(long val) 方法将所有计数器初始化为该默认值
   public EnumCounters(final Class<E> enumClass, long defaultVal) {
     final E[] enumConstants = enumClass.getEnumConstants();
     Preconditions.checkNotNull(enumConstants);
@@ -60,16 +64,18 @@ public class EnumCounters<E extends Enum<E>> {
   }
   
   /** @return the value of counter e. */
+  //e：需要获取计数值的枚举常量
+  //返回指定枚举常量 e 的计数值
   public final long get(final E e) {
     return counters[e.ordinal()];
   }
-
+  //返回计数器数组的一个副本。为了避免外部修改原始数据，使用 ArrayUtils.clone(counters) 创建并返回数组的副本
   /** @return the values of counter as a shadow copy of array*/
   public long[] asArray() {
     return ArrayUtils.clone(counters);
   }
 
-  /** Negate all counters. */
+  /** Negate all counters. 将所有计数器的值取反，即每个计数器的值乘以 -1*/
   public void negation() {
     for(int i = 0; i < counters.length; i++) {
       counters[i] = -counters[i];

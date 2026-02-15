@@ -31,6 +31,11 @@ import org.slf4j.LoggerFactory;
 /**
  * Composition of services.
  */
+//服务管理类，它继承自 AbstractService，用于管理一组 Service（即 Hadoop 中的服务）。
+// 该类提供了初始化、启动、停止多个子服务的方法，并确保这些操作按照正确的顺序执行。其核心作用是：
+//管理多个子服务：提供添加、删除子服务的功能。
+//生命周期管理：统一管理所有子服务的 init()、start() 和 stop() 过程。
+//故障处理：在启动或停止过程中，遇到异常时能够适当处理
 @Public
 @Evolving
 public class CompositeService extends AbstractService {
@@ -46,8 +51,11 @@ public class CompositeService extends AbstractService {
    * Irrespective of this policy, if a child service fails during
    * its init() or start() operations, it will have stop() called on it.
    */
+  //控制停止服务的策略
+      //false：停止所有已初始化 (INITED) 和已启动 (STARTED) 的服务
+      //true：仅停止已启动 (STARTED) 的服务，避免未完全启动的服务进入不可预期状态
   protected static final boolean STOP_ONLY_STARTED_SERVICES = false;
-
+  //存储所有子服务的列表，受 synchronized 保护，确保线程安全
   private final List<Service> serviceList = new ArrayList<Service>();
 
   public CompositeService(String name) {

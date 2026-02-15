@@ -122,9 +122,9 @@ public class GenericOptionsParser {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(GenericOptionsParser.class);
-  private Configuration conf;
-  private CommandLine commandLine;
-  private final boolean parseSuccessful;
+  private Configuration conf; //存储 Hadoop 配置参数，命令行参数解析后会修改此配置对象
+  private CommandLine commandLine; //使用 Commons CLI 解析命令行参数后，存储解析结果
+  private final boolean parseSuccessful; //指示命令行参数解析是否成功
 
   /**
    * Create an options parser with the given options to parse the args.
@@ -170,9 +170,9 @@ public class GenericOptionsParser {
    * The resulting <code>CommandLine</code> object can be obtained by 
    * {@link #getCommandLine()}.
    * 
-   * @param conf the configuration to modify  
-   * @param options options built by the caller 
-   * @param args User-specified arguments
+   * @param conf the configuration to modify   需要修改的 Configuration 对象
+   * @param options options built by the caller  允许的选项定义
+   * @param args User-specified arguments   传入的命令行参数数组
    * @throws IOException raised on errors performing I/O.
    */
   public GenericOptionsParser(Configuration conf,
@@ -183,7 +183,7 @@ public class GenericOptionsParser {
 
   /**
    * Returns an array of Strings containing only application-specific arguments.
-   * 
+   *  返回未解析的应用程序专用参数（即 Hadoop 通用选项解析后，剩下的参数）
    * @return array of <code>String</code>s containing the un-parsed arguments
    * or <strong>empty array</strong> if commandLine was not defined.
    */
@@ -222,7 +222,7 @@ public class GenericOptionsParser {
     return parseSuccessful;
   }
 
-  /**
+  /** 定义 Hadoop 通用命令行选项，例如 -fs、-jt、-conf、-D 等。
    * @return Specify properties of each generic option.
    * <i>Important</i>: as {@link Option} is not thread safe, subclasses
    * must synchronize use on {@code Option.class}
@@ -285,7 +285,7 @@ public class GenericOptionsParser {
 
   /**
    * Modify configuration according user-specified generic options.
-   *
+   * 解析通用选项，并修改 Configuration 对象
    * @param line User-specified generic options
    */
   private void processGeneralOptions(CommandLine line) throws IOException {

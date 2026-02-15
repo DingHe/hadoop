@@ -41,8 +41,8 @@ public abstract class ResourceSizing {
   @Unstable
   public static ResourceSizing newInstance(int numAllocations, Resource resources) {
     ResourceSizing resourceSizing = Records.newRecord(ResourceSizing.class);
-    resourceSizing.setNumAllocations(numAllocations);
-    resourceSizing.setResources(resources);
+    resourceSizing.setNumAllocations(numAllocations); //数量
+    resourceSizing.setResources(resources); //资源大小
     return resourceSizing;
   }
 

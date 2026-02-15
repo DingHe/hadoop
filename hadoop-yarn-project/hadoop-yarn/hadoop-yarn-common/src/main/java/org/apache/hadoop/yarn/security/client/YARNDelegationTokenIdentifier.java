@@ -29,7 +29,9 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.security.token.delegation.AbstractDelegationTokenIdentifier;
 import org.apache.hadoop.yarn.proto.YarnSecurityTokenProtos.YARNDelegationTokenIdentifierProto;
 import org.apache.hadoop.yarn.util.Records;
-
+//用于表示 YARN（Yet Another Resource Negotiator）委托令牌标识符的类
+//并实现了与 YARN 特定的委托令牌相关的序列化和反序列化机制。这个类用于在 YARN 集群中安全地传递和验证委托令牌。
+// YARN 使用委托令牌来提供跨节点、跨应用程序和跨会话的身份验证
 @Private
 public abstract class YARNDelegationTokenIdentifier extends
     AbstractDelegationTokenIdentifier {

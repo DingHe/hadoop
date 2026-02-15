@@ -23,12 +23,16 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
 import org.apache.hadoop.hdfs.server.namenode.INode.BlocksMapUpdateInfo;
 
-/**
+/** 用于处理 HDFS 中正在建造（under-construction）的文件的相关功能。
+ * 特别地，它涉及到文件的最后一个块（block）在客户端操作时的状态更新和清理
  * Feature for under-construction file.
  */
 @InterfaceAudience.Private
 public class FileUnderConstructionFeature implements INode.Feature {
+  //这个属性表示当前持有文件租约（lease）的客户端的名字。
+  // 客户端持有租约时，文件处于"under-construction"（正在建造）状态，客户端会进行写入操作
   private String clientName; // lease holder
+  //这个属性表示持有文件租约的客户端所在的机器名称。它用于标识哪个机器正在写入文件
   private final String clientMachine;
 
   public FileUnderConstructionFeature(final String clientName, final String clientMachine) {
@@ -55,15 +59,18 @@ public class FileUnderConstructionFeature implements INode.Feature {
    *          The length of the last block reported from client
    * @throws IOException
    */
+  //f：INodeFile 类型，表示文件节点
+  //astBlockLength：long，表示客户端报告的最后一个块的长度
+  //更新文件最后一个正在写的数据块的长度
   void updateLengthOfLastBlock(INodeFile f, long lastBlockLength)
       throws IOException {
-    BlockInfo lastBlock = f.getLastBlock();
+    BlockInfo lastBlock = f.getLastBlock();//获取文件的最后一个块
     assert (lastBlock != null) : "The last block for path "
         + f.getFullPathName() + " is null when updating its length";
     assert !lastBlock.isComplete()
         : "The last block for path " + f.getFullPathName()
             + " is not under-construction when updating its length";
-    lastBlock.setNumBytes(lastBlockLength);
+    lastBlock.setNumBytes(lastBlockLength); //更新块的大小
   }
 
   /**
@@ -71,6 +78,9 @@ public class FileUnderConstructionFeature implements INode.Feature {
    * in a snapshot, we should delete the last block if it's under construction
    * and its size is 0.
    */
+  //f：INodeFile 类型，表示文件节点。
+  //collectedBlocks：BlocksMapUpdateInfo 类型，用于收集需要删除的块信息
+  //删除快照中文件的最后一个长度为0的数据块
   void cleanZeroSizeBlock(final INodeFile f,
       final BlocksMapUpdateInfo collectedBlocks) {
     final BlockInfo[] blocks = f.getBlocks();

@@ -46,16 +46,19 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * PBImpl class to handle all proto related implementation for
  * ResourceProfilesManager.
  */
+//用于 管理 YARN 的资源配置文件（Resource Profiles）
+  //从外部 JSON 文件（RM_RESOURCE_PROFILES_SOURCE_FILE）中读取资源配置，并存储到 profiles 映射中
 public class ResourceProfilesManagerImpl implements ResourceProfilesManager {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(ResourceProfilesManagerImpl.class);
-
+  //存储所有的资源配置文件，键是配置名称，值是对应的 Resource 资源对象。
   private final Map<String, Resource> profiles = new ConcurrentHashMap<>();
   private Configuration conf;
   private boolean profileEnabled = false;
-
+  //资源配置项 "memory-mb"，表示内存大小。
   private static final String MEMORY = ResourceInformation.MEMORY_MB.getName();
+  //资源配置项 "vcores"，表示 CPU 核心数。
   private static final String VCORES = ResourceInformation.VCORES.getName();
 
   public static final String DEFAULT_PROFILE = "default";
@@ -83,7 +86,8 @@ public class ResourceProfilesManagerImpl implements ResourceProfilesManager {
     conf = config;
     loadProfiles();
   }
-
+  //从 RM_RESOURCE_PROFILES_SOURCE_FILE 读取资源配置文件，并解析存储到 profiles 中
+  //确保 "default", "minimum", "maximum" 这三个强制配置存在
   private void loadProfiles() throws IOException {
     profileEnabled =
         conf.getBoolean(YarnConfiguration.RM_RESOURCE_PROFILES_ENABLED,

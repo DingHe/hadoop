@@ -72,20 +72,25 @@ import java.util.List;
  * @param <K> The key type.
  * @param <E> The element type, which must implement {@link Element} interface.
  */
+//核心目的是计算并管理两个列表之间的差异，支持创建、删除和修改操作的记录与撤销。
+// 通过维护 created 和 deleted 列表，可以追踪列表中元素的变化
 public class Diff<K, E extends Diff.Element<K>> {
   /** An interface for the elements in a {@link Diff}. */
+  //存储元素的接口
   public static interface Element<K> extends Comparable<K> {
     /** @return the key of this object. */
     public K getKey();
   }
 
   /** An interface for passing a method in order to process elements. */
+  //处理元素的接口
   public static interface Processor<E> {
     /** Process the given element. */
     public void process(E element);
   }
 
   /** Containing exactly one element. */
+  //只有一个元素的容器
   public static class Container<E> {
     private final E element;
 
@@ -104,9 +109,9 @@ public class Diff<K, E extends Diff.Element<K>> {
    * and {@link Diff#modify(Element, Element)}.
    */
   public static class UndoInfo<E> {
-    private final int createdInsertionPoint;
-    private final E trashed;
-    private final Integer deletedInsertionPoint;
+    private final int createdInsertionPoint;//表示元素插入或创建的位置。如果需要撤销操作，可以用它来追踪元素的原始位置
+    private final E trashed;//保存被删除或丢弃的元素。通过 getTrashedElement() 方法可以获取该元素
+    private final Integer deletedInsertionPoint;//表示元素被删除的位置（如果适用）。由于可能没有删除位置，所以它是一个 Integer 类型（可以为 null）
     
     private UndoInfo(final int createdInsertionPoint, final E trashed,
         final Integer deletedInsertionPoint) {
@@ -128,11 +133,14 @@ public class Diff<K, E extends Diff.Element<K>> {
    *    defined in {@link Collections#binarySearch(List, Object)}.
    *    Note that, when the list is null, -1 is the correct insertion point.
    */
+  //elements: 要搜索的元素列表
+  //name: 要查找的元素的键
+  //使用 Collections.binarySearch 方法对给定的列表进行二分查找。如果元素不存在，则返回 -1，否则返回插入点
   protected static <K, E extends Comparable<K>> int search(
       final List<E> elements, final K name) {
     return elements == null? -1: Collections.binarySearch(elements, name);
   }
-
+  //根据索引 i 从列表中移除元素，并确保被移除的元素与期望的元素相同。如果不相同，抛出异常
   private static <E> void remove(final List<E> elements, final int i,
       final E expected) {
     final E removed = elements.remove(-i - 1);
@@ -141,22 +149,26 @@ public class Diff<K, E extends Diff.Element<K>> {
   }
 
   /** c-list: element(s) created in current. */
+  //用于存储在当前状态中被“创建”的元素。即，当前列表中存在，但在前一个状态中不存在的元素
+  //也就是新建的元素
   private List<E> created;
   /** d-list: element(s) deleted from current. */
+  //用于存储在当前状态中被“删除”的元素。即，当前列表中不存在，但在前一个状态中存在的元素
+  //也就是删除的元素
   private List<E> deleted;
-  
+   //构造方法
   protected Diff() {}
 
   protected Diff(final List<E> created, final List<E> deleted) {
     this.created = created;
     this.deleted = deleted;
   }
-
+  //返回不可修改的 created 列表。如果 created 列表为空或为 null，则返回一个空列表
   public List<E> getCreatedUnmodifiable() {
     return created != null? Collections.unmodifiableList(created)
         : Collections.emptyList();
   }
-
+  //更新 created 列表中的元素，如果元素的键不同，则抛出异常
   public E setCreated(int index, E element) {
     final E old = created.set(index, element);
     if (old.compareTo(element.getKey()) != 0) {
@@ -165,7 +177,7 @@ public class Diff<K, E extends Diff.Element<K>> {
     }
     return old;
   }
-
+  //从 created 列表中移除给定的元素，并返回是否成功移除
   public boolean removeCreated(final E element) {
     if (created != null) {
       final int i = search(created, element.getKey());
@@ -176,25 +188,25 @@ public class Diff<K, E extends Diff.Element<K>> {
     }
     return false;
   }
-
+  //清空 created 列表
   public void clearCreated() {
     if (created != null) {
       created.clear();
     }
   }
-
+  //返回不可修改的 deleted 列表。如果 deleted 列表为空或为 null，则返回一个空列表
   public List<E> getDeletedUnmodifiable() {
     return deleted != null? Collections.unmodifiableList(deleted)
         : Collections.emptyList();
   }
-
+  //检查 deleted 列表中是否包含指定的元素键
   public boolean containsDeleted(final K key) {
     if (deleted != null) {
       return search(deleted, key) >= 0;
     }
     return false;
   }
-
+  //检查 deleted 列表中是否包含指定的元素
   public boolean containsDeleted(final E element) {
     return getDeleted(element.getKey()) == element;
   }
@@ -203,6 +215,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    * @return null if the element is not found;
    *         otherwise, return the element in the deleted list.
    */
+  //如果在 deleted 列表中找到对应的元素，则返回该元素；否则返回 null
   public E getDeleted(final K key) {
     if (deleted != null) {
       final int c = search(deleted, key);
@@ -212,7 +225,7 @@ public class Diff<K, E extends Diff.Element<K>> {
     }
     return null;
   }
-
+  //从 deleted 列表中移除给定的元素，并返回是否成功移除
   public boolean removeDeleted(final E element) {
     if (deleted != null) {
       final int i = search(deleted, element.getKey());
@@ -223,13 +236,13 @@ public class Diff<K, E extends Diff.Element<K>> {
     }
     return false;
   }
-
+  //清空 deleted 列表
   public void clearDeleted() {
     if (deleted != null) {
       deleted.clear();
     }
   }
-
+  //如果 created 和 deleted 列表都为空或为 null，则返回 true，表示没有任何变化；否则返回 false
   /** @return true if no changes contained in the diff */
   public boolean isEmpty() {
     return (created == null || created.isEmpty())
@@ -244,6 +257,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    *          in {@link Collections#binarySearch(List, Object)}
    * @throws AssertionError if i >= 0.
    */
+  //将元素添加到 created 列表中，前提是该元素不已经存在。如果插入点 i >= 0，则抛出异常
   private void addCreated(final E element, final int i) {
     if (i >= 0) {
       throw new AssertionError("Element already exists: element=" + element
@@ -256,6 +270,7 @@ public class Diff<K, E extends Diff.Element<K>> {
   }
 
   /** Similar to {@link #addCreated(Element, int)} but for the deleted list. */
+  //将元素添加到 deleted 列表中，前提是该元素不已经存在。如果插入点 i >= 0，则抛出异常
   private void addDeleted(final E element, final int i) {
     if (i >= 0) {
       throw new AssertionError("Element already exists: element=" + element
@@ -272,6 +287,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    * Create an element in current state.
    * @return the c-list insertion point for undo.
    */
+  //将元素添加到 created 列表中，并返回插入点
   public int create(final E element) {
     final int c = search(created, element.getKey());
     addCreated(element, c);
@@ -282,6 +298,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    * Undo the previous create(E) operation. Note that the behavior is
    * undefined if the previous operation is not create(E).
    */
+  //根据给定的插入点撤销 create 操作，将元素从 created 列表中移除
   public void undoCreate(final E element, final int insertionPoint) {
     remove(created, insertionPoint, element);
   }
@@ -290,6 +307,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    * Delete an element from current state.
    * @return the undo information.
    */
+  //从 created 列表中移除元素。如果元素不在 created 列表中，则将其添加到 deleted 列表中
   public UndoInfo<E> delete(final E element) {
     final int c = search(created, element.getKey());
     E previous = null;
@@ -309,6 +327,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    * Undo the previous delete(E) operation. Note that the behavior is
    * undefined if the previous operation is not delete(E).
    */
+  //根据撤销信息恢复删除的元素，移回 created 列表或从 deleted 列表中移除
   public void undoDelete(final E element, final UndoInfo<E> undoInfo) {
     final int c = undoInfo.createdInsertionPoint;
     if (c >= 0) {
@@ -322,6 +341,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    * Modify an element in current state.
    * @return the undo information.
    */
+  //如果元素存在于 created 列表中，则替换该元素。如果元素不在 created 列表中，则先删除旧元素，然后添加新元素
   public UndoInfo<E> modify(final E oldElement, final E newElement) {
     Preconditions.checkArgument(oldElement != newElement,
         "They are the same object: oldElement == newElement = %s", newElement);
@@ -352,6 +372,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    * Undo the previous modify(E, E) operation. Note that the behavior
    * is undefined if the previous operation is not modify(E, E).
    */
+  //根据撤销信息恢复被修改的元素，替换 created 列表中的元素，或从 deleted 列表中移除元素
   public void undoModify(final E oldElement, final E newElement,
       final UndoInfo<E> undoInfo) {
     final int c = undoInfo.createdInsertionPoint;
@@ -376,6 +397,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    *         be null which means that the element is not found in the previous
    *         state.
    */
+  //返回一个 Container<E> 对象，包含元素在前一个状态中的信息。如果元素未找到，则返回 null
   public Container<E> accessPrevious(final K name) {
     return accessPrevious(name, created, deleted);
   }
@@ -402,6 +424,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    *         the current state. Note that the element can possibly be null which
    *         means that the element is not found in the current state.
    */
+  //返回一个 Container<E> 对象，包含元素在当前状态中的信息。如果元素未找到，则返回 null
   public Container<E> accessCurrent(K name) {
     return accessPrevious(name, deleted, created);
   }
@@ -410,6 +433,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    * Apply this diff to previous state in order to obtain current state.
    * @return the current state of the list.
    */
+  //返回应用差异后的当前状态
   public List<E> apply2Previous(final List<E> previous) {
     return apply2Previous(previous,
         getCreatedUnmodifiable(), getDeletedUnmodifiable());
@@ -470,6 +494,7 @@ public class Diff<K, E extends Diff.Element<K>> {
    * to obtain the previous state.
    * @return the previous state of the list.
    */
+  //返回应用反向差异后的前一个状态
   public List<E> apply2Current(final List<E> current) {
     return apply2Previous(current,
         getDeletedUnmodifiable(), getCreatedUnmodifiable());

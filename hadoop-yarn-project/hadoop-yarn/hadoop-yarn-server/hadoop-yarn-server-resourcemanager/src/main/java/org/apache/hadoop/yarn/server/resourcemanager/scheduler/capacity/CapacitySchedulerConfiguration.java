@@ -475,7 +475,7 @@ public class CapacitySchedulerConfiguration extends ReservationSchedulerConfigur
       addResource(CS_CONFIGURATION_FILE);
     }
   }
-
+  //设置队列前缀
   public static String getQueuePrefix(String queue) {
     String queueName = PREFIX + queue + DOT;
     return queueName;
@@ -799,6 +799,7 @@ public class CapacitySchedulerConfiguration extends ReservationSchedulerConfigur
   }
 
   public Set<String> getAccessibleNodeLabels(String queue) {
+    //从配置文件中获取队列的节点标签
     String accessibleLabelStr =
         get(getQueuePrefix(queue) + ACCESSIBLE_NODE_LABELS);
 
@@ -1302,7 +1303,7 @@ public class CapacitySchedulerConfiguration extends ReservationSchedulerConfigur
             ResourceCalculator.class),
         this);
   }
-
+  //是否使用port作为NodeManager的名字
   public boolean getUsePortForNodeName() {
     return getBoolean(YarnConfiguration.RM_SCHEDULER_INCLUDE_PORT_IN_NODE_NAME,
         YarnConfiguration.DEFAULT_RM_SCHEDULER_USE_PORT_FOR_NODE_NAME);

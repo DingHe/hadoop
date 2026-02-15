@@ -30,6 +30,8 @@ import java.util.Map;
  * Interface for the resource profiles manager. Provides an interface to get
  * the list of available profiles and some helper functions.
  */
+// 用于管理 资源配置文件（Resource Profiles）。
+// 资源配置文件定义了一组标准化的资源规格，例如 CPU 和内存，以便 YARN 任务可以使用这些预定义的资源配置，而不是每次都手动指定
 public interface ResourceProfilesManager {
 
   /**
@@ -37,6 +39,7 @@ public interface ResourceProfilesManager {
    * @param config Configuration object
    * @throws IOException when invalid resource profile names are loaded
    */
+  //config：YARN 的配置对象，包含资源配置文件的信息。
   void init(Configuration config) throws IOException;
 
   /**
@@ -46,6 +49,7 @@ public interface ResourceProfilesManager {
    *
    * @throws YarnException when any invalid profile name or feature is disabled
    */
+  //profile：资源配置文件的名称，例如 "LARGE"、"MEDIUM"、"SMALL"
   Resource getProfile(String profile) throws YarnException;
 
   /**
@@ -54,6 +58,7 @@ public interface ResourceProfilesManager {
    *
    * @throws YARNFeatureNotEnabledException when feature is disabled
    */
+  //返回所有资源配置文件的 Map，键是配置文件名称，值是对应的 Resource 对象
   Map<String, Resource> getResourceProfiles() throws
       YARNFeatureNotEnabledException;
 
@@ -61,6 +66,7 @@ public interface ResourceProfilesManager {
    * Reload profiles based on updated configuration.
    * @throws IOException when invalid resource profile names are loaded
    */
+  //重新加载资源配置文件
   void reloadProfiles() throws IOException;
 
   /**
@@ -68,6 +74,7 @@ public interface ResourceProfilesManager {
    * @return resource object which is default
    * @throws YarnException when any invalid profile name or feature is disabled
    */
+  //YARN 预定义的默认 Resource 配置
   Resource getDefaultProfile() throws YarnException;
 
   /**
@@ -75,6 +82,7 @@ public interface ResourceProfilesManager {
    * @return resource object which is minimum
    * @throws YarnException when any invalid profile name or feature is disabled
    */
+  //YARN 允许的最小 Resource 规格
   Resource getMinimumProfile() throws YarnException;
 
   /**
@@ -82,5 +90,6 @@ public interface ResourceProfilesManager {
    * @return resource object which is maximum
    * @throws YarnException when any invalid profile name or feature is disabled
    */
+  //YARN 允许的最大 Resource 规格
   Resource getMaximumProfile() throws YarnException;
 }

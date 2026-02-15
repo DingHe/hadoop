@@ -33,16 +33,27 @@ import org.apache.hadoop.yarn.server.api.protocolrecords.UnRegisterNodeManagerRe
  * This is used by the Node Manager to register/nodeHeartbeat/unregister with
  * the ResourceManager.
  */
+//NodeManager（NM）与 ResourceManager（RM）通信的接口，用于：
+//注册 (registerNodeManager)：NM 启动后向 RM 注册，以加入集群。
+//心跳 (nodeHeartbeat)：NM 定期向 RM 发送心跳，报告资源使用情况、运行状态等。
+//注销 (unRegisterNodeManager)：NM 关闭或被移除时，通知 RM 进行资源清理
 public interface ResourceTracker {
-  
+  //request：RegisterNodeManagerRequest，包含 NM 的注册信息，例如：
+  //NodeId（节点 ID）
+  //Resource（节点资源情况）
+  //NMContainerStatus（节点上运行的容器状态）
   @Idempotent
   RegisterNodeManagerResponse registerNodeManager(
       RegisterNodeManagerRequest request) throws YarnException, IOException;
-
+  //request：NodeHeartbeatRequest，包含 NM 的状态信息，如：
+  //NodeId（节点 ID）
+  //ContainerStatus（容器运行状态）
+  //NodeHealthStatus（节点健康情况）
+  //LastKnownRMContainer（上次报告的容器情况）
   @AtMostOnce
   NodeHeartbeatResponse nodeHeartbeat(NodeHeartbeatRequest request)
       throws YarnException, IOException;
-
+  //request：UnRegisterNodeManagerRequest，包含需要注销的 NM 信息
   @Idempotent
   UnRegisterNodeManagerResponse unRegisterNodeManager(
       UnRegisterNodeManagerRequest request) throws YarnException, IOException;

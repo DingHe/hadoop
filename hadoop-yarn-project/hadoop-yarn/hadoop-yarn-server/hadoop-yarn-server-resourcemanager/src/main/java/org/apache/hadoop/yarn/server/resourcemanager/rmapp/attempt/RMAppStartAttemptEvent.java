@@ -19,13 +19,13 @@
 package org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt;
 
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
-
+//表示应用程序尝试启动事件的类
 public class RMAppStartAttemptEvent extends RMAppAttemptEvent {
 
   private final boolean transferStateFromPreviousAttempt;
 
-  public RMAppStartAttemptEvent(ApplicationAttemptId appAttemptId,
-      boolean transferStateFromPreviousAttempt) {
+  public RMAppStartAttemptEvent(ApplicationAttemptId appAttemptId,//应用程序尝试的唯一标识符
+      boolean transferStateFromPreviousAttempt) { //指示是否将前一个应用程序尝试的状态转移到当前尝试
     super(appAttemptId, RMAppAttemptEventType.START);
     this.transferStateFromPreviousAttempt = transferStateFromPreviousAttempt;
   }

@@ -31,14 +31,21 @@ import java.util.List;
 /**
  * DAO object to display request allocation detailed information.
  */
+//AppRequestAllocationInfo 是一个数据传输对象（DAO），用于展示单个资源请求的分配详细信息。
+//该类的主要作用是：
+//表示 YARN 应用的一个资源请求（如一个容器的请求）
+//提供请求的优先级、分配状态、诊断信息
+//包含子级 ActivityNodeInfo，展示调度的详细过程
+//数据来源于ActivityNode，转换为可读格式，用于Web UI或REST API
+//它用于 YARN 资源管理器（ResourceManager）Web 界面和 REST API，帮助用户分析资源请求的调度过程。
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
 public class AppRequestAllocationInfo {
-  private Integer requestPriority;
-  private Long allocationRequestId;
-  private String allocationState;
-  private String diagnostic;
-  private List<ActivityNodeInfo> children;
+  private Integer requestPriority;  //该资源请求的优先级，数值越高，优先级越高
+  private Long allocationRequestId; //该资源请求的唯一ID，用于区分不同的请求
+  private String allocationState;   //该请求的分配状态，取自ActivityState（如ALLOCATED, REJECTED）
+  private String diagnostic;        //如果 请求失败或跳过，这里会存储 失败原因或调度诊断信息
+  private List<ActivityNodeInfo> children;  //该资源请求的 调度过程详情，即该请求经历的所有调度步骤
 
   AppRequestAllocationInfo() {
   }

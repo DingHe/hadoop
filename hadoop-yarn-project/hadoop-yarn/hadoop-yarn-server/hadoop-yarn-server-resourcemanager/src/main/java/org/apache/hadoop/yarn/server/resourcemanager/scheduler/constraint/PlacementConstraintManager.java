@@ -32,6 +32,11 @@ import org.apache.hadoop.yarn.api.resource.PlacementConstraint;
  * Interface for storing and retrieving placement constraints (see
  * {@link PlacementConstraint}).
  */
+//主要用于存储和管理任务的放置约束 (Placement Constraints)。它提供了一套 API，使 YARN 可以：
+//注册、存储、删除和查询应用程序的放置约束。
+//支持全局放置约束（由集群管理员配置，影响整个集群）。
+//管理不同层级的约束（调度请求级别、应用级别、集群级别）。
+//验证放置约束 以确保其正确性。
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
 public interface PlacementConstraintManager {
@@ -43,6 +48,8 @@ public interface PlacementConstraintManager {
    * @param constraintMap the map of allocation tags to constraints for this
    *          application
    */
+  //注册应用的放置约束
+  //constraintMap：一个 Map，用于存储分配标签（Set<String>）与放置约束（PlacementConstraint）的映射关系
   void registerApplication(ApplicationId appId,
       Map<Set<String>, PlacementConstraint> constraintMap);
 
@@ -59,6 +66,7 @@ public interface PlacementConstraintManager {
    * @param replace if true, an existing constraint for these tags will be
    *          replaced by the given one
    */
+  //为特定应用添加放置约束
   void addConstraint(ApplicationId appId, Set<String> sourceTags,
       PlacementConstraint placementConstraint, boolean replace);
 
@@ -72,6 +80,8 @@ public interface PlacementConstraintManager {
    * @param replace if true, an existing constraint for these tags will be
    *          replaced by the given one
    */
+  //添加全局放置约束
+  //一组 分配标签，用于识别这类任务
   void addGlobalConstraint(Set<String> sourceTags,
       PlacementConstraint placementConstraint, boolean replace);
 
@@ -82,6 +92,7 @@ public interface PlacementConstraintManager {
    * @param appId the application ID
    * @return the constraints for this application with the associated tags
    */
+  //获取应用的所有放置约束
   Map<Set<String>, PlacementConstraint> getConstraints(ApplicationId appId);
 
   /**
@@ -92,6 +103,7 @@ public interface PlacementConstraintManager {
    * @param sourceTags the allocation tags that enable this constraint
    * @return the constraint
    */
+  //获取特定标签的约束
   PlacementConstraint getConstraint(ApplicationId appId,
       Set<String> sourceTags);
 
@@ -102,6 +114,7 @@ public interface PlacementConstraintManager {
    * @param sourceTags the allocation tags that enable this constraint
    * @return the constraint
    */
+  //获取全局约束
   PlacementConstraint getGlobalConstraint(Set<String> sourceTags);
 
   /**
@@ -114,6 +127,7 @@ public interface PlacementConstraintManager {
    *          request level
    * @return a merged placement constraint
    */
+  //合并多层级约束
   PlacementConstraint getMultilevelConstraint(ApplicationId applicationId,
       Set<String> sourceTags, PlacementConstraint schedulingRequestConstraint);
 
@@ -122,6 +136,7 @@ public interface PlacementConstraintManager {
    *
    * @param appId the application that will be removed.
    */
+  //移除应用的约束
   void unregisterApplication(ApplicationId appId);
 
   /**
@@ -130,6 +145,7 @@ public interface PlacementConstraintManager {
    *
    * @param sourceTags the allocation tags
    */
+  //移除全局约束
   void removeGlobalConstraint(Set<String> sourceTags);
 
   /**
@@ -138,6 +154,7 @@ public interface PlacementConstraintManager {
    *
    * @return number of registered applications.
    */
+  //获取已注册的应用数量
   int getNumRegisteredApplications();
 
   /**
@@ -146,6 +163,7 @@ public interface PlacementConstraintManager {
    *
    * @return number of global constraints.
    */
+  //获取全局约束数量
   int getNumGlobalConstraints();
 
   /**
@@ -156,6 +174,7 @@ public interface PlacementConstraintManager {
    * @param placementConstraint the constraint
    * @return true if constraint and tags are valid
    */
+  //验证放置约束
   default boolean validateConstraint(Set<String> sourceTags,
       PlacementConstraint placementConstraint) {
     return true;

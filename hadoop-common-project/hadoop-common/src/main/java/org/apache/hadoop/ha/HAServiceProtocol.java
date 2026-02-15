@@ -47,12 +47,14 @@ public interface HAServiceProtocol {
    * an unknown INITIALIZING state. During shutdown, it is in the STOPPING state
    * and can no longer return to active/standby states.
    */
+  //高可用（HA）服务状态的枚举类型，它定义了一个服务在不同生命周期阶段的可能状态。
+  // 这个枚举主要用于表示高可用服务的当前状态，包括服务在初始化、活动、待命等状态下的行为
   public enum HAServiceState {
-    INITIALIZING("initializing"),
-    ACTIVE("active"),
-    STANDBY("standby"),
-    OBSERVER("observer"),
-    STOPPING("stopping");
+    INITIALIZING("initializing"),//在启动过程中，服务处于“初始化”状态。此时服务尚未完全启动，可能正在进行配置或初始化工作
+    ACTIVE("active"),//服务处于“活动”状态，表示该服务处于主服务状态，能够处理请求或执行主要任务
+    STANDBY("standby"),//服务处于“待命”状态，表示该服务是备用的，不处理请求，通常在主服务不可用时会被切换为活动状态
+    OBSERVER("observer"),//该状态可能表示服务处于一种观察者模式，它不处理请求，只是观察其他服务的状态，通常用于监控
+    STOPPING("stopping");//在服务关闭过程中，服务进入“停止中”状态，此时服务已经不能再返回活动或待命状态，表示正在停止的过程中
 
     private String name;
 

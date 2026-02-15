@@ -94,7 +94,13 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-
+//NodeManager 类是 Apache Hadoop YARN (Yet Another Resource Negotiator) 的一个核心组件，
+// 负责管理和监控一个节点的资源使用情况和任务执行。它位于每个集群节点上，承担以下主要任务：
+//负责接收来自 ResourceManager 的任务，并管理容器（containers）执行。
+//监控节点的健康状况、资源使用（如 CPU、内存等）以及容器的状态。
+//提供 Web 界面供集群管理员查看节点和容器的状态。
+//处理节点的标签和属性，用于节点的分类管理。
+//处理与容器相关的操作，如容器的创建、启动、停止等。
 public class NodeManager extends CompositeService
     implements EventHandler<NodeManagerEvent>, NodeManagerMXBean {
 
@@ -102,8 +108,8 @@ public class NodeManager extends CompositeService
    * Node manager return status codes.
    */
   public enum NodeManagerStatus {
-    NO_ERROR(0),
-    EXCEPTION(1);
+    NO_ERROR(0), //正常
+    EXCEPTION(1); //异常
 
     private int exitCode;
 
@@ -125,28 +131,43 @@ public class NodeManager extends CompositeService
        LoggerFactory.getLogger(NodeManager.class);
   private static long nmStartupTime = System.currentTimeMillis();
   protected final NodeManagerMetrics metrics = NodeManagerMetrics.create();
+  //用于监控 JVM 的暂停情况，帮助分析性能瓶颈
   private JvmPauseMonitor pauseMonitor;
+  //管理节点的访问控制列表（ACLs），确保只有授权用户能够访问特定的资源
   private ApplicationACLsManager aclsManager;
+  //用于检查节点的健康状况，判断是否可以继续运行任务
   private NodeHealthCheckerService nodeHealthChecker;
+  //提供节点标签管理功能，用于节点分类和调度策略
   private NodeLabelsProvider nodeLabelsProvider;
+  //提供节点属性管理，用于节点的动态属性配置
   private NodeAttributesProvider nodeAttributesProvider;
+  //管理节点的本地磁盘目录，用于存储任务数据和日志
   private LocalDirsHandlerService dirsHandler;
+  //存储 NodeManager 的上下文信息，提供共享的数据和资源
   private Context context;
+  //异步分派器，负责调度和处理事件
   private AsyncDispatcher dispatcher;
+  //管理容器的生命周期，包括启动、停止和资源分配等
   private ContainerManagerImpl containerManager;
   // the NM collector service is set only if the timeline service v.2 is enabled
+  //如果启用了时间线服务 V2，则负责收集节点的各种信息和日志
   private NMCollectorService nmCollectorService;
+  //更新节点的状态信息，通常是与 ResourceManager 通信
   private NodeStatusUpdater nodeStatusUpdater;
+  //标识是否正在与 ResourceManager 重新同步
   private AtomicBoolean resyncingWithRM = new AtomicBoolean(false);
+  //监控节点的资源使用情况，如 CPU、内存等
   private NodeResourceMonitor nodeResourceMonitor;
+
   private static CompositeServiceShutdownHook nodeManagerShutdownHook;
   private NMStateStoreService nmStore = null;
-  
+  //指示 NodeManager 是否正在停止中
   private AtomicBoolean isStopping = new AtomicBoolean(false);
+  //是否启用了资源管理器工作保护重启功能
   private boolean rmWorkPreservingRestartEnabled;
   private boolean shouldExitOnShutdownEvent = false;
   private boolean nmDispatherMetricEnabled;
-
+  //追踪日志汇总的状态
   private NMLogAggregationStatusTracker nmLogAggregationStatusTracker;
 
   /**

@@ -47,43 +47,63 @@ import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerUtils;
 import org.apache.hadoop.yarn.util.resource.Resources;
 
 import org.apache.hadoop.classification.VisibleForTesting;
-
+// FSQueue 是 YARN Fair Scheduler 中的一个抽象类，用于表示一个调度队列。
+// 它负责管理队列的资源、资源的公平分配、调度策略以及与父队列和子队列的关系。
+// 每个队列可以有自己的资源配置、调度策略以及最大和最小资源限制
 @Private
 @Unstable
 public abstract class FSQueue implements Queue, Schedulable {
   private static final Logger LOG = LoggerFactory.getLogger(
       FSQueue.class.getName());
-
+  //表示队列当前的公平资源份额。fairShare 用来决定该队列的资源分配，以确保每个队列获得公平的资源量
   private Resource fairShare = Resources.createResource(0, 0);
+  //表示队列的稳定资源份额。这个属性可能用于控制队列资源分配的平稳性
   private Resource steadyFairShare = Resources.createResource(0, 0);
+  //表示队列的预留资源。当某些资源被预留时，这个属性会跟踪预留资源的数量
   private Resource reservedResource = Resources.createResource(0, 0);
+  //跟踪队列的资源使用情况，如已分配的资源数量
   private final Resource resourceUsage = Resource.newInstance(0, 0);
+  //队列的名称，用于标识队列
   private final String name;
+  //FairScheduler 实例，用于执行调度逻辑。它是 FSQueue 所在的调度器
   protected final FairScheduler scheduler;
+  //用于授权和验证对队列的访问
   private final YarnAuthorizationProvider authorizer;
+  //代表队列的权限实体，用于执行访问控制操作
   private final PrivilegedEntity queueEntity;
+  //队列的性能指标，用于收集关于队列的资源使用和运行状况的数据。
   private final FSQueueMetrics metrics;
-  
+  //队列的父队列。如果队列是根队列或子队列，parent 表示其父队列
   protected final FSParentQueue parent;
   protected final RecordFactory recordFactory =
       RecordFactoryProvider.getRecordFactory(null);
-  
+  //队列的调度策略。调度策略定义了资源如何在队列中分配，可能包括公平调度、权重调度等
   protected SchedulingPolicy policy = SchedulingPolicy.DEFAULT_POLICY;
-
+  //队列的权重，用于决定队列在资源调度中的优先级。权重越大，队列分配的资源越多
   protected float weights;
+  //队列的最小资源分配量。队列至少应获得这些资源
   protected Resource minShare;
+  //队列的最大资源分配量。队列最多可以获得这些资源
   private ConfigurableResource maxShare;
+  //队列中最大可以同时运行的应用程序数
   protected int maxRunningApps;
+  //队列的子队列的最大资源限制。这个属性用于管理子队列的资源限制
   private ConfigurableResource maxChildQueueResource;
 
   // maxAMShare is a value between 0 and 1.
+  //队列中应用程序的最大资源分配比例，值在 0 到 1 之间
   protected float maxAMShare;
-
+  //公平资源分配的抢占超时。它控制了当资源不足时，抢占其他队列资源的等待时间
   private long fairSharePreemptionTimeout = Long.MAX_VALUE;
+  //最小资源分配的抢占超时，控制当队列的最小资源未满足时，抢占其他队列资源的等待时间
   private long minSharePreemptionTimeout = Long.MAX_VALUE;
+  //公平资源分配抢占的阈值。当资源分配低于这个阈值时，可能会启动抢占机制
   private float fairSharePreemptionThreshold = 0.5f;
+  //标记队列是否可以被抢占。如果为 true，队列中的任务可以被其他队列抢占
   private boolean preemptable = true;
+  //标记队列是否是动态的。如果为 true，队列的资源可以根据需要动态调整
   private boolean isDynamic = true;
+  //队列中容器的最大资源限制。它控制了每个容器的资源大小
   protected Resource maxContainerAllocation;
 
   public FSQueue(String name, FairScheduler scheduler, FSParentQueue parent) {

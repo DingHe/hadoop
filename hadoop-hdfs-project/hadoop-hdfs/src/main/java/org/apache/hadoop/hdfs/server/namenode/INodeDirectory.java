@@ -55,6 +55,7 @@ public class INodeDirectory extends INodeWithAdditionalFields
     implements INodeDirectoryAttributes {
 
   /** Cast INode to INodeDirectory. */
+  //将一个 INode 对象转换为 INodeDirectory 对象。如果传入的 INode 不是目录
   public static INodeDirectory valueOf(INode inode, Object path
       ) throws FileNotFoundException, PathIsNotDirectoryException {
     if (inode == null) {
@@ -69,10 +70,11 @@ public class INodeDirectory extends INodeWithAdditionalFields
 
   // Profiling shows that most of the file lists are between 1 and 4 elements.
   // Thus allocate the corresponding ArrayLists with a small initial capacity.
+  //每个目录默认分配的文件数目，即当目录为空时，初始化 children 列表时的默认容量为 2
   public static final int DEFAULT_FILES_PER_DIRECTORY = 2;
-
+  //表示根目录名称的字节数组。用于标识文件系统的根目录
   static final byte[] ROOT_NAME = DFSUtil.string2Bytes("");
-
+  //存储该目录下的子节点（文件或子目录）。子节点是 INode 类型的集合，表示该目录的所有直接子文件或子目录
   private List<INode> children = null;
   
   /** constructor */
@@ -107,18 +109,18 @@ public class INodeDirectory extends INodeWithAdditionalFields
     }
   }
 
-  /** @return true unconditionally. */
+  /** @return true unconditionally. 表示该节点是一个目录*/
   @Override
   public final boolean isDirectory() {
     return true;
   }
 
-  /** @return this object. */
+  /** @return this object. 返回当前对象自身，即 INodeDirectory 类型的当前对象*/
   @Override
   public final INodeDirectory asDirectory() {
     return this;
   }
-
+  //获取该目录的存储策略 ID。首先检查是否存在 XAttr 属性，如果存在，则从中获取存储策略 ID；如果不存在，则返回 BLOCK_STORAGE_POLICY_ID_UNSPECIFIED
   @Override
   public byte getLocalStoragePolicyID() {
     XAttrFeature f = getXAttrFeature();
@@ -129,7 +131,7 @@ public class INodeDirectory extends INodeWithAdditionalFields
     }
     return BLOCK_STORAGE_POLICY_ID_UNSPECIFIED;
   }
-
+  //获取该目录的存储策略 ID。如果本目录没有指定存储策略，则递归查找其父目录的存储策略
   @Override
   public byte getStoragePolicyID() {
     byte id = getLocalStoragePolicyID();
@@ -139,7 +141,7 @@ public class INodeDirectory extends INodeWithAdditionalFields
     // if it is unspecified, check its parent
     return getParent() != null ? getParent().getStoragePolicyID() : BLOCK_STORAGE_POLICY_ID_UNSPECIFIED;
   }
-
+  //设置目录的配额。配额包括命名空间配额和存储空间配额。如果目录已经有配额，则更新其配额
   void setQuota(BlockStoragePolicySuite bsps, long nsQuota, long ssQuota, StorageType type) {
     DirectoryWithQuotaFeature quota = getDirectoryWithQuotaFeature();
     if (quota != null) {
@@ -164,13 +166,13 @@ public class INodeDirectory extends INodeWithAdditionalFields
       addDirectoryWithQuotaFeature(builder.build()).setSpaceConsumed(c);
     }
   }
-
+  //返回该目录的配额信息。如果目录有配额特性（DirectoryWithQuotaFeature），则返回该配额信息，否则调用父类的 getQuotaCounts()
   @Override
   public QuotaCounts getQuotaCounts() {
     final DirectoryWithQuotaFeature q = getDirectoryWithQuotaFeature();
     return q != null? q.getQuota(): super.getQuotaCounts();
   }
-
+  //增加该目录的空间使用量。如果目录有配额特性，则将增加的空间信息更新到配额缓存中
   @Override
   public void addSpaceConsumed(QuotaCounts counts) {
     super.addSpaceConsumed(counts);
@@ -181,7 +183,7 @@ public class INodeDirectory extends INodeWithAdditionalFields
     }
   }
 
-  /**
+  /**获取目录配额特征
    * If the directory contains a {@link DirectoryWithQuotaFeature}, return it;
    * otherwise, return null.
    */
@@ -190,17 +192,18 @@ public class INodeDirectory extends INodeWithAdditionalFields
   }
 
   /** Is this directory with quota? */
+  //如果目录配额特征为空，则没有设置目录配额信息
   final boolean isWithQuota() {
     return getDirectoryWithQuotaFeature() != null;
   }
-
+  //配置目录配额特性，并返回目录配额特性
   DirectoryWithQuotaFeature addDirectoryWithQuotaFeature(
       DirectoryWithQuotaFeature q) {
     Preconditions.checkState(!isWithQuota(), "Directory is already with quota");
     addFeature(q);
     return q;
   }
-
+  //由于Inode实现了Diff.Element的getKey的接口，所以能直接通过name查找元素
   int searchChildren(byte[] name) {
     return children == null? -1: Collections.binarySearch(children, name);
   }
@@ -243,7 +246,7 @@ public class INodeDirectory extends INodeWithAdditionalFields
     DirectoryWithSnapshotFeature sf = this.getDirectoryWithSnapshotFeature();
     return super.toDetailString() + (sf == null ? "" : ", " + sf.getDiffs()); 
   }
-
+  //获取快照特征
   public DirectorySnapshottableFeature getDirectorySnapshottableFeature() {
     return getFeature(DirectorySnapshottableFeature.class);
   }
@@ -316,6 +319,7 @@ public class INodeDirectory extends INodeWithAdditionalFields
   }
 
   /** add DirectorySnapshottableFeature */
+  //目录启用快照功能，通过添加一个DirectorySnapshottableFeature实现
   public void addSnapshottableFeature() {
     Preconditions.checkState(!isSnapshottable(),
         "this is already snapshottable, this=%s", this);
@@ -581,13 +585,13 @@ public class INodeDirectory extends INodeWithAdditionalFields
     }
     return true;
   }
-
+  //给目录添加文件或者子目录
   public boolean addChild(INode node) {
-    final int low = searchChildren(node.getLocalNameBytes());
-    if (low >= 0) {
+    final int low = searchChildren(node.getLocalNameBytes());//根据名称查找Inode节点的位置
+    if (low >= 0) { //已经存在，返回false
       return false;
     }
-    addChild(node, low);
+    addChild(node, low);//没找到添加
     return true;
   }
 
@@ -607,7 +611,7 @@ public class INodeDirectory extends INodeWithAdditionalFields
     }
   }
 
-  /**
+  /**按照指定位置添加Inode子节点
    * Add the node to the children list at the given insertion point.
    * The basic add method which actually calls children.add(..).
    */

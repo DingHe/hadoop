@@ -48,20 +48,32 @@ import java.util.Set;
  * Class encapsulates all outstanding container increase and decrease
  * requests for an application.
  */
-public class ContainerUpdateContext {
+//用于管理应用程序的容器（Container）的资源调整请求，包括：
+//增加（Increase）：增加容器的 CPU、内存等资源。
+//减少（Decrease）：减少容器的 CPU、内存等资源。
+//执行类型变更（Promotion）：如从 OPPORTUNISTIC 变更为 GUARANTEED
 
+public class ContainerUpdateContext {
+  //一个特殊的 ContainerId，用于指代未定义的容器 ID，可能用于错误处理或占位
   public static final ContainerId UNDEFINED =
       ContainerId.newContainerId(ApplicationAttemptId.newInstance(
               ApplicationId.newInstance(-1, -1), -1), -1);
+  //用于创建 YARN 记录对象的工厂类
   protected static final RecordFactory RECORD_FACTORY =
       RecordFactoryProvider.getRecordFactory(null);
 
   // Keep track of containers that are undergoing promotion
+  //存储正在等待处理的容器资源增加请求
+  //SchedulerRequestKey：表示调度请求的唯一标识（包含优先级和请求 ID）
+  //Resource：请求的资源信息（CPU、内存等）
+  //NodeId → Set<ContainerId>：在哪些节点上，哪些容器正在等待资源增加
   private final Map<SchedulerRequestKey, Map<Resource,
       Map<NodeId, Set<ContainerId>>>> outstandingIncreases = new HashMap<>();
-
+  //存储正在等待处理的容器资源减少请求
+  //ContainerId 对应减少的 Resource
   private final Map<ContainerId, Resource> outstandingDecreases =
       new HashMap<>();
+  //表示应用程序的调度信息，包括当前资源请求、分配情况等
   private final AppSchedulingInfo appSchedulingInfo;
 
   ContainerUpdateContext(AppSchedulingInfo appSchedulingInfo) {
@@ -101,19 +113,24 @@ public class ContainerUpdateContext {
    * @param updateRequest UpdateContainerRequest.
    * @return true if updated to outstanding increases was successful.
    */
+  //将容器的资源增加请求添加到未决（outstanding）增加列表中
   public synchronized boolean checkAndAddToOutstandingIncreases(
       RMContainer rmContainer, SchedulerNode schedulerNode,
       UpdateContainerRequest updateRequest) {
+    //获取容器信息
     Container container = rmContainer.getContainer();
+    //生成 SchedulerRequestKey，用于标识该容器的调度请求
     SchedulerRequestKey schedulerKey =
         SchedulerRequestKey.create(updateRequest,
             rmContainer.getAllocatedSchedulerKey());
+
     Map<Resource, Map<NodeId, Set<ContainerId>>> resourceMap =
         outstandingIncreases.get(schedulerKey);
     if (resourceMap == null) {
       resourceMap = new HashMap<>();
       outstandingIncreases.put(schedulerKey, resourceMap);
     } else {
+      //如果该 schedulerKey 已经存在，并且 updateRequest 需要增加资源 (INCREASE_RESOURCE)，则先取消之前的请求
       // Updating Resource for and existing increase container
       if (ContainerUpdateType.INCREASE_RESOURCE ==
           updateRequest.getContainerUpdateType()) {
@@ -122,13 +139,16 @@ public class ContainerUpdateContext {
         return false;
       }
     }
+    //获取需要增加的资源
     Resource resToIncrease = getResourceToIncrease(updateRequest, rmContainer);
+    //更新 outstandingIncreases
     Map<NodeId, Set<ContainerId>> locationMap =
         resourceMap.get(resToIncrease);
     if (locationMap == null) {
       locationMap = new HashMap<>();
       resourceMap.put(resToIncrease, locationMap);
     }
+    //然后获取当前 NodeId 上的 ContainerId 集合，并添加该 ContainerId
     Set<ContainerId> containerIds = locationMap.get(container.getNodeId());
     if (containerIds == null) {
       containerIds = new HashSet<>();

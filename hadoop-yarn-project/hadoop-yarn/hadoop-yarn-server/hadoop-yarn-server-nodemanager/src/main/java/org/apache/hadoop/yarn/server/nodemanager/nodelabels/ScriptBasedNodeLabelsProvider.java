@@ -32,9 +32,11 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
  * pattern which will be used to search node label partition from the out put of
  * the NodeLabels provider script
  */
+//供了通过配置的脚本来获取节点标签的功能。它通过运行外部脚本来获取节点标签，并从脚本的输出中解析出标签信息
 public class ScriptBasedNodeLabelsProvider extends NodeLabelsProvider {
 
   /** Pattern used for searching in the output of the node labels script */
+  //定义了在脚本输出中查找节点标签的模式
   public static final String NODE_LABEL_PARTITION_PATTERN = "NODE_PARTITION:";
 
   private NodeDescriptorsScriptRunner runner;
@@ -48,6 +50,7 @@ public class ScriptBasedNodeLabelsProvider extends NodeLabelsProvider {
    */
   @Override
   protected void serviceInit(Configuration conf) throws Exception {
+    //从 Configuration 对象中获取脚本路径、脚本超时时间、脚本参数和任务间隔时间
     String nodeLabelsScriptPath =
         conf.get(YarnConfiguration.NM_SCRIPT_BASED_NODE_LABELS_PROVIDER_PATH);
     long scriptTimeout =
@@ -56,12 +59,14 @@ public class ScriptBasedNodeLabelsProvider extends NodeLabelsProvider {
     String[] scriptArgs = conf.getStrings(
         YarnConfiguration.NM_SCRIPT_BASED_NODE_LABELS_PROVIDER_SCRIPT_OPTS,
         new String[] {});
+    //验证脚本路径是否有效
     verifyConfiguredScript(nodeLabelsScriptPath);
 
     long taskInterval = conf.getLong(
         YarnConfiguration.NM_NODE_LABELS_PROVIDER_FETCH_INTERVAL_MS,
         YarnConfiguration.DEFAULT_NM_NODE_LABELS_PROVIDER_FETCH_INTERVAL_MS);
     this.setIntervalTime(taskInterval);
+    //初始化 NodeLabelScriptRunner，该执行器用于执行脚本并解析输出
     this.runner = new NodeLabelScriptRunner(nodeLabelsScriptPath, scriptArgs,
             scriptTimeout, this);
 

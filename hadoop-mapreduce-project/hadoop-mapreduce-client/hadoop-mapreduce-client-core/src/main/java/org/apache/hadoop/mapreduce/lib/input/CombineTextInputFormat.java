@@ -34,10 +34,14 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
  *
  * @see CombineFileInputFormat
  */
+// Hadoop MapReduce 中专门用来处理大量小文本文件的 InputFormat
+  //解决小文件问题： 它继承自抽象类 CombineFileInputFormat，这意味着它会合并多个小文件或文件块，将它们打包成一个大的 CombineFileSplit，从而显著减少 Map Task 的数量，降低作业启动和管理的开销。
+  //兼容文本处理： 它是 TextInputFormat 的合并版本。它确保合并后的每个 Split 仍然能够以行为单位进行读取和处理。
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public class CombineTextInputFormat
   extends CombineFileInputFormat<LongWritable,Text> {
+  // 创建记录读取器
   public RecordReader<LongWritable,Text> createRecordReader(InputSplit split,
     TaskAttemptContext context) throws IOException {
     return new CombineFileRecordReader<LongWritable,Text>(

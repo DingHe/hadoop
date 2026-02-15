@@ -78,26 +78,38 @@ import org.apache.hadoop.yarn.server.utils.YarnServerSecurityUtils;
 import org.apache.hadoop.yarn.util.resource.Resources;
 
 import org.apache.hadoop.classification.VisibleForTesting;
-
+//是 Apache Hadoop YARN 资源管理器（ResourceManager，简称 RM）的一部分，负责处理 ApplicationMaster（简称 AM）和 RM 之间的通信。
+//AM 通过 AMS 向 RM 注册、请求资源分配、报告任务完成等。AMS 主要实现了 ApplicationMasterProtocol 接口，为 AM 提供了以下核心功能：
+//处理 AM 的注册请求 (RegisterApplicationMaster)。
+//处理 AM 的资源请求 (Allocate)，涉及到资源分配、容器状态更新等。
+//处理 AM 的终止 (FinishApplicationMaster) 请求。
+//维护 AM 的存活性，确保 RM 能够监控 AM 的状态。
 @SuppressWarnings("unchecked")
 @Private
 public class ApplicationMasterService extends AbstractService implements
     ApplicationMasterProtocol {
   private static final Logger LOG = LoggerFactory.
       getLogger(ApplicationMasterService.class);
-
+  //监控AM的存活状态，如果AM长时间未发送心跳，会触发失败处理。
   private final AMLivelinessMonitor amLivelinessMonitor;
+  //资源调度器，负责资源分配和调度
   private YarnScheduler rScheduler;
+  //AMS 监听的地址。
   protected InetSocketAddress masterServiceAddress;
   protected Server server;
+  //用于创建 YARN 记录对象。
   protected final RecordFactory recordFactory =
       RecordFactoryProvider.getRecordFactory(null);
+  //存储AM资源请求的响应锁，用于并发控制。
   private final ConcurrentMap<ApplicationAttemptId, AllocateResponseLock> responseMap =
       new ConcurrentHashMap<ApplicationAttemptId, AllocateResponseLock>();
+  //缓存已经完成的 AM 尝试，防止重复处理。
   private final ConcurrentHashMap<ApplicationAttemptId, Boolean>
       finishedAttemptCache = new ConcurrentHashMap<>();
   protected final RMContext rmContext;
+  //处理 AM 相关请求的责任链，可扩展不同处理逻辑
   private final AMSProcessingChain amsProcessingChain;
+  //是否启用 Timeline Service v2 进行应用历史记录存储
   private boolean timelineServiceV2Enabled;
 
   public ApplicationMasterService(RMContext rmContext,
@@ -123,41 +135,52 @@ public class ApplicationMasterService extends AbstractService implements
         YarnConfiguration.DEFAULT_RM_SCHEDULER_PORT);
     initializeProcessingChain(conf);
   }
-
+  // 用于根据 YARN 配置选择适当的调度约束处理器（Placement Constraint Processor），
+  // 并将其添加到 amsProcessingChain 处理链中。这决定了 ApplicationMasterService 如何处理资源调度请求
   private void addPlacementConstraintHandler(Configuration conf) {
+    //获取调度约束处理器的配置
     String placementConstraintsHandler =
         conf.get(YarnConfiguration.RM_PLACEMENT_CONSTRAINTS_HANDLER,
             YarnConfiguration.DISABLED_RM_PLACEMENT_CONSTRAINTS_HANDLER);
     if (placementConstraintsHandler
         .equals(YarnConfiguration.DISABLED_RM_PLACEMENT_CONSTRAINTS_HANDLER)) {
+      //禁用调度约束处理器
       LOG.info(YarnConfiguration.DISABLED_RM_PLACEMENT_CONSTRAINTS_HANDLER
           + " placement handler will be used, all scheduling requests will "
           + "be rejected.");
       amsProcessingChain.addProcessor(new DisabledPlacementProcessor());
     } else if (placementConstraintsHandler
         .equals(YarnConfiguration.PROCESSOR_RM_PLACEMENT_CONSTRAINTS_HANDLER)) {
+      //如果配置为 PROCESSOR_RM_PLACEMENT_CONSTRAINTS_HANDLER，则使用 PlacementConstraintProcessor 处理器，
+      // 该处理器会根据特定的约束规则进行资源调度
       LOG.info(YarnConfiguration.PROCESSOR_RM_PLACEMENT_CONSTRAINTS_HANDLER
           + " placement handler will be used. Scheduling requests will be "
           + "handled by the placement constraint processor");
       amsProcessingChain.addProcessor(new PlacementConstraintProcessor());
     } else if (placementConstraintsHandler
         .equals(YarnConfiguration.SCHEDULER_RM_PLACEMENT_CONSTRAINTS_HANDLER)) {
+      //如果配置为 SCHEDULER_RM_PLACEMENT_CONSTRAINTS_HANDLER，则使用 SchedulerPlacementProcessor，该处理器直接交由 YARN 的主调度器进行调度
       LOG.info(YarnConfiguration.SCHEDULER_RM_PLACEMENT_CONSTRAINTS_HANDLER
           + " placement handler will be used. Scheduling requests will be "
           + "handled by the main scheduler.");
       amsProcessingChain.addProcessor(new SchedulerPlacementProcessor());
     }
   }
-
+ //用于初始化 ApplicationMasterService 的处理链（amsProcessingChain）。该方法会根据配置来设置调度约束处理器，并将配置中定义的处理器按顺序添加到处理链中。
+ // 如果发现处理器是 PlacementProcessor，则会忽略并输出警告，因为它应该通过专门的配置项来设置
   private void initializeProcessingChain(Configuration conf) {
     amsProcessingChain.init(rmContext, null);
+    //添加调度约束处理器
     addPlacementConstraintHandler(conf);
-
+    //获取配置中的处理器列表
     List<ApplicationMasterServiceProcessor> processors = getProcessorList(conf);
     if (processors != null) {
       Collections.reverse(processors);
       for (ApplicationMasterServiceProcessor p : processors) {
         // Ensure only single instance of PlacementProcessor is included
+        //如果是 AbstractPlacementProcessor 类型的处理器，输出警告信息并跳过该处理器。
+        // 原因是 PlacementProcessor 应该通过专门的配置项 RM_PLACEMENT_CONSTRAINTS_HANDLER 来处理，
+        // 而不是直接在 RM_APPLICATION_MASTER_SERVICE_PROCESSORS 配置项中定义
         if (p instanceof AbstractPlacementProcessor) {
           LOG.warn("Found PlacementProcessor=" + p.getClass().getCanonicalName()
               + " defined in "
@@ -171,7 +194,8 @@ public class ApplicationMasterService extends AbstractService implements
       }
     }
   }
-
+  // 从YARN 配置中获取一个列表，列出需要添加到 ApplicationMasterService 中的所有 ApplicationMasterServiceProcessor 实例。
+  // 这些处理器将用于在应用程序的生命周期中处理与 ApplicationMaster 相关的不同任务
   protected List<ApplicationMasterServiceProcessor> getProcessorList(
       Configuration conf) {
     return conf.getInstances(
@@ -238,19 +262,23 @@ public class ApplicationMasterService extends AbstractService implements
   public InetSocketAddress getBindAddress() {
     return this.masterServiceAddress;
   }
-
+  //用于注册应用程序的 ApplicationMaster。它是资源管理器服务端用来处理来自 ApplicationMaster 的注册请求的关键方法。
+  // 注册时会验证请求的合法性、检查是否已注册、处理注册过程中与资源相关的逻辑，并将注册结果返回
+  //request：RegisterApplicationMasterRequest 类型的请求对象，包含了应用程序主节点（AM）在注册时所需的所有信息，如主机名、端口等
   @Override
   public RegisterApplicationMasterResponse registerApplicationMaster(
       RegisterApplicationMasterRequest request) throws YarnException,
       IOException {
 
     AMRMTokenIdentifier amrmTokenIdentifier =
-        YarnServerSecurityUtils.authorizeRequest();
+        YarnServerSecurityUtils.authorizeRequest();//对请求进行授权，确保请求来自有效的应用程序
+    //获取应用程序的尝试 ID（applicationAttemptId）和应用程序 ID（appID），这是应用程序在注册过程中需要用到的标识
     ApplicationAttemptId applicationAttemptId =
         amrmTokenIdentifier.getApplicationAttemptId();
 
     ApplicationId appID = applicationAttemptId.getApplicationId();
     AllocateResponseLock lock = responseMap.get(applicationAttemptId);
+    //无法找到应用程序
     if (lock == null) {
       RMAuditLogger.logFailure(this.rmContext.getRMApps().get(appID).getUser(),
           AuditConstants.REGISTER_AM, "Application doesn't exist in cache "
@@ -263,6 +291,7 @@ public class ApplicationMasterService extends AbstractService implements
     // Allow only one thread in AM to do registerApp at a time.
     synchronized (lock) {
       AllocateResponse lastResponse = lock.getAllocateResponse();
+      //如果已经注册且不允许重新注册
       if (hasApplicationMasterRegistered(applicationAttemptId)) {
         // allow UAM re-register if work preservation is enabled
         ApplicationSubmissionContext appContext =
@@ -279,11 +308,12 @@ public class ApplicationMasterService extends AbstractService implements
           throw new InvalidApplicationMasterRequestException(message);
         }
       }
-
+      //更新 AM 活跃监控
       this.amLivelinessMonitor.receivedPing(applicationAttemptId);
 
       // Setting the response id to 0 to identify if the
       // application master is register for the respective attemptid
+      //设置响应 ID 和处理请求
       lastResponse.setResponseId(0);
       lock.setAllocateResponse(lastResponse);
 
@@ -473,13 +503,16 @@ public class ApplicationMasterService extends AbstractService implements
   }
 
   public void registerAppAttempt(ApplicationAttemptId attemptId) {
+    //创建响应对象
     AllocateResponse response =
         recordFactory.newRecordInstance(AllocateResponse.class);
     // set response id to -1 before application master for the following
     // attemptID get registered
     response.setResponseId(AMRMClientUtils.PRE_REGISTER_RESPONSE_ID);
     LOG.info("Registering app attempt : " + attemptId);
+    //将响应对象与应用程序尝试映射
     responseMap.put(attemptId, new AllocateResponseLock(response));
+    //通过 nmTokenSecretManager，应用程序尝试的信息会被传递到 NodeManager 以供后续的认证和通信
     rmContext.getNMTokenSecretManager().registerApplicationAttempt(attemptId);
   }
 

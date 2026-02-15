@@ -19,6 +19,6 @@
 package org.apache.hadoop.yarn.server.resourcemanager;
 
 public enum RMAppManagerEventType {
-  APP_COMPLETED,
-  APP_MOVE
+  APP_COMPLETED, //应用程序执行完成的事件
+  APP_MOVE  //应用程序被移动（可能是移动到另一个队列）的事件
 }

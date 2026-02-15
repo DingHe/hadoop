@@ -38,6 +38,7 @@ abstract class AbstractINodeDiffList<N extends INode,
 
   /** Diff list sorted by snapshot IDs, i.e. in chronological order.
     * Created lazily to avoid wasting memory by empty lists. */
+  //保存了所有Inode快照间的AbstractINodeDiff对象
   private DiffList<D> diffs;
 
   /** @return this list as a unmodifiable {@link List}. */

@@ -34,6 +34,8 @@ import org.apache.hadoop.yarn.util.Records;
  * <code>ResourceManager</code> along with a monotonically increasing counter
  * for the application.</p>
  */
+//代表 YARN 应用程序的全局唯一标识符。其唯一性是通过 集群启动时间戳（cluster timestamp） 和 单调递增的应用编号（id） 组合而成的
+//每个应用程序都会被 ResourceManager（RM）分配一个 ApplicationId，该 ID 主要用于标识和管理 YARN 任务，如调度、跟踪和恢复等
 @Public
 @Stable
 public abstract class ApplicationId implements Comparable<ApplicationId> {
@@ -43,7 +45,7 @@ public abstract class ApplicationId implements Comparable<ApplicationId> {
   public static final String appIdStrPrefix = "application";
 
   private static final String APPLICATION_ID_PREFIX = appIdStrPrefix + '_';
-
+  //创建一个新的 ApplicationId 实例，接受 集群启动时间戳 和 应用编号 作为参数
   @Public
   @Unstable
   public static ApplicationId newInstance(long clusterTimestamp, int id) {

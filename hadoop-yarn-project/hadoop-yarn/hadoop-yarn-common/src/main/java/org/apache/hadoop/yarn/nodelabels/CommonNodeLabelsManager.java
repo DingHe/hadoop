@@ -60,24 +60,32 @@ import org.apache.hadoop.yarn.util.resource.Resources;
 
 import org.apache.hadoop.classification.VisibleForTesting;
 import org.apache.hadoop.thirdparty.com.google.common.collect.ImmutableSet;
-
+//主要负责管理YARN集群中的节点标签（Node Labels）。节点标签是YARN用于资源调度的一个重要特性，允许管理员对集群中的节点进行分类，
+// 并为不同的应用分配特定的节点资源。例如，可以将某些节点标记为“GPU”，然后让某些任务仅在这些节点上运行。
+//该类的核心功能包括：
+//管理全局节点标签（添加、删除、查询节点标签）。
+//维护节点与标签的映射关系。
+//提供并发访问控制，确保多个线程可以安全地读取/修改标签数据。
+//支持持久化存储，使节点标签配置在 YARN 重启后仍然有效。
 @Private
 public class CommonNodeLabelsManager extends AbstractService {
   protected static final Logger LOG =
       LoggerFactory.getLogger(CommonNodeLabelsManager.class);
   public static final Set<String> EMPTY_STRING_SET = Collections
-      .unmodifiableSet(new HashSet<String>(0));
+      .unmodifiableSet(new HashSet<String>(0)); //空的字符串集合
   public static final Set<NodeLabel> EMPTY_NODELABEL_SET = Collections
-      .unmodifiableSet(new HashSet<NodeLabel>(0));
-  public static final String ANY = "*";
-  public static final Set<String> ACCESS_ANY_LABEL_SET = ImmutableSet.of(ANY);
+      .unmodifiableSet(new HashSet<NodeLabel>(0));//空的 NodeLabel 集合，用于返回默认空值，避免 null 指针异常
+  public static final String ANY = "*"; //表示某个操作可以适用于任何节点标签
+  public static final Set<String> ACCESS_ANY_LABEL_SET = ImmutableSet.of(ANY); //包含 ANY 的不可变集合，表示一个可以访问任何标签的集合
   public static final int WILDCARD_PORT = 0;
   // Flag to identify startup for removelabel
+  //指示是否正在进行节点标签存储的初始化。如果为 true，说明系统在启动过程中可能会移除旧的节点标签
   private boolean initNodeLabelStoreInProgress = false;
 
   /**
    * Error messages
    */
+  //该错误消息用于提示管理员，如果 YARN 未启用节点标签调度
   @VisibleForTesting
   public static final String NODE_LABELS_NOT_ENABLED_ERR =
       "Node-label-based scheduling is disabled. Please check "
@@ -87,33 +95,38 @@ public class CommonNodeLabelsManager extends AbstractService {
    * If a user doesn't specify label of a queue or node, it belongs
    * DEFAULT_LABEL
    */
+  //默认的无标签值（空字符串 ""），表示如果某个队列或节点未指定标签，则默认属于 NO_LABEL
   public static final String NO_LABEL = "";
 
   protected Dispatcher dispatcher;
-
+  //存储全局的 NodeLabel（节点标签）信息，key 是标签名称，value 是 RMNodeLabel（表示 YARN 资源管理器中的标签信息）
   protected ConcurrentMap<String, RMNodeLabel> labelCollections =
       new ConcurrentHashMap<String, RMNodeLabel>();
+  //存储主机与标签的映射关系，key 是主机名，value 是 Host 对象，该对象记录了该主机上的节点标签
   protected ConcurrentMap<String, Host> nodeCollections =
       new ConcurrentHashMap<String, Host>();
+  //用于记录 节点标签是否来自于主机级别，key 是 NodeId（节点 ID），value 是 Boolean，true 表示该节点的标签是从主机继承的
   private ConcurrentMap<NodeId, Boolean> isNodeLabelFromHost =
       new ConcurrentHashMap<NodeId, Boolean>();
-
+  //默认的 RMNodeLabel 实例，表示无标签的情况（NO_LABEL）
   protected RMNodeLabel noNodeLabel;
 
   protected final ReadLock readLock;
   protected final WriteLock writeLock;
-
+  //用于持久化存储节点标签
   protected NodeLabelsStore store;
+  //是否启用了节点标签功能，默认 false，需要通过 YarnConfiguration.NODE_LABELS_ENABLED 配置
   private boolean nodeLabelsEnabled = false;
-
+  //是否采用集中式的标签配置管理，默认 true，意味着标签配置由 ResourceManager 统一管理
   private boolean isCentralizedNodeLabelConfiguration = true;
 
   /**
    * A <code>Host</code> can have multiple <code>Node</code>s 
    */
+  //表示 集群中的一台物理主机。该主机可以包含多个 Node（YARN 计算节点），并且可以被分配多个标签（labels）
   public static class Host {
-    public Set<String> labels;
-    public Map<NodeId, Node> nms;
+    public Set<String> labels;//存储该主机上的标签
+    public Map<NodeId, Node> nms;//存储该主机上的所有 Node（YARN 计算节点）
     
     protected Host() {
       labels =
@@ -130,12 +143,12 @@ public class CommonNodeLabelsManager extends AbstractService {
       return c;
     }
   }
-  
+  //表示 YARN 集群中的一个计算节点，用于管理该节点的资源、状态和标签等信息
   protected static class Node {
-    public Set<String> labels;
-    public Resource resource;
-    public boolean running;
-    public NodeId nodeId;
+    public Set<String> labels;//存储当前计算节点的 标签集合
+    public Resource resource;//存储当前计算节点的 资源信息（CPU、内存等）
+    public boolean running;//表示当前节点是否 处于运行状态
+    public NodeId nodeId;//存储当前 Node 的唯一标识
     
     protected Node(NodeId nodeid) {
       labels = null;
@@ -164,7 +177,7 @@ public class CommonNodeLabelsManager extends AbstractService {
     REMOVE,
     REPLACE
   }
-
+  //事件handle
   private final class ForwardingEventHandler implements
       EventHandler<NodeLabelsStoreEvent> {
 
@@ -400,6 +413,7 @@ public class CommonNodeLabelsManager extends AbstractService {
    * @param addedLabelsToNode node {@literal ->} labels map
    * @throws IOException io error occur.
    */
+  //添加多个标签到多个节点
   public void addLabelsToNode(Map<NodeId, Set<String>> addedLabelsToNode)
       throws IOException {
     if (!nodeLabelsEnabled) {
@@ -1075,7 +1089,7 @@ public class CommonNodeLabelsManager extends AbstractService {
   protected Node getNMInNodeSet(NodeId nodeId, Map<String, Host> map) {
     return getNMInNodeSet(nodeId, map, false);
   }
-
+  //获取Node集合中的Node
   protected Node getNMInNodeSet(NodeId nodeId, Map<String, Host> map,
       boolean checkRunning) {
     Host host = map.get(nodeId.getHost());

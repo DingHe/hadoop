@@ -40,38 +40,42 @@ import org.apache.hadoop.classification.VisibleForTesting;
  * expected number of good replicas.
  * Mapping: Block {@literal -> TreeSet<DatanodeDescriptor>}
  */
-
+//用于管理 HDFS 中所有损坏的块及其副本的信息。
+// 通过 corruptReplicasMap 记录每个损坏块的副本及其损坏原因。
+// 提供了方法来添加、删除损坏块或副本，并通过日志记录每次的操作。同时，它还支持对损坏块的查询和统计
 @InterfaceAudience.Private
 public class CorruptReplicasMap{
 
   /** The corruption reason code */
   public enum Reason {
-    NONE,                // not specified.
-    ANY,                 // wildcard reason
-    GENSTAMP_MISMATCH,   // mismatch in generation stamps
-    SIZE_MISMATCH,       // mismatch in sizes
-    INVALID_STATE,       // invalid state
-    CORRUPTION_REPORTED  // client or datanode reported the corruption
+    NONE,                // not specified. 未指定原因
+    ANY,                 // wildcard reason 通配符原因
+    GENSTAMP_MISMATCH,   // mismatch in generation stamps 生成戳不匹配
+    SIZE_MISMATCH,       // mismatch in sizes 大小不匹配
+    INVALID_STATE,       // invalid state 无效状态
+    CORRUPTION_REPORTED  // client or datanode reported the corruption 客户端或数据节点报告损坏
   }
-
+  //存储所有损坏块的信息。其键是 Block（表示数据块），值是一个 Map<DatanodeDescriptor, Reason>，
+  // 用于存储该块在不同 DataNode 上的副本状态和损坏原因
   private final Map<Block, Map<DatanodeDescriptor, Reason>> corruptReplicasMap =
     new HashMap<Block, Map<DatanodeDescriptor, Reason>>();
-
+  //记录损坏的普通数据块数量。LongAdder 是一个线程安全的计数器，用于在并发环境下高效地递增和递减计数
   private final LongAdder totalCorruptBlocks = new LongAdder();
+  //记录损坏的擦除编码块组数量。类似于 totalCorruptBlocks，但是用于擦除编码的数据块组
   private final LongAdder totalCorruptECBlockGroups = new LongAdder();
 
   /**
    * Mark the block belonging to datanode as corrupt.
    *
-   * @param blk Block to be added to CorruptReplicasMap
-   * @param dn DatanodeDescriptor which holds the corrupt replica
-   * @param reason a textual reason (for logging purposes)
-   * @param reasonCode the enum representation of the reason
+   * @param blk Block to be added to CorruptReplicasMap  需要被标记为损坏的块
+   * @param dn DatanodeDescriptor which holds the corrupt replica  该块所在的 DataNode
+   * @param reason a textual reason (for logging purposes)  损坏的文本描述（用于日志记录）
+   * @param reasonCode the enum representation of the reason 损坏的枚举类型，表示具体原因
    */
   void addToCorruptReplicasMap(Block blk, DatanodeDescriptor dn,
-      String reason, Reason reasonCode, boolean isStriped) {
+      String reason, Reason reasonCode, boolean isStriped) { //是否是条带化块，用于区分处理方式
     Map <DatanodeDescriptor, Reason> nodes = corruptReplicasMap.get(blk);
-    if (nodes == null) {
+    if (nodes == null) { //如果 blk 没有相关的节点映射，则创建新的映射，并更新损坏块统计
       nodes = new HashMap<DatanodeDescriptor, Reason>();
       corruptReplicasMap.put(blk, nodes);
       incrementBlockStat(isStriped);
@@ -101,7 +105,7 @@ public class CorruptReplicasMap{
 
   /**
    * Remove Block from CorruptBlocksMap.
-   * @param blk Block to be removed
+   * @param blk Block to be removed 要从损坏块映射中移除的块
    */
   void removeFromCorruptReplicasMap(BlockInfo blk) {
     if (corruptReplicasMap != null) {
@@ -148,7 +152,7 @@ public class CorruptReplicasMap{
     }
     return false;
   }
-
+  //增加统计数量
   private void incrementBlockStat(boolean isStriped) {
     if (isStriped) {
       totalCorruptECBlockGroups.increment();
@@ -156,7 +160,7 @@ public class CorruptReplicasMap{
       totalCorruptBlocks.increment();
     }
   }
-
+  //减少统计数量
   private void decrementBlockStat(boolean isStriped) {
     if (isStriped) {
       totalCorruptECBlockGroups.decrement();

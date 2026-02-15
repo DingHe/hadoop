@@ -52,6 +52,8 @@ import org.apache.hadoop.yarn.util.Records;
  * 
  * @see ContainerManagementProtocol#startContainers(org.apache.hadoop.yarn.api.protocolrecords.StartContainersRequest)
  */
+// 表示启动容器所需的所有信息。这些信息包括容器的标识符、资源、用户、必需的本地资源、环境变量、启动命令、容器的安全令牌以及容器的重试策略等。
+// NodeManager 使用这些信息来正确地启动和管理容器
 @Public
 @Stable
 public abstract class ContainerLaunchContext {
@@ -77,13 +79,13 @@ public abstract class ContainerLaunchContext {
       ContainerRetryContext containerRetryContext) {
     ContainerLaunchContext container =
         Records.newRecord(ContainerLaunchContext.class);
-    container.setLocalResources(localResources);
-    container.setEnvironment(environment);
-    container.setCommands(commands);
-    container.setServiceData(serviceData);
-    container.setTokens(tokens);
-    container.setApplicationACLs(acls);
-    container.setContainerRetryContext(containerRetryContext);
+    container.setLocalResources(localResources);//表示容器启动所需的本地资源。这些资源可能包括二进制文件、JAR包、共享对象文件、辅助文件等
+    container.setEnvironment(environment);//表示容器启动时所需的环境变量。这些环境变量会传递给容器中运行的进程，用于配置容器运行时的环境
+    container.setCommands(commands);//表示启动容器时需要执行的命令。容器启动时会运行这些命令，以启动容器中的应用程序或服务
+    container.setServiceData(serviceData);//表示容器启动时传递的应用程序特定的二进制服务数据。这些数据可能包含与应用程序相关的配置信息或状态
+    container.setTokens(tokens);//表示用于容器安全认证的令牌。在启用安全性的环境中，容器可能需要使用这些令牌来进行身份验证
+    container.setApplicationACLs(acls);//表示与应用程序相关的访问控制列表（ACL）。它控制哪些用户可以查看或修改该容器
+    container.setContainerRetryContext(containerRetryContext);//表示容器启动失败时的重试策略。如果容器启动失败，可以根据此策略决定是否进行重试以及重试的次数和间隔
     return container;
   }
 

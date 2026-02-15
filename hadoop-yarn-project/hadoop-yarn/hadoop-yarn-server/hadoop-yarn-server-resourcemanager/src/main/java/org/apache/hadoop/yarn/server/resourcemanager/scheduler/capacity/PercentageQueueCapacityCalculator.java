@@ -20,18 +20,28 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity;
 
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.QueueCapacityVector.ResourceUnitCapacityType;
 
-public class PercentageQueueCapacityCalculator extends AbstractQueueCapacityCalculator {
+//用于按照 百分比方式 计算队列（queue）的最小和最大资源容量。
+//该类继承自 AbstractQueueCapacityCalculator，并且：
+//计算最小资源（calculateMinimumResource）：根据父队列的 最小绝对容量 计算子队列的 最小资源值。
+//计算最大资源（calculateMaximumResource）：根据父队列的 最大绝对容量 计算子队列的 最大资源值。
+//更新计算后的容量（updateCapacitiesAfterCalculation）：在计算完成后，更新 CSQueue 的绝对容量。
+//返回计算类型（getCapacityType）：指定该计算器是 基于百分比（PERCENTAGE） 进行容量计算。
 
+public class PercentageQueueCapacityCalculator extends AbstractQueueCapacityCalculator {
+  //计算最小资源
   @Override
   public double calculateMinimumResource(
       ResourceCalculationDriver resourceCalculationDriver, CalculationContext context,
       String label) {
+    //获取资源名称：
     String resourceName = context.getResourceName();
-
+    //获取父队列的最小绝对容量
     double parentAbsoluteCapacity = resourceCalculationDriver.getParentAbsoluteMinCapacity(label,
         resourceName);
+    //获取剩余资源比例
     double remainingPerEffectiveResourceRatio =
         resourceCalculationDriver.getRemainingRatioOfResource(label, resourceName);
+    //计算子队列的最小资源容量（百分比转换）
     double absoluteCapacity = parentAbsoluteCapacity * remainingPerEffectiveResourceRatio
         * context.getCurrentMinimumCapacityEntry(label).getResourceValue() / 100;
 

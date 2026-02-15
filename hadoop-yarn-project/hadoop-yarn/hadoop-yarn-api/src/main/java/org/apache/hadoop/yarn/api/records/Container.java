@@ -63,6 +63,9 @@ import java.util.Set;
  * @see ContainerManagementProtocol#startContainers(org.apache.hadoop.yarn.api.protocolrecords.StartContainersRequest)
  * @see ContainerManagementProtocol#stopContainers(org.apache.hadoop.yarn.api.protocolrecords.StopContainersRequest)
  */
+// Container 代表 YARN 集群中分配的资源单元。
+// 它由 ResourceManager（RM）分配，并始终属于某个单一节点，每个 Container 都有唯一的 ContainerId，并分配了特定的 Resource（CPU、内存等）。
+// 通常，ApplicationMaster（AM）在资源协商时从 ResourceManager 处获得 Container，然后与 NodeManager（NM）交互以启动或停止 Container
 @Public
 @Stable
 public abstract class Container implements Comparable<Container> {
@@ -82,13 +85,13 @@ public abstract class Container implements Comparable<Container> {
       String nodeHttpAddress, Resource resource, Priority priority,
       Token containerToken, ExecutionType executionType) {
     Container container = Records.newRecord(Container.class);
-    container.setId(containerId);
-    container.setNodeId(nodeId);
-    container.setNodeHttpAddress(nodeHttpAddress);
-    container.setResource(resource);
-    container.setPriority(priority);
-    container.setContainerToken(containerToken);
-    container.setExecutionType(executionType);
+    container.setId(containerId);//Container 的唯一标识
+    container.setNodeId(nodeId);//该 Container 运行的 NodeManager
+    container.setNodeHttpAddress(nodeHttpAddress);//NodeManager 提供的 HTTP 访问地址
+    container.setResource(resource); //该 Container 申请到的 CPU、内存等资源
+    container.setPriority(priority);//该 Container 在调度时的优先级
+    container.setContainerToken(containerToken);//Container 的安全认证令牌
+    container.setExecutionType(executionType);//Container 的执行类型 (GUARANTEED 或 OPPORTUNISTIC)
     return container;
   }
 

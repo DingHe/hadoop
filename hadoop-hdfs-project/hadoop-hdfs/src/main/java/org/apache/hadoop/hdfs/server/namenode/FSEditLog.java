@@ -148,11 +148,11 @@ public class FSEditLog implements LogsPurgeable {
    * setup.
    */
   private enum State {
-    UNINITIALIZED,
-    BETWEEN_LOG_SEGMENTS,
-    IN_SEGMENT,
-    OPEN_FOR_READING,
-    CLOSED;
+    UNINITIALIZED,//初始状态
+    BETWEEN_LOG_SEGMENTS,//editlog的前一个segment已经关闭，新的还没开始
+    IN_SEGMENT,//editlog处于可写状态
+    OPEN_FOR_READING,//editlog处于可读状态
+    CLOSED;//处于关闭状态
   }  
   private State state = State.UNINITIALIZED;
   
@@ -160,7 +160,7 @@ public class FSEditLog implements LogsPurgeable {
   private JournalSet journalSet = null;
 
   @VisibleForTesting
-  EditLogOutputStream editLogStream = null;
+  EditLogOutputStream editLogStream = null; //开始事务段后的输出流
 
   // a monotonically increasing counter that represents transactionIds.
   // All of the threads which update/increment txid are synchronized,
@@ -168,6 +168,7 @@ public class FSEditLog implements LogsPurgeable {
   private volatile long txid = 0;
 
   // stores the last synced transactionId.
+  //最新的同步日志事务ID
   private long synctxid = 0;
 
   // the first txid of the log that's currently open for writing.
@@ -178,6 +179,7 @@ public class FSEditLog implements LogsPurgeable {
   private long lastPrintTime;
 
   // is a sync currently running?
+  //同否已经在运行同步日志线程
   private volatile boolean isSyncRunning;
 
   // is an automatic sync scheduled?
@@ -199,7 +201,7 @@ public class FSEditLog implements LogsPurgeable {
   // Users who can override the client ip
   private final String[] ipProxyUsers;
 
-  /**
+  /**存储共享编辑日志的路径列表，通常用于高可用（HA）环境
    * The edit directories that are shared between primary and secondary.
    */
   private final List<URI> sharedEditsDirs;
@@ -263,7 +265,7 @@ public class FSEditLog implements LogsPurgeable {
 
     this.sharedEditsDirs = FSNamesystem.getSharedEditsDirs(conf);
   }
-  
+  //初始化日志可写，从UNINITIALIZED或者CLOSED转为BETWEEN_LOG_SEGMENTS状态
   public synchronized void initJournalsForWrite() {
     Preconditions.checkState(state == State.UNINITIALIZED ||
         state == State.CLOSED, "Unexpected state: %s", state);
@@ -271,7 +273,8 @@ public class FSEditLog implements LogsPurgeable {
     initJournals(this.editsDirs);
     state = State.BETWEEN_LOG_SEGMENTS;
   }
-  
+  //初始化共享编辑日志（shared journals）以供读取，确保在 NameNode 读取操作前正确设置了共享日志管理器
+  //HDFS 高可用性 (HA) 环境中，多个 NameNode 需要访问共享的编辑日志，确保主备切换时元数据的一致性
   public synchronized void initSharedJournalsForRead() {
     if (state == State.OPEN_FOR_READING) {
       LOG.warn("Initializing shared journals for READ, already open for READ",
@@ -284,25 +287,28 @@ public class FSEditLog implements LogsPurgeable {
     initJournals(this.sharedEditsDirs);
     state = State.OPEN_FOR_READING;
   }
-  
+  //dirs：一个 URI 类型的列表，表示编辑日志的存储路径（可以是本地路径或远程路径）
   private synchronized void initJournals(List<URI> dirs) {
+    //读取最小冗余日志数量，默认值 1
     int minimumRedundantJournals = conf.getInt(
         DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_MINIMUM_KEY,
         DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_MINIMUM_DEFAULT);
 
     synchronized(journalSetLock) {
-      journalSet = new JournalSet(minimumRedundantJournals);
+      //创建一个 JournalSet 实例，设置最小冗余日志数量，确保至少有 minimumRedundantJournals 个日志管理器（JournalManager）可用
+      journalSet = new JournalSet(minimumRedundantJournals);//JournalSet是JournalManager的集合
 
       for (URI u : dirs) {
+        //检查该路径是否是必需的编辑日志路径（required），用于区分必要和可选的日志目录
         boolean required = FSNamesystem.getRequiredNamespaceEditsDirs(conf)
             .contains(u);
-        if (u.getScheme().equals(NNStorage.LOCAL_URI_SCHEME)) {
+        if (u.getScheme().equals(NNStorage.LOCAL_URI_SCHEME)) {//处理本地路径（file:// 格式的路径）
           StorageDirectory sd = storage.getStorageDirectory(u);
           if (sd != null) {
             journalSet.add(new FileJournalManager(conf, sd, storage),
                 required, sharedEditsDirs.contains(u));
           }
-        } else {
+        } else {//处理远程路径（如 qjournal:// 格式的路径）
           journalSet.add(createJournal(u), required,
               sharedEditsDirs.contains(u));
         }
@@ -322,17 +328,19 @@ public class FSEditLog implements LogsPurgeable {
     return editsDirs;
   }
 
-  /**
+  /** 主要目的是 初始化输出流，开启一个新的 EditLog 事务日志段，在 HDFS 中，当 NameNode 需要记录新的操作时会调用此方法
    * Initialize the output stream for logging, opening the first
    * log segment.
    */
+  //layoutVersion：int 类型，表示当前 HDFS 文件系统的布局版本（Layout Version，LV）
   synchronized void openForWrite(int layoutVersion) throws IOException {
     Preconditions.checkState(state == State.BETWEEN_LOG_SEGMENTS,
         "Bad state: %s", state);
-
+    //获取上次写入的事务 ID，+1 表示新事务的起始 ID
     long segmentTxId = getLastWrittenTxId() + 1;
     // Safety check: we should never start a segment if there are
     // newer txids readable.
+    //检查是否存在更新的事务
     List<EditLogInputStream> streams = new ArrayList<EditLogInputStream>();
     journalSet.selectInputStreams(streams, segmentTxId, true, false);
     if (!streams.isEmpty()) {
@@ -343,7 +351,8 @@ public class FSEditLog implements LogsPurgeable {
           streams.toArray(new EditLogInputStream[0]));
       throw new IllegalStateException(error);
     }
-    
+    //segmentTxId：新日志段的起始事务 ID
+    //layoutVersion：当前 HDFS 的布局版本，决定了事务日志的格式
     startLogSegmentAndWriteHeaderTxn(segmentTxId, layoutVersion);
     assert state == State.IN_SEGMENT : "Bad state: " + state;
   }
@@ -352,6 +361,7 @@ public class FSEditLog implements LogsPurgeable {
    * @return true if the log is currently open in write mode, regardless
    * of whether it actually has an open segment.
    */
+  //这两状态表示可写
   synchronized boolean isOpenForWrite() {
     return state == State.IN_SEGMENT ||
       state == State.BETWEEN_LOG_SEGMENTS;
@@ -425,7 +435,7 @@ public class FSEditLog implements LogsPurgeable {
 
   /**
    * Format all configured journals which are not file-based.
-   * 
+   * 格式化所有非基于文件的日志管理器
    * File-based journals are skipped, since they are formatted by the
    * Storage format code.
    */
@@ -463,18 +473,19 @@ public class FSEditLog implements LogsPurgeable {
    * edit stream's automatic sync policy (e.g. when the buffer is full, or
    * if a time interval has elapsed).
    */
+  //final：方法参数 op 被声明为 final，确保操作在方法内部不会被修改
   void logEdit(final FSEditLogOp op) {
     boolean needsSync = false;
-    synchronized (this) {
+    synchronized (this) {//使用 Java 的 对象级锁，确保多线程环境下对 FSEditLog 的并发访问是安全的
       assert isOpenForWrite() :
         "bad state: " + state;
       
       // wait if an automatic sync is scheduled
-      waitIfAutoSyncScheduled();
+      waitIfAutoSyncScheduled();//防止写入和同步操作的冲突，确保事务一致性
 
-      beginTransaction(op);
+      beginTransaction(op);//初始化事务，执行必要的事务前置处理，如更新事务 ID (txid)、设置操作时间戳、更新统计数据
       // check if it is time to schedule an automatic sync
-      needsSync = doEditTransaction(op);
+      needsSync = doEditTransaction(op);//核心方法，将 op 写入到 editLogStream 中的缓冲区
       if (needsSync) {
         isAutoSyncScheduled = true;
       }
@@ -617,6 +628,7 @@ public class FSEditLog implements LogsPurgeable {
    * NOTE: this should be done while holding the FSNamesystem lock, or
    * else more operations can start writing while this is in progress.
    */
+  //同步编辑日志到磁盘，保证编辑操作都持久化到磁盘
   void logSyncAll() {
     // Make sure we're synced up to the most recent transaction ID.
     long lastWrittenTxId = getLastWrittenTxId();
@@ -662,7 +674,8 @@ public class FSEditLog implements LogsPurgeable {
     // Fetch the transactionId of this thread.
     logSync(myTransactionId.get().txid);
   }
-
+  //负责同步事务日志，确保所有的编辑操作都已被持久化到磁盘中
+  //mytxid: 这是当前同步事务的事务ID。该方法将会同步该ID之前的所有事务日志，确保它们已经持久化
   protected void logSync(long mytxid) {
     long lastJournalledTxId = HdfsServerConstants.INVALID_TXID;
     boolean sync = false;
@@ -674,7 +687,7 @@ public class FSEditLog implements LogsPurgeable {
           printStatistics(false);
 
           // if somebody is already syncing, then wait
-          while (mytxid > synctxid && isSyncRunning) {
+          while (mytxid > synctxid && isSyncRunning) { //如果正在同步，并且最新的同步事务ID小于当前事务ID
             try {
               wait(1000);
             } catch (InterruptedException ie) {
@@ -684,6 +697,7 @@ public class FSEditLog implements LogsPurgeable {
           //
           // If this transaction was already flushed, then nothing to do
           //
+          //如果最新的同步事务ID已经大于等于现在的，则不在需要同步
           if (mytxid <= synctxid) {
             return;
           }
@@ -731,6 +745,7 @@ public class FSEditLog implements LogsPurgeable {
       }
       
       // do the sync
+      //开始同步
       long start = monotonicNow();
       try {
         if (logStream != null) {
@@ -1406,7 +1421,7 @@ public class FSEditLog implements LogsPurgeable {
     startLogSegment(txid, layoutVersion);
   }
   
-  /**
+  /** 启动一个新的事务日志段 (log segment)，并将 FSEditLog 的状态从 BETWEEN_LOG_SEGMENTS 转换为 IN_SEGMENT，用于记录 HDFS 文件系统的操作。
    * Start writing to the log segment with the given txid.
    * Transitions from BETWEEN_LOG_SEGMENTS state to IN_LOG_SEGMENT state. 
    */
@@ -1425,7 +1440,7 @@ public class FSEditLog implements LogsPurgeable {
     Preconditions.checkArgument(segmentTxId == txid + 1,
         "Cannot start log segment at txid %s when next expected " +
         "txid is %s", segmentTxId, txid + 1);
-    
+    //重置事务计数器和时间统计，准备开始记录新的事务
     numTransactions = 0;
     totalTimeTransactions = 0;
     numTransactionsBatchedInSync.reset();
@@ -1433,7 +1448,8 @@ public class FSEditLog implements LogsPurgeable {
     // TODO no need to link this back to storage anymore!
     // See HDFS-2174.
     storage.attemptRestoreRemovedStorage();
-    
+    //调用 journalSet.startLogSegment() 方法，为所有的 JournalManager 启动事务日志段，
+    // 返回一个 EditLogOutputStream 输出流，用于后续写入事务日志
     try {
       editLogStream = journalSet.startLogSegment(segmentTxId, layoutVersion);
     } catch (IOException ex) {
@@ -1449,7 +1465,8 @@ public class FSEditLog implements LogsPurgeable {
     curSegmentTxId = segmentTxId;
     state = State.IN_SEGMENT;
   }
-
+  //主要作用是启动一个新的 EditLog 日志段，并在该日志段的起始位置写入一个特殊的 OP_START_LOG_SEGMENT 操作，
+  // 随后立即执行 logSync() 将数据持久化到磁盘，确保日志段的初始化操作被成功记录
   synchronized void startLogSegmentAndWriteHeaderTxn(final long segmentTxId,
       int layoutVersion) throws IOException {
     startLogSegment(segmentTxId, layoutVersion);
@@ -1459,24 +1476,25 @@ public class FSEditLog implements LogsPurgeable {
     logSync();
   }
 
-  /**
+  /** 主要目的是结束当前日志段（log segment）
    * Finalize the current log segment.
    * Transitions from IN_SEGMENT state to BETWEEN_LOG_SEGMENTS state.
    */
+  //writeEndTxn：布尔值，指示是否需要将 OP_END_LOG_SEGMENT 操作写入 EditLog，用于标识日志段的结束
   public synchronized void endCurrentLogSegment(boolean writeEndTxn) {
     LOG.info("Ending log segment " + curSegmentTxId +
         ", " + getLastWrittenTxId());
     Preconditions.checkState(isSegmentOpen(),
         "Bad state: %s", state);
-    
+     //写入 OP_END_LOG_SEGMENT 事务
     if (writeEndTxn) {
       logEdit(LogSegmentOp.getInstance(cache.get(), 
           FSEditLogOpCodes.OP_END_LOG_SEGMENT));
     }
     // always sync to ensure all edits are flushed.
-    logSyncAll();
+    logSyncAll();//同步所有未刷入的事务
 
-    printStatistics(true);
+    printStatistics(true);//打印当前日志段的事务统计信息，帮助监控和调试 EditLog 的使用情况
     
     final long lastTxId = getLastWrittenTxId();
     final long lastSyncedTxId = getSyncTxId();
@@ -1484,7 +1502,7 @@ public class FSEditLog implements LogsPurgeable {
         "LastWrittenTxId %s is expected to be the same as lastSyncedTxId %s",
         lastTxId, lastSyncedTxId);
     try {
-      journalSet.finalizeLogSegment(curSegmentTxId, lastTxId);
+      journalSet.finalizeLogSegment(curSegmentTxId, lastTxId);//通知所有 JournalManager 对象将 当前日志段关闭
       editLogStream = null;
     } catch (IOException e) {
       //All journals have failed, it will be handled in logSync.
@@ -1839,7 +1857,7 @@ public class FSEditLog implements LogsPurgeable {
     }
   }
 
-  /**
+  /** 根据 URI scheme（协议名称）从 HDFS 配置 中检索相应的 JournalManager 实现类
    * Retrieve the implementation class for a Journal scheme.
    * @param conf The configuration to retrieve the information from
    * @param uriScheme The uri scheme to look up.
@@ -1849,7 +1867,8 @@ public class FSEditLog implements LogsPurgeable {
   static Class<? extends JournalManager> getJournalClass(Configuration conf,
                                String uriScheme) {
     String key
-      = DFSConfigKeys.DFS_NAMENODE_EDITS_PLUGIN_PREFIX + "." + uriScheme;
+      = DFSConfigKeys.DFS_NAMENODE_EDITS_PLUGIN_PREFIX + "." + uriScheme;  //表示编辑日志插件的前缀
+    //例如"dfs.namenode.edits.journal-plugin.qjournal"
     Class <? extends JournalManager> clazz = null;
     try {
       clazz = conf.getClass(key, null, JournalManager.class);
@@ -1867,15 +1886,16 @@ public class FSEditLog implements LogsPurgeable {
     return clazz;
   }
 
-  /**
+  /** 动态适配不同类型的日志管理器，支持扩展性和灵活性
    * Construct a custom journal manager.
    * The class to construct is taken from the configuration.
-   * @param uri Uri to construct
+   * @param uri Uri to construct 编辑日志路径，决定使用哪种日志管理器。
    * @return The constructed journal manager
    * @throws IllegalArgumentException if no class is configured for uri
    */
   @VisibleForTesting
   JournalManager createJournal(URI uri) {
+    //根据 URI 的 scheme（协议名）从 Hadoop 配置中查找对应的 JournalManager 实现类
     Class<? extends JournalManager> clazz
       = getJournalClass(conf, uri.getScheme());
 

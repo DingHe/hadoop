@@ -143,7 +143,7 @@ import org.apache.hadoop.thirdparty.com.google.common.base.Joiner;
 import org.apache.hadoop.util.Preconditions;
 import org.apache.hadoop.thirdparty.com.google.common.collect.ImmutableMap;
 
-/**
+/** 表示文件系统编辑日志中的一个操作（即“操作”或“op”）。HDFS使用编辑日志来记录对文件系统元数据（例如文件创建、删除等）的修改
  * Helper classes for reading the ops from an InputStream.
  * All ops derive from FSEditLogOp and are only
  * instantiated from Reader#readOp()
@@ -151,11 +151,12 @@ import org.apache.hadoop.thirdparty.com.google.common.collect.ImmutableMap;
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
 public abstract class FSEditLogOp {
-  public final FSEditLogOpCodes opCode;
-  long txid;
+  public final FSEditLogOpCodes opCode;//操作码，用于定义该编辑日志条目对应的操作类型
+  long txid;//操作的事务ID。每次修改文件系统状态时，会关联一个唯一的 txid，以确保一致性和恢复操作
+  //代表RPC客户端的ID和RPC调用ID。它们用于将操作与请求该操作的客户端以及特定的RPC调用关联起来
   byte[] rpcClientId;
   int rpcCallId;
-
+  //缓存操作码
   public static class OpInstanceCache {
     private static final ThreadLocal<OpInstanceCacheMap> CACHE =
         new ThreadLocal<OpInstanceCacheMap>() {
@@ -164,7 +165,7 @@ public abstract class FSEditLogOp {
         return new OpInstanceCacheMap();
       }
     };
-
+    //操作码和操作类的映射
     @SuppressWarnings("serial")
     static final class OpInstanceCacheMap extends
         EnumMap<FSEditLogOpCodes, FSEditLogOp> {
@@ -213,7 +214,7 @@ public abstract class FSEditLogOp {
   }
 
   abstract void resetSubFields();
-
+  //映射将 FsAction 枚举值的符号与对应的 FsAction 枚举实例进行关联
   private static ImmutableMap<String, FsAction> fsActionMap() {
     ImmutableMap.Builder<String, FsAction> b = ImmutableMap.builder();
     for (FsAction v : FsAction.values())
@@ -286,10 +287,13 @@ public abstract class FSEditLogOp {
       throws IOException {
     writeFields(out);
   }
-
+  //涉及到文件系统中块列表的更新。具体来说，它包含三个方法，用于处理与块（Block）相关的操作
   static interface BlockListUpdatingOp {
+    //返回一个 Block 数组。Block 代表 HDFS 或类似文件系统中的一个数据块。在实际操作中，返回的数组可能包含多个块，这些块将用于更新文件的块列表
     Block[] getBlocks();
+    //表示路径。这个路径通常是指操作涉及的文件或目录的路径
     String getPath();
+    //返回一个布尔值，指示是否应当完成文件的最后一个块
     boolean shouldCompleteLastBlock();
   }
   
@@ -427,27 +431,27 @@ public abstract class FSEditLogOp {
   static abstract class AddCloseOp
          extends FSEditLogOp
           implements BlockListUpdatingOp {
-    int length;
-    long inodeId;
-    String path;
-    short replication;
-    long mtime;
-    long atime;
-    long blockSize;
-    Block[] blocks;
-    PermissionStatus permissions;
-    List<AclEntry> aclEntries;
-    List<XAttr> xAttrs;
-    String clientName;
-    String clientMachine;
-    boolean overwrite;
-    byte storagePolicyId;
-    byte erasureCodingPolicyId;
+    int length;//存储操作的长度（可能是日志或数据长度），用于标识操作的数据大小
+    long inodeId;//文件或目录的 inode ID，用于唯一标识一个文件或目录
+    String path;//文件的路径，指示文件在 HDFS 中的位置
+    short replication;//文件的副本数量，指示该文件应该有多少个副本
+    long mtime;//文件的修改时间，表示文件上次被修改的时间戳
+    long atime;//文件的访问时间，表示文件上次被访问的时间戳
+    long blockSize;//文件块的大小，表示该文件在 HDFS 中被分割为多大尺寸的块
+    Block[] blocks;//该文件的块数组。每个 Block 对象代表 HDFS 中存储文件数据的一个块
+    PermissionStatus permissions;//存储文件的权限信息，通常是一个 PermissionStatus 对象，表示该文件的读写权限
+    List<AclEntry> aclEntries;//存储文件的 ACL（访问控制列表）条目，管理文件的高级权限
+    List<XAttr> xAttrs;//存储文件的扩展属性（extended attributes），是文件系统提供的元数据扩展
+    String clientName;//客户端的名称，表示发起该操作的客户端
+    String clientMachine;//客户端的机器名，表示发起操作的机器
+    boolean overwrite;//一个布尔值，表示在创建文件时是否允许覆盖已存在的文件
+    byte storagePolicyId;//存储策略 ID，指示文件存储在哪种类型的存储设备上（如热存储、冷存储等）
+    byte erasureCodingPolicyId;//副本编码策略 ID，指示文件使用的编码策略（如在 HDFS 中的纠删码策略）
     
     private AddCloseOp(FSEditLogOpCodes opCode) {
       super(opCode);
-      storagePolicyId = HdfsConstants.BLOCK_STORAGE_POLICY_ID_UNSPECIFIED;
-      erasureCodingPolicyId = ErasureCodeConstants.REPLICATION_POLICY_ID;
+      storagePolicyId = HdfsConstants.BLOCK_STORAGE_POLICY_ID_UNSPECIFIED;//未指定存储策略的常量
+      erasureCodingPolicyId = ErasureCodeConstants.REPLICATION_POLICY_ID;//默认的副本编码策略 ID，通常表示使用副本策略而非纠删码策略
       assert(opCode == OP_ADD || opCode == OP_CLOSE || opCode == OP_APPEND);
     }
 

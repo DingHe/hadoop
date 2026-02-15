@@ -66,6 +66,9 @@ import org.apache.hadoop.yarn.util.SystemClock;
  * context. Services that need to run only on the Active RM. This is expected to
  * be used only by RMContext.
  */
+//负责管理 Active ResourceManager (RM) 实例 运行时所需的所有服务和数据。
+//在 YARN 高可用（HA）模式 下，只有处于 Active 状态的 RM 需要执行 调度、资源分配、任务监控 等核心功能，而 Standby RM 仅用于故障转移。
+// 本类确保 仅在 Active RM 上运行关键服务，并由 RMContext 维护
 @Private
 @Unstable
 public class RMActiveServiceContext {

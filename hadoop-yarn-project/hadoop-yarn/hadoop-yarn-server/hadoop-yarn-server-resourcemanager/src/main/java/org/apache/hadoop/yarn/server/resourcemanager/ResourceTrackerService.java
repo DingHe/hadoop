@@ -94,6 +94,11 @@ import org.apache.hadoop.yarn.util.YarnVersionInfo;
 
 import org.apache.hadoop.classification.VisibleForTesting;
 
+// 负责接收并处理 NodeManager（NM）发出的注册、心跳、注销请求，管理资源相关的动态配置，监控节点状态等。
+// 它是 YARN ResourceManager 的关键组件之一，主要作用是：
+// 接收并处理 NodeManager 注册、心跳和注销请求：与 NodeManager 进行通信，确保 NodeManager 能够正常加入、保持或退出集群。
+// 动态资源配置：加载和更新 YARN 中的动态资源配置。
+// 管理节点状态：监控节点的健康状况和活跃状态，及时进行处理
 public class ResourceTrackerService extends AbstractService implements
     ResourceTracker {
 
@@ -104,37 +109,49 @@ public class ResourceTrackerService extends AbstractService implements
     RecordFactoryProvider.getRecordFactory(null);
 
   private final RMContext rmContext;
+  //管理集群中所有 NodeManager 节点的列表，负责节点的添加、删除和管理
   private final NodesListManager nodesListManager;
+  //用于监控 NodeManager 节点的活跃性，确保节点在预定时间内发送心跳，否则会被标记为失效
   private final NMLivelinessMonitor nmLivelinessMonitor;
+  //用于生成和管理容器令牌的密钥管理器，确保容器的身份验证和安全性
   private final RMContainerTokenSecretManager containerTokenSecretManager;
+  //用于管理 NodeManager 令牌的密钥管理器
   private final NMTokenSecretManagerInRM nmTokenSecretManager;
 
   private final ReadLock readLock;
   private final WriteLock writeLock;
-
+  //下一个心跳的时间间隔（单位：毫秒）
   private long nextHeartBeatInterval;
+  //是否启用心跳间隔的动态调整
   private boolean heartBeatIntervalScalingEnable;
+  //心跳间隔的最小值和最大值，防止心跳间隔过短或过长
   private long heartBeatIntervalMin;
   private long heartBeatIntervalMax;
+  //调整心跳间隔的加速和减速因子，用于动态调整心跳频率
   private float heartBeatIntervalSpeedupFactor;
   private float heartBeatIntervalSlowdownFactor;
 
 
   private Server server;
+  //ResourceTracker 服务的监听地址
   private InetSocketAddress resourceTrackerAddress;
+  //最小支持的 NodeManager 版本号
   private String minimumNodeManagerVersion;
-
+  //最小资源分配（内存和虚拟核数），用于调度时限制资源的最小分配
   private int minAllocMb;
   private int minAllocVcores;
-
+  //监控正在退役（不再使用）的节点，确保资源的有效管理
   private DecommissioningNodesWatcher decommissioningWatcher;
-
+  //用于检查是否启用分布式节点标签配置和委托中心化节点标签配置
   private boolean isDistributedNodeLabelsConf;
   private boolean isDelegatedCentralizedNodeLabelsConf;
+  //动态资源配置，用于加载和管理动态资源的配置
   private DynamicResourceConfiguration drConf;
-
+  //用于收集应用程序监控数据的时间轴版本号
   private final AtomicLong timelineCollectorVersion = new AtomicLong(0);
+  //是否检查 NodeManager 注册时的 IP 地址和主机名是否匹配
   private boolean checkIpHostnameInRegistration;
+  //是否启用 Timeline Service V2
   private boolean timelineServiceV2Enabled;
 
   public ResourceTrackerService(RMContext rmContext,
@@ -197,10 +214,12 @@ public class ResourceTrackerService extends AbstractService implements
    * @param conf Configuration.
    * @throws IOException an I/O exception has occurred.
    */
+  //加载并解析 dynamic-resources.xml 配置文件，进而初始化动态资源配置 (DynamicResourceConfiguration)
   public void loadDynamicResourceConfiguration(Configuration conf)
       throws IOException {
     try {
       // load dynamic-resources.xml
+      //获取一个配置提供者对象，该对象负责加载配置文件
       InputStream drInputStream = this.rmContext.getConfigurationProvider()
           .getConfigurationInputStream(conf,
           YarnConfiguration.DR_CONFIGURATION_FILE);

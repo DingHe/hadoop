@@ -53,6 +53,8 @@ import java.util.stream.IntStream;
  * See the Dominant Resource Fairness paper for more details:
  * www.cs.berkeley.edu/~matei/papers/2011/nsdi_drf.pdf
  */
+//用于在多维度资源环境中通过“主导资源”来比较和分配资源。
+// 该类的核心思想是，通过确定一个实体（如用户或队列）的“主导资源”，来决定资源分配。在多资源环境下，主导资源是指该实体在所有资源类型中的最大资源份额
 @Private
 @Unstable
 public class DominantResourceCalculator extends ResourceCalculator {

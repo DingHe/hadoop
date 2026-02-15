@@ -27,6 +27,8 @@ import org.apache.hadoop.yarn.util.Records;
  * allocation 
  *
  */
+// Priority 类表示 YARN 资源调度中的优先级。它可以用于 ResourceRequest、Application 或 Container 的资源分配。
+// 优先级是一个整数值，数值越大，表示优先级越高。YARN 调度器根据这个优先级决定资源的分配顺序
 @Public
 @Stable
 public abstract class Priority implements Comparable<Priority> {

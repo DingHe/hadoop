@@ -113,11 +113,16 @@ public final class ComputeFairShares {
    * number of iterations of binary search is a constant (dependent on desired
    * precision).
    */
+  // 用于计算 Schedulable 任务的公平资源分配。
+  // 它的主要目标是在满足任务的最小（minShare）和最大（maxShare）资源限制的前提下，基于权重实现公平分配。
+  // 当没有 minShare 和 maxShare 限制时，公平分配意味着所有 Schedulable 的 (分配的资源 / 权重) 之比相等。
+  // 该方法通过二分查找来确定合适的权重到资源比率 (weight-to-resource ratio, R)，以确保所有任务的资源分配既公平又符合约束
   private static void computeSharesInternal(
       Collection<? extends Schedulable> allSchedulables,
       Resource totalResources, String type, boolean isSteadyShare) {
 
-    Collection<Schedulable> schedulables = new ArrayList<>();
+    Collection<Schedulable> schedulables = new ArrayList<>(); //非固定份额调度实体
+    //筛选出需要进行公平计算的任务，并返回固定份额的资源总量
     long takenResources = handleFixedFairShares(
         allSchedulables, schedulables, isSteadyShare, type);
 
@@ -127,6 +132,7 @@ public final class ComputeFairShares {
     // Find an upper bound on R that we can use in our binary search. We start
     // at R = 1 and double it until we have either used all the resources or we
     // have met all Schedulables' max shares.
+    //计算 schedulables 任务集合中，所有任务 maxShare 的总和，确保分配不会超过任务的最大限制
     long totalMaxShare = 0;
     for (Schedulable sched : schedulables) {
       long maxShare = sched.getMaxShare().getResourceValue(type);
@@ -135,17 +141,18 @@ public final class ComputeFairShares {
         break;
       }
     }
-
+    //计算可用于公平分配的 totalResource
     long totalResource = Math.max((totalResources.getResourceValue(type) -
         takenResources), 0);
     totalResource = Math.min(totalMaxShare, totalResource);
-
+    //计算二分查找的上界rMax
     double rMax = 1.0;
     while (resourceUsedWithWeightToResourceRatio(rMax, schedulables, type)
         < totalResource) {
       rMax *= 2.0;
     }
     // Perform the binary search for up to COMPUTE_FAIR_SHARES_ITERATIONS steps
+    //采用 二分查找 方式寻找最合适的 R
     double left = 0;
     double right = rMax;
     for (int i = 0; i < COMPUTE_FAIR_SHARES_ITERATIONS; i++) {
@@ -161,6 +168,7 @@ public final class ComputeFairShares {
         right = mid;
       }
     }
+    //计算并设置最终的公平分配
     // Set the fair shares based on the value of R we've converged to
     for (Schedulable sched : schedulables) {
       Resource target;
@@ -180,10 +188,15 @@ public final class ComputeFairShares {
    * w2rRatio, for use in the computeFairShares algorithm as described in
    * {@link #computeSharesInternal}.
    */
+  //计算在给定的权重到资源比率 (w2rRatio) 下，所有 Schedulable 任务的 总资源使用量
+  //w2rRatio	权重到资源的比率 (weight-to-resource ratio)，决定如何将 Schedulable 的 weight 转换为资源
+  //schedulables	需要计算资源分配的 Schedulable 任务集合
+  //type	资源类型（如 CPU、内存等）
   private static long resourceUsedWithWeightToResourceRatio(double w2rRatio,
       Collection<? extends Schedulable> schedulables, String type) {
     long resourcesTaken = 0;
     for (Schedulable sched : schedulables) {
+      //计算当前 sched 在 w2rRatio 下应该分配的资源 (computeShare)
       long share = computeShare(sched, w2rRatio, type);
       resourcesTaken = safeAdd(resourcesTaken, share);
       if (resourcesTaken == Long.MAX_VALUE) {
@@ -197,6 +210,9 @@ public final class ComputeFairShares {
    * Compute the resources assigned to a Schedulable given a particular
    * weight-to-resource ratio w2rRatio.
    */
+  //计算单个 Schedulable 在 w2rRatio 下的公平份额
+  //确保计算出的资源分配量不会低于 minShare，不会超过 maxShare
+  //w2rRatio 是当前二分搜索的 R 值
   private static long computeShare(Schedulable sched, double w2rRatio,
       String type) {
     double share = sched.getWeight() * w2rRatio;
@@ -210,22 +226,30 @@ public final class ComputeFairShares {
    * Returns the resources taken by fixed fairshare schedulables,
    * and adds the remaining to the passed nonFixedSchedulables.
    */
+  //处理具有固定公平份额（fixed fair share） 的 Schedulable 任务，并计算它们已占用的资源总量
+  //将非固定份额 (fixedShare < 0) 的 Schedulable 任务添加到 nonFixedSchedulables 列表，以便后续的公平份额计算
+  //返回已占用的资源总量 totalResource
   private static long handleFixedFairShares(
-      Collection<? extends Schedulable> schedulables,
-      Collection<Schedulable> nonFixedSchedulables,
+      Collection<? extends Schedulable> schedulables,// 所有待调度任务
+      Collection<Schedulable> nonFixedSchedulables, // 非固定公平份额的任务集合
       boolean isSteadyShare, String type) {
-    long totalResource = 0;
+    long totalResource = 0;  // 用于记录 具有固定公平份额的任务所占用的总资源量
 
     for (Schedulable sched : schedulables) {
+      //判断该任务是否有固定公平份额
       long fixedShare = getFairShareIfFixed(sched, isSteadyShare, type);
       if (fixedShare < 0) {
+        //如果 fixedShare < 0，表示该任务没有固定公平份额，后续需要进行公平分配
         nonFixedSchedulables.add(sched);
       } else {
+        //如果 fixedShare >= 0，表示该任务具有固定公平份额，其资源值等于 fixedShare
         Resource target;
 
         if (isSteadyShare) {
+          //获取 sched 的 稳定公平份额
           target = ((FSQueue)sched).getSteadyFairShare();
         } else {
+          //获取 sched 的 当前公平份额 (getFairShare())
           target = sched.getFairShare();
         }
 
@@ -233,6 +257,7 @@ public final class ComputeFairShares {
         totalResource = safeAdd(totalResource, fixedShare);
       }
     }
+    //返回已分配的固定公平份额资源总量
     return totalResource;
   }
 
@@ -243,15 +268,22 @@ public final class ComputeFairShares {
    * The fairshare is fixed if either the maxShare is 0, weight is 0,
    * or the Schedulable is not active for instantaneous fairshare.
    */
+  //用于判断某个Schedulable任务是否具有固定公平份额 (fixed fair share)
+  //sched	需要检查的 Schedulable 任务
+  //isSteadyShare	是否计算 稳定公平份额 (steady fair share)，如果为 false，则计算 瞬时公平份额 (instantaneous fair share)
+  //type	资源类型（如 CPU、内存）
   private static long getFairShareIfFixed(Schedulable sched,
       boolean isSteadyShare, String type) {
 
     // Check if maxShare is 0
+    //如果sched任务的最大公平份额 (maxShare) 为 0，表示该任务不能分配任何资源，直接返回0，即固定公平份额为0
     if (sched.getMaxShare().getResourceValue(type) <= 0) {
       return 0;
     }
 
     // For instantaneous fairshares, check if queue is active
+    //计算瞬时公平份额时，
+    //如果sched是 FSQueue（公平调度的队列）类型的队列，并且 不活跃 (isActive() == false)，说明它不应该获得任何资源，直接返回 0
     if (!isSteadyShare &&
         (sched instanceof FSQueue) && !((FSQueue)sched).isActive()) {
       return 0;
@@ -259,10 +291,12 @@ public final class ComputeFairShares {
 
     // Check if weight is 0
     if (sched.getWeight() <= 0) {
+      //任务没有分配权重，通常意味着它不会参与公平资源计算
+      //但如果它的 最小公平份额 (minShare) > 0，则返回 minShare，否则返回 0
       long minShare = sched.getMinShare().getResourceValue(type);
       return (minShare <= 0) ? 0 : minShare;
     }
-
+    //如果以上所有条件都 不满足，说明该 sched 没有固定公平份额，需要参与公平分配计算，返回 -1
     return -1;
   }
 

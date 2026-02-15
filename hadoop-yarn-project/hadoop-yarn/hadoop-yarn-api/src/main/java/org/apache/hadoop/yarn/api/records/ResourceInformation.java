@@ -33,21 +33,34 @@ import java.util.Set;
  * Class to encapsulate information about a Resource - the name of the resource,
  * the units(milli, micro, etc), the type(countable), and the value.
  */
+// 用于封装资源的信息，例如资源的名称、单位、类型、值以及最小和最大分配等。
+// 该类主要用于 YARN 资源管理，以确保不同类型的资源（如内存、CPU、GPU 等）能够被有效地分配和管理
 public class ResourceInformation implements Comparable<ResourceInformation> {
-
+  //资源的名称，例如 "memory-mb"（表示内存）或 "vcores"（表示 CPU）
   private String name;
+  //资源的单位，例如 "Mi"（MiB，兆字节）或空字符串（默认单位）
   private String units;
+  //资源的类型，通常为 COUNTABLE（可计数资源）
   private ResourceTypes resourceType;
+  //当前资源的数值，例如 4096 代表 4GB 内存
   private long value;
+  //该资源的最小分配值，例如某些资源可能有最低的可用配额
   private long minimumAllocation;
+  //该资源的最大分配值，例如 YARN 可能限制某个资源的最大分配数量
   private long maximumAllocation;
+  //资源的标签集合，可以用于标识某些特殊属性的资源
   private Set<String> tags = new HashSet<>();
+  //资源的附加属性，存储键值对，可以用于记录额外的信息
   private Map<String, String> attributes = new HashMap<>();
 
   // Known resource types
+  //表示内存资源
   public static final String MEMORY_URI = "memory-mb";
+  //表示 CPU 资源
   public static final String VCORES_URI = "vcores";
+  //表示 GPU 资源
   public static final String GPU_URI = "yarn.io/gpu";
+  //表示 FPGA 资源
   public static final String FPGA_URI = "yarn.io/fpga";
 
   public static final ResourceInformation MEMORY_MB =

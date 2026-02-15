@@ -36,6 +36,9 @@ import java.util.Map;
 /*
  * Contains the state data that needs to be persisted for an ApplicationAttempt
  */
+//用于持久化应用程序尝试（Application Attempt）状态的数据结构。
+// 每个 YARN 应用程序的执行都可能包含多个尝试（attempts），特别是在应用程序失败并重新启动的情况下。
+// 此类的主要作用是存储和恢复 ApplicationAttempt 的状态信息，以便资源管理器（ResourceManager，RM）在故障恢复时可以正确恢复应用程序的执行状态
 @Public
 @Unstable
 public abstract class ApplicationAttemptStateData {
@@ -48,34 +51,35 @@ public abstract class ApplicationAttemptStateData {
       long finishTime, Map<String, Long> resourceSecondsMap,
       Map<String, Long> preemptedResourceSecondsMap,
       int totalAllocatedContainers) {
+    //获取应用尝试的实现类
     ApplicationAttemptStateData attemptStateData =
         Records.newRecord(ApplicationAttemptStateData.class);
-    attemptStateData.setAttemptId(attemptId);
-    attemptStateData.setMasterContainer(container);
-    attemptStateData.setAppAttemptTokens(attemptTokens);
-    attemptStateData.setState(finalState);
-    attemptStateData.setFinalTrackingUrl(finalTrackingUrl);
-    attemptStateData.setDiagnostics(diagnostics == null ? "" : diagnostics);
-    attemptStateData.setStartTime(startTime);
-    attemptStateData.setFinalApplicationStatus(amUnregisteredFinalStatus);
-    attemptStateData.setAMContainerExitStatus(exitStatus);
-    attemptStateData.setFinishTime(finishTime);
+    attemptStateData.setAttemptId(attemptId);//应用尝试的唯一标识符
+    attemptStateData.setMasterContainer(container);//运行 ApplicationMaster 的主容器
+    attemptStateData.setAppAttemptTokens(attemptTokens);//ApplicationAttempt 需要的安全凭据
+    attemptStateData.setState(finalState);//应用尝试的最终状态，例如 FINISHED、FAILED
+    attemptStateData.setFinalTrackingUrl(finalTrackingUrl);//最终的追踪 URL
+    attemptStateData.setDiagnostics(diagnostics == null ? "" : diagnostics);//AM 失败的诊断信息（如果为 null，则设置为空字符串）
+    attemptStateData.setStartTime(startTime);//应用尝试的启动时间（毫秒）
+    attemptStateData.setFinalApplicationStatus(amUnregisteredFinalStatus);//应用程序的最终状态，例如 SUCCEEDED、FAILED
+    attemptStateData.setAMContainerExitStatus(exitStatus);//ApplicationMaster 退出码（ContainerExitStatus.INVALID 表示无效状态）
+    attemptStateData.setFinishTime(finishTime);//应用尝试结束时间（毫秒）
     attemptStateData.setMemorySeconds(RMServerUtils
         .getOrDefault(resourceSecondsMap,
-            ResourceInformation.MEMORY_MB.getName(), 0L));
+            ResourceInformation.MEMORY_MB.getName(), 0L));//内存使用情况
     attemptStateData.setVcoreSeconds(RMServerUtils
         .getOrDefault(resourceSecondsMap, ResourceInformation.VCORES.getName(),
-            0L));
+            0L));//cpu使用情况
     attemptStateData.setPreemptedMemorySeconds(RMServerUtils
         .getOrDefault(preemptedResourceSecondsMap,
-            ResourceInformation.MEMORY_MB.getName(), 0L));
+            ResourceInformation.MEMORY_MB.getName(), 0L));//内存被抢占情况
     attemptStateData.setPreemptedVcoreSeconds(RMServerUtils
         .getOrDefault(preemptedResourceSecondsMap,
-            ResourceInformation.VCORES.getName(), 0L));
+            ResourceInformation.VCORES.getName(), 0L));//被抢占的cpu使用情况
     attemptStateData.setResourceSecondsMap(resourceSecondsMap);
     attemptStateData
         .setPreemptedResourceSecondsMap(preemptedResourceSecondsMap);
-    attemptStateData.setTotalAllocatedContainers(totalAllocatedContainers);
+    attemptStateData.setTotalAllocatedContainers(totalAllocatedContainers);//总共分配的容器数
     return attemptStateData;
   }
 

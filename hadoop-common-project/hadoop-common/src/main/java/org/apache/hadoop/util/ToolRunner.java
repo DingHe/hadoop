@@ -41,6 +41,7 @@ import org.apache.hadoop.ipc.CallerContext;
  * @see Tool
  * @see GenericOptionsParser
  */
+//主要用于执行实现了 Tool 接口的类，并结合 GenericOptionsParser 解析 Hadoop 通用的命令行参数，帮助用户快速启动和执行 Hadoop 程序
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public class ToolRunner {
@@ -61,6 +62,7 @@ public class ToolRunner {
    */
   public static int run(Configuration conf, Tool tool, String[] args) 
     throws Exception{
+    //用于记录当前操作的来源（如命令行 CLI），在 Hadoop 的审计日志中跟踪操作
     if (CallerContext.getCurrent() == null) {
       CallerContext ctx = new CallerContext.Builder("CLI").build();
       CallerContext.setCurrent(ctx);
@@ -68,16 +70,20 @@ public class ToolRunner {
     // Note the entry point in the audit context; this
     // may be used in audit events set to cloud store logs
     // or elsewhere.
+    //将当前工具类标记为审计上下文的入口，方便后续日志跟踪
     CommonAuditContext.noteEntryPoint(tool);
     
     if(conf == null) {
       conf = new Configuration();
     }
+    //解析 Hadoop 通用参数（如 -D property=value，-fs，-jt 等），并将解析后的配置注入到 Configuration 中
     GenericOptionsParser parser = new GenericOptionsParser(conf, args);
     //set the configuration back, so that Tool can configure itself
+    //将解析后的 Configuration 设置给 Tool
     tool.setConf(conf);
     
     //get the args w/o generic hadoop args
+    //从解析器中获取业务参数（排除 Hadoop 通用参数）
     String[] toolArgs = parser.getRemainingArgs();
     return tool.run(toolArgs);
   }

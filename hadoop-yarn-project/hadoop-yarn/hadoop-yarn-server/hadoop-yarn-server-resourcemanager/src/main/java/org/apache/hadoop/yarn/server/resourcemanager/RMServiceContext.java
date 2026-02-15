@@ -37,6 +37,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.timelineservice.RMTimelineC
  * <b>Note:</b> If any services to be added in this class, make sure service
  * will be running always irrespective of the HA state of the RM
  */
+//用于维护“始终在线”的服务。这些服务需要始终运行，无论资源管理器（ResourceManager，RM）是否处于高可用（HA）模式
 @Private
 @Unstable
 public class RMServiceContext {

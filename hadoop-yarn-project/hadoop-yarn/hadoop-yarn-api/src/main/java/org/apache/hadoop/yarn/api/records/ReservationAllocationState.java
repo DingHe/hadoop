@@ -51,6 +51,15 @@ import java.util.List;
  * @see ReservationId
  * @see ReservationDefinition
  */
+//代表 YARN 资源管理 中 用户创建的资源预留（Reservation）。它用于 跟踪和管理 资源预留的状态
+  //在 YARN 容量调度器（Capacity Scheduler） 和 公平调度器（Fair Scheduler） 的 资源预留（Reservation） 机制中，
+// ReservationAllocationState 起到了 记录和管理资源分配情况 的关键作用
+  //资源预留（Reservation）允许用户预先申请计算资源（CPU、内存等），确保在 未来某个时间段 能够获得这些资源来运行任务。它通常用于 大规模作业
+//资源预留的目标：
+  //保证任务的执行：防止因资源不足导致任务被无限推迟
+  //优化资源利用率：通过提前规划，提高集群整体吞吐量
+  //支持长时间运行任务：确保复杂任务可以跨多个时间片顺利执行
+
 @Public
 @Stable
 public abstract class ReservationAllocationState {
@@ -78,11 +87,11 @@ public abstract class ReservationAllocationState {
            ReservationDefinition reservationDefinition) {
     ReservationAllocationState ri = Records.newRecord(
             ReservationAllocationState.class);
-    ri.setAcceptanceTime(acceptanceTime);
-    ri.setUser(user);
-    ri.setResourceAllocationRequests(resourceAllocations);
-    ri.setReservationId(reservationId);
-    ri.setReservationDefinition(reservationDefinition);
+    ri.setAcceptanceTime(acceptanceTime);//记录 资源预留被接受的时间，表示该预留什么时候被批准
+    ri.setUser(user);//记录 预留资源的用户，用于身份识别和访问控制
+    ri.setResourceAllocationRequests(resourceAllocations);//记录 预留的资源分配情况，其中 ResourceAllocationRequest 详细描述了 每个时间段 的资源分配
+    ri.setReservationId(reservationId);//记录 该次资源预留的唯一 ID，用于唯一标识该预留
+    ri.setReservationDefinition(reservationDefinition); //记录 该次资源预留的定义，例如资源需求、时间范围等
     return ri;
   }
 

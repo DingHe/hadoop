@@ -64,34 +64,49 @@ import static org.apache.hadoop.log.LogThrottlingHelper.LogAction;
  * {@link MutableRatesWithAggregation}. However since threads are re-used
  * between operations this should not generally be an issue.
  */
+//用于 FSNamesystem 的读写锁实现，确保对 NameNode 中核心数据结构的并发访问控制。
+// 该类使用了 Java 的 ReentrantReadWriteLock 实现了细粒度锁，允许多个线程并发读取，但只有一个线程能写入，确保线程安全。其主要功能包括：
+//读/写锁管理：为 HDFS 的核心数据结构提供线程安全的并发访问。
+//锁性能监控：记录锁的持有时间、等待时间，支持详细的性能指标和超时警告。
+//日志报告：当读写锁的持有时间超过设定阈值时，生成详细的日志记录并统计长时间持锁次数。
+//锁公平性控制：支持根据配置选择锁是否是公平锁（FIFO 顺序获取）
 class FSNamesystemLock {
   @VisibleForTesting
+  //主读写锁，控制对 FSNamesystem 的访问
   protected ReentrantReadWriteLock coarseLock;
-
+  //是否启用详细锁持有时间的监控。
   private volatile boolean metricsEnabled;
+  //记录锁的详细持有时间统计信息。
   private final MutableRatesWithAggregation detailedHoldTimeMetrics;
+  //提供时间测量功能，精确计算锁的持有时长。
   private final Timer timer;
 
   /**
    * Log statements about long lock hold times will not be produced more
    * frequently than this interval.
    */
+  //控制锁警告日志的最小间隔，避免日志过多。
   private final long lockSuppressWarningIntervalMs;
 
   /** Threshold (ms) for long holding write lock report. */
+  //写锁持有时间警告的阈值，超过此值则记录日志。
   private volatile long writeLockReportingThresholdMs;
   /** Last time stamp for write lock. Keep the longest one for multi-entrance.*/
+  //记录写锁开始时间，单位纳秒。
   private long writeLockHeldTimeStampNanos;
   /** Frequency limiter used for reporting long write lock hold times. */
+  //控制写锁超时日志的生成频率，防止日志泛滥。
   private final LogThrottlingHelper writeLockReportLogger;
 
   /** Threshold (ms) for long holding read lock report. */
+  //读锁持有时间警告的阈值，超过此值则记录日志。
   private volatile long readLockReportingThresholdMs;
   /**
    * Last time stamp for read lock. Keep the longest one for
    * multi-entrance. This is ThreadLocal since there could be
    * many read locks held simultaneously.
    */
+  //记录每个线程获取读锁的时间，单位纳秒。
   private final ThreadLocal<Long> readLockHeldTimeStampNanos =
       new ThreadLocal<Long>() {
         @Override
@@ -99,26 +114,32 @@ class FSNamesystemLock {
           return Long.MAX_VALUE;
         }
       };
+  //记录被抑制的读锁超时警告数量。
   private final AtomicInteger numReadLockWarningsSuppressed =
       new AtomicInteger(0);
   /** Time stamp (ms) of the last time a read lock report was written. */
+  //上次读锁超时报告的时间戳，防止重复记录。
   private final AtomicLong timeStampOfLastReadLockReportMs = new AtomicLong(0);
   /**
    * The info (lock held time and stack trace) when longest time (ms) a read
    * lock was held since the last report.
    */
+  //保存最长时间的读锁持有信息。
   private final AtomicReference<LockHeldInfo> longestReadLockHeldInfo =
       new AtomicReference<>(new LockHeldInfo());
+  //保存最长时间的写锁持有信息。
   private LockHeldInfo longestWriteLockHeldInfo = new LockHeldInfo();
   /**
    * The number of time the read lock
    * has been held longer than the threshold.
    */
+  //记录超过读锁阈值的次数。
   private final LongAdder numReadLockLongHold = new LongAdder();
   /**
    * The number of time the write lock
    * has been held for longer than the threshold.
    */
+  //记录超过写锁阈值的次数。
   private final LongAdder numWriteLockLongHold = new LongAdder();
 
   @VisibleForTesting
@@ -161,11 +182,11 @@ class FSNamesystemLock {
         this.metricsEnabled);
     this.detailedHoldTimeMetrics = detailedHoldTimeMetrics;
   }
-
+  //加读锁
   public void readLock() {
     doLock(false);
   }
-
+  //可中断读锁
   public void readLockInterruptibly() throws InterruptedException {
     doLockInterruptibly(false);
   }
@@ -177,7 +198,9 @@ class FSNamesystemLock {
   public void readUnlock(String opName) {
     readUnlock(opName, null);
   }
-
+  //用于释放读锁，并在锁持有时间超过阈值时，记录和报告相关信息，帮助监控和调试锁的使用情况
+  //opName：执行操作的名称，通常用于标识当前锁保护的具体操作
+  //lockReportInfoSupplier：一个 Supplier 对象，延迟生成额外的锁信息，提供更详细的上下文，只有在需要时才会执行
   public void readUnlock(String opName,
       Supplier<String> lockReportInfoSupplier) {
     final boolean needReport = coarseLock.getReadHoldCount() == 1;
@@ -413,7 +436,7 @@ class FSNamesystemLock {
     updateProcessingDetails(
         isWrite ? Timing.LOCKEXCLUSIVE : Timing.LOCKSHARED, value);
   }
-
+  //加锁
   private void doLock(boolean isWrite) {
     long startNanos = timer.monotonicNowNanos();
     if (isWrite) {
@@ -423,7 +446,7 @@ class FSNamesystemLock {
     }
     updateLockWait(startNanos, isWrite);
   }
-
+  //可中断的加锁，如果一个线程调用 lockInterruptibly() 方法，并且在等待锁的过程中被另一个线程调用了 interrupt() 方法，那么该线程会抛出 InterruptedException 异常，从而中断等待
   private void doLockInterruptibly(boolean isWrite)
       throws InterruptedException {
     long startNanos = timer.monotonicNowNanos();
@@ -434,21 +457,29 @@ class FSNamesystemLock {
     }
     updateLockWait(startNanos, isWrite);
   }
-
+  //记录获取锁的等待时间，并在成功获取锁后更新相应的时间戳
+  //startNanos：锁等待开始的时间（以纳秒为单位）
+  //isWrite：布尔值，表示当前是否为写锁操作，true 表示写锁，false 表示读锁
   private void updateLockWait(long startNanos, boolean isWrite) {
+    //通过 timer.monotonicNowNanos() 获取当前的单调时间（单调时间不会因系统时间调整而回退）
     long now = timer.monotonicNowNanos();
+    //计算锁等待时间（当前时间减去锁等待开始时间）并调用 updateProcessingDetails 方法更新相关统计数据，标记为 Timing.LOCKWAIT 类型
     updateProcessingDetails(Timing.LOCKWAIT, now - startNanos);
     if (isWrite) {
+      //如果当前是写锁，并且 coarseLock.getWriteHoldCount() 返回 1，说明这是当前线程首次获取写锁，更新 writeLockHeldTimeStampNanos 时间戳
       if (coarseLock.getWriteHoldCount() == 1) {
         writeLockHeldTimeStampNanos = now;
       }
     } else {
+      //如果是读锁，且 getReadHoldCount() 返回 1，说明这是当前线程首次获取读锁，更新 readLockHeldTimeStampNanos 时间戳
       if (coarseLock.getReadHoldCount() == 1) {
         readLockHeldTimeStampNanos.set(now);
       }
     }
   }
-
+  //type：Timing 类型的枚举，表示需要记录的操作类型（如锁等待时间、I/O 时间等
+  //deltaNanos：以纳秒为单位的时间间隔，表示某个操作的耗时
+  //更新当前 RPC（远程过程调用，Remote Procedure Call）请求的处理详情，记录某个时间片段的耗时信息
   private static void updateProcessingDetails(Timing type, long deltaNanos) {
     Server.Call call = Server.getCurCall().get();
     if (call != null) {

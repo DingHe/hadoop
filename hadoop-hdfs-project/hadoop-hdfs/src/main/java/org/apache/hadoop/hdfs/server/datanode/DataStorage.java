@@ -74,11 +74,15 @@ import org.apache.hadoop.thirdparty.com.google.common.collect.Maps;
  */
 @InterfaceAudience.Private
 public class DataStorage extends Storage {
-
+  //每个数据存储目录下的子目录前缀
   public final static String BLOCK_SUBDIR_PREFIX = "subdir";
+  //指的是一个已分离的存储目录，描述那些不再与主存储系统进行关联的存储位置
   final static String STORAGE_DIR_DETACHED = "detach";
+  //存储目录，它包含的是正在写入（Ready-to-be-written, RBW）的数据块
   public final static String STORAGE_DIR_RBW = "rbw";
+  //存储目录，包含已经最终确定的数据块，这些块已经不再进行修改，通常用于存储已经完成的块数据
   public final static String STORAGE_DIR_FINALIZED = "finalized";
+  //懒持久化的存储目录，通常是数据尚未完全持久化到磁盘的情况下的临时存储目录
   public final static String STORAGE_DIR_LAZY_PERSIST = "lazypersist";
   public final static String STORAGE_DIR_TMP = "tmp";
 
@@ -93,6 +97,9 @@ public class DataStorage extends Storage {
    * is in progress for a storage directory i.e. if the previous
    * directory exists.
    */
+  //存储当前启用了“垃圾桶”（trash）功能的 block pool IDs（BPID）。
+  // 启用垃圾桶后，删除的块文件会被移到单独的“垃圾桶”目录，而不是立即删除。
+  // 这个功能有助于在滚动升级等操作中避免文件丢失，方便后续恢复
   private Set<String> trashEnabledBpids;
 
   /**
@@ -101,9 +108,12 @@ public class DataStorage extends Storage {
    *  upgraded from a pre-UUID version. For compatibility with prior
    *  versions of Datanodes we cannot make this field a UUID.
    */
+  //存储 DataNode 的 UUID。这个 UUID 用于唯一标识当前的数据节点
   private volatile String datanodeUuid = null;
   
   // Maps block pool IDs to block pool storage
+  // 存储每个 block pool ID（bpid）对应的 BlockPoolSliceStorage。
+  // 每个 block pool 可能有多个存储片段（slice），因此该 Map 用于管理和访问这些片段的存储信息
   private final Map<String, BlockPoolSliceStorage> bpStorageMap
       = Collections.synchronizedMap(new HashMap<String, BlockPoolSliceStorage>());
 
@@ -144,17 +154,22 @@ public class DataStorage extends Storage {
   /** Create an ID for this storage.
    * @return true if a new storage ID was generated.
    * */
+  //为存储生成一个新的存储 ID
   public static boolean createStorageID(
       StorageDirectory sd, boolean regenerateStorageIds, Configuration conf) {
+    //获取当前存储的 UUID（如果已存在
     final String oldStorageID = sd.getStorageUuid();
     if (sd.getStorageLocation() != null &&
         sd.getStorageLocation().getStorageType() == StorageType.PROVIDED) {
+      //该存储是由外部提供的（而不是由 Hadoop 管理的），通过配置读取
       // Only one provided storage id is supported.
       // TODO support multiple provided storage ids
       sd.setStorageUuid(conf.get(DFSConfigKeys.DFS_PROVIDER_STORAGEUUID,
           DFSConfigKeys.DFS_PROVIDER_STORAGEUUID_DEFAULT));
       return false;
     }
+    //如果当前存储没有旧的存储 ID（oldStorageID == null），或者需要强制重新生成存储 ID（regenerateStorageIds 为 true）
+    //重新生成
     if (oldStorageID == null || regenerateStorageIds) {
       sd.setStorageUuid(DatanodeStorage.generateUuid());
       LOG.info("Generated new storageID {} for directory {} {}", sd
@@ -170,6 +185,7 @@ public class DataStorage extends Storage {
    * enabled by the caller, it is superseded by the 'previous' directory
    * if a layout upgrade is in progress.
    */
+  //给块池bpid启用垃圾回收
   public void enableTrash(String bpid) {
     if (trashEnabledBpids.add(bpid)) {
       getBPStorage(bpid).stopTrashCleaner();
@@ -188,11 +204,11 @@ public class DataStorage extends Storage {
   public boolean trashEnabled(String bpid) {
     return trashEnabledBpids.contains(bpid);
   }
-
+  //为指定的 block pool ID (bpid) 设置滚动升级标记。滚动升级标记用于标识当前存储目录是否处于滚动升级状态
   public void setRollingUpgradeMarker(String bpid) throws IOException {
     getBPStorage(bpid).setRollingUpgradeMarkers(getStorageDirs());
   }
-
+  //清除指定 block pool ID (bpid) 的滚动升级标记
   public void clearRollingUpgradeMarker(String bpid) throws IOException {
     getBPStorage(bpid).clearRollingUpgradeMarkers(getStorageDirs());
   }
@@ -220,16 +236,17 @@ public class DataStorage extends Storage {
    * Calling {@link VolumeBuilder#build()}
    * to add the metadata to {@link DataStorage} so that this prepared volume can
    * be active.
+   * 作用主要体现在存储卷准备和注册的过程中，确保 HDFS 存储系统能够管理和使用多个存储目录和区块池
    */
   @InterfaceAudience.Private
   @InterfaceStability.Unstable
   static public class VolumeBuilder {
-    private DataStorage storage;
+    private DataStorage storage;  //数据存储对象
     /** Volume level storage directory. */
-    private StorageDirectory sd;
+    private StorageDirectory sd;//表示存储卷的具体物理位置（例如磁盘路径）
     /** Mapping from block pool ID to an array of storage directories. */
     private Map<String, List<StorageDirectory>> bpStorageDirMap =
-        Maps.newHashMap();
+        Maps.newHashMap();//键是区块池ID（Block Pool ID），值是与该区块池相关联的存储目录（StorageDirectory）的列表
 
     @VisibleForTesting
     public VolumeBuilder(DataStorage storage, StorageDirectory sd) {
@@ -246,7 +263,7 @@ public class DataStorage extends Storage {
       bpStorageDirMap.put(bpid, dirs);
     }
 
-    /**
+    /** 将构建的存储元数据（如存储目录等）添加到 DataStorage 中，实际创建并注册了新的存储目录
      * Add loaded metadata of a data volume to {@link DataStorage}.
      */
     public void build() {
@@ -255,6 +272,7 @@ public class DataStorage extends Storage {
         for (Map.Entry<String, List<StorageDirectory>> e :
             bpStorageDirMap.entrySet()) {
           final String bpid = e.getKey();
+          //为每个区块池（由 bpid 标识）找到对应的存储目录（StorageDirectory），并将这些目录添加到 DataStorage 中的相应区块池存储中
           BlockPoolSliceStorage bpStorage = this.storage.bpStorageMap.get(bpid);
           assert bpStorage != null;
           for (StorageDirectory bpSd : e.getValue()) {

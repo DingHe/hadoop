@@ -168,7 +168,15 @@ import org.apache.hadoop.util.Preconditions;
 import org.apache.hadoop.thirdparty.com.google.common.util.concurrent.SettableFuture;
 
 import static org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacitySchedulerConfiguration.QUEUE_MAPPING;
-
+// 实现了容量调度（Capacity Scheduling） 策略。
+// 它允许多个队列共享集群资源，并按照预定义的容量（Capacity）和公平性原则分配资源，
+// 以保证不同用户或组织在多租户环境下的公平性和资源利用率。
+//核心功能：
+//多队列支持：支持分层队列结构，每个队列可以设定最小/最大容量、访问权限等。
+//资源公平分配：根据应用程序的需求和队列的容量，合理地分配 CPU、内存等资源。
+//抢占（Preemption）机制：在资源紧张时，可以回收低优先级任务的资源以满足高优先级任务。
+//异步调度：支持异步任务分配，提高资源利用率。
+//节点标签（Node Labels）：允许应用指定任务应在哪些节点上运行。
 @LimitedPrivate("yarn")
 @Evolving
 @SuppressWarnings("unchecked")
@@ -181,23 +189,23 @@ public class CapacityScheduler extends
       MarkerFactory.getMarker("FATAL");
   private static final Logger LOG =
       LoggerFactory.getLogger(CapacityScheduler.class);
-
+  //管理 YARN 中的所有调度队列，包括创建、更新和删除队列等
   private CapacitySchedulerQueueManager queueManager;
-
+  //维护调度队列的上下文信息，如队列配置、访问权限等
   private CapacitySchedulerQueueContext queueContext;
-
+  //管理应用程序的优先级映射
   private WorkflowPriorityMappingsManager workflowPriorityMappingsMgr;
-
+  //负责资源抢占（Preemption），在必要时强制回收资源
   private PreemptionManager preemptionManager = new PreemptionManager();
-
+  //是否启用 懒抢占（Lazy Preemption），即资源不足时优先等待空闲资源，而非立即抢占。
   private volatile boolean isLazyPreemptionEnabled = false;
-
+  //限制每个心跳周期内分配到远程节点（非本地）任务的数量。
   private int offswitchPerHeartbeatLimit;
-
+  //是否支持一次心跳分配多个容器，提高调度效率。
   private boolean assignMultipleEnabled;
-
+  // 单次心跳最多可以分配的任务数。
   private int maxAssignPerHeartbeat;
-
+  //处理 CapacityScheduler 的配置信息，支持多种存储方式（文件、ZK 等）。
   private CSConfigurationProvider csConfProvider;
 
   private int threadNum = 0;
@@ -209,7 +217,7 @@ public class CapacityScheduler extends
   public void setConf(Configuration conf) {
       yarnConf = conf;
   }
-
+  //主要校验内存和vcore的最小值不能大于最大值
   private void validateConf(Configuration conf) {
     // validate scheduler memory allocation setting
     CapacitySchedulerConfigValidator.validateMemoryAllocation(conf);
@@ -226,16 +234,20 @@ public class CapacityScheduler extends
   private Configuration yarnConf;
 
   private ResourceCalculator calculator;
+  //是否把端口加入NodeManager的名字
   private boolean usePortForNodeName;
-
+  //维护异步调度相关配置，如是否启用异步调度、调度间隔时间等。
   private AsyncSchedulingConfiguration asyncSchedulingConf;
+  //处理 YARN 的节点标签（Node Labels）管理。
   private RMNodeLabelsManager labelManager;
+  //处理应用程序的优先级和访问控制（ACL）。
   private AppPriorityACLsManager appPriorityACLManager;
+  //是否启用多节点调度策略，即允许任务调度时考虑多个候选节点。
   private boolean multiNodePlacementEnabled;
 
   private boolean printedVerboseLoggingForAsyncScheduling;
   private boolean appShouldFailFast;
-
+  //负责强制执行队列的最大运行应用数量限制。
   private CSMaxRunningAppsEnforcer maxRunningEnforcer;
 
   public CapacityScheduler() {
@@ -292,6 +304,7 @@ public class CapacityScheduler extends
     this.rmContext = rmContext;
   }
 
+  //主要作用是 加载配置、初始化调度器核心组件，并准备资源调度环境
   @VisibleForTesting
   void initScheduler(Configuration configuration) throws
       IOException, YarnException {
@@ -331,7 +344,8 @@ public class CapacityScheduler extends
       writeLock.unlock();
     }
   }
-
+  //根据 YARN 配置，选择合适的调度配置存储方式，然后返回相应的 CSConfigurationProvider 实现类
+  //也就是capacity-scheduler.xml配置的加载方法
   private CSConfigurationProvider getCsConfProvider(Configuration configuration)
       throws IOException {
     String confProviderStr = configuration.get(
@@ -349,7 +363,7 @@ public class CapacityScheduler extends
       throw new IOException("Invalid configuration store class: " + confProviderStr);
     }
   }
-
+  //初始化资源计算器
   private ResourceCalculator initResourceCalculator() {
     ResourceCalculator resourceCalculator = this.conf.getResourceCalculator();
     if (resourceCalculator instanceof DefaultResourceCalculator
@@ -853,7 +867,9 @@ public class CapacityScheduler extends
   public boolean isAmbiguous(String queueName) {
     return this.queueManager.isAmbiguous(queueName);
   }
-
+  //在系统重启或恢复过程中将应用程序恢复到特定队列中。
+  // 该方法确保队列在恢复时仍然有效并且是叶子队列。如果队列已被删除或变更为非叶子队列，该方法会根据配置采取不同的处理方式。
+  // 它还确保应用程序可以重新提交并恢复到队列中，维持其状态并处理可能的访问控制问题
   private void addApplicationOnRecovery(ApplicationId applicationId,
       String queueName, String user,
       Priority priority, ApplicationPlacementContext placementContext,
@@ -861,9 +877,11 @@ public class CapacityScheduler extends
     writeLock.lock();
     try {
       //check if the queue needs to be auto-created during recovery
+      //尝试获取恢复时应用程序应该提交的队列。如果队列不存在且需要自动创建，则会创建新的队列
       CSQueue queue = getOrCreateQueueFromPlacementContext(applicationId, user,
            queueName, placementContext, true);
-
+      //队列不存在的处理：如果恢复时无法找到指定队列，且配置了 appShouldFailFast 为 false，则应用程序被标记为 KILL（终止）。
+      // 如果 appShouldFailFast 为 true，则抛出一个 QueueInvalidException，并记录队列缺失的错误信息
       if (queue == null) {
         //During a restart, this indicates a queue was removed, which is
         //not presently supported
@@ -885,6 +903,8 @@ public class CapacityScheduler extends
           throw new QueueInvalidException(queueErrorMsg);
         }
       }
+      //队列类型检查：如果队列不是一个叶子队列（AbstractLeafQueue），且恢复时尝试将应用程序提交到该队列，则终止应用程序并记录错误消息。
+      // 如果配置了 appShouldFailFast 为 true，则抛出 QueueInvalidException
       if (!(queue instanceof AbstractLeafQueue)) {
         // During RM restart, this means leaf queue was converted to a parent
         // queue, which is not supported for running apps.
@@ -909,6 +929,8 @@ public class CapacityScheduler extends
       // When recovering apps in this queue but queue is in STOPPED state,
       // that means its previous state was DRAINING. So we auto transit
       // the state to DRAINING for recovery.
+      //如果队列的状态是 STOPPED（停止），说明该队列在恢复前处于 DRAINING（排空）状态，
+      // 因此需要调用 recoverDrainingState 方法来恢复队列的排空状态
       if (queue.getState() == QueueState.STOPPED) {
         ((AbstractLeafQueue) queue).recoverDrainingState();
       }
@@ -937,7 +959,8 @@ public class CapacityScheduler extends
       writeLock.unlock();
     }
   }
-
+  // 尝试根据应用的放置上下文（placementContext）获取指定队列（queueName）。如果队列不存在，且提供了放置上下文，则会尝试自动创建队列。
+  // 它确保了队列路径的合法性，并在必要时通过 queueManager.createQueue 方法创建新队列
   private CSQueue getOrCreateQueueFromPlacementContext(ApplicationId
       applicationId, String user, String queueName,
       ApplicationPlacementContext placementContext,
@@ -1020,12 +1043,14 @@ public class CapacityScheduler extends
               message));
     }
   }
-
+  // 主要用于处理应用程序的提交。它的任务是验证提交请求是否合法，包括队列是否合法、队列类型是否符合要求、是否达到了系统应用限制等。
+  // 如果一切验证通过，则将应用程序提交到队列，并记录相关信息
   private void addApplication(ApplicationId applicationId, String queueName,
       String user, Priority priority,
       ApplicationPlacementContext placementContext, boolean unmanagedAM) {
     writeLock.lock();
     try {
+      //首先检查系统是否达到了最大系统应用数量的限制
       if (isSystemAppsLimitReached()) {
         String message = "Maximum system application limit reached,"
             + "cannot accept submission of application: " + applicationId;
@@ -1036,6 +1061,7 @@ public class CapacityScheduler extends
       }
 
       //Could be a potential auto-created leaf queue
+      //根据应用的队列名称、用户、队列放置上下文等信息，尝试获取或自动创建相应的队列。
       CSQueue queue = getOrCreateQueueFromPlacementContext(
            applicationId, user, queueName, placementContext, false);
 
@@ -1057,7 +1083,7 @@ public class CapacityScheduler extends
                 message));
         return;
       }
-
+      //不能提交应用到非叶子队列
       if (!(queue instanceof AbstractLeafQueue)) {
         String message =
             "Application " + applicationId + " submitted by user : " + user
@@ -1071,6 +1097,7 @@ public class CapacityScheduler extends
 
         //If queue already exists and auto-queue creation was not required,
         //placement context should not be null
+        //如果是自动创建的叶子队列，则进一步检查父队列是否为已管理的父队列
         if (placementContext == null) {
           String message =
               "Application " + applicationId + " submission by user : " + user
@@ -1103,7 +1130,7 @@ public class CapacityScheduler extends
           return;
         }
       }
-
+      //将工作流优先级映射到应用程序的优先级。如果映射失败，将拒绝应用程序提交
       try {
         priority = workflowPriorityMappingsMgr.mapWorkflowPriorityForApp(
             applicationId, queue, user, priority);
@@ -1116,6 +1143,7 @@ public class CapacityScheduler extends
       }
 
       // Submit to the queue
+      //将应用程序提交到队列中
       try {
         queue.submitApplication(applicationId, user, queueName);
       } catch (AccessControlException ace) {
@@ -1140,7 +1168,8 @@ public class CapacityScheduler extends
       writeLock.unlock();
     }
   }
-
+  //用于向调度器中添加一个新的应用程序尝试（Application Attempt）。此方法首先获取应用程序的当前尝试，如果没有找到，则返回警告信息。
+  // 如果找到，则创建一个新的应用程序尝试对象并初始化它，必要时从前一个尝试转移状态，更新优先级，并执行必要的调度操作
   private void addApplicationAttempt(
       ApplicationAttemptId applicationAttemptId,
       boolean transferStateFromPreviousAttempt,
@@ -1179,7 +1208,7 @@ public class CapacityScheduler extends
 
       maxRunningEnforcer.checkRunnabilityWithUpdate(attempt);
       maxRunningEnforcer.trackApp(attempt);
-
+      //通过队列提交应用尝试
       queue.submitApplicationAttempt(attempt, application.getUser());
       LOG.info("Added Application Attempt " + applicationAttemptId
           + " to scheduler from user " + application.getUser() + " in queue "
@@ -1196,7 +1225,8 @@ public class CapacityScheduler extends
       writeLock.unlock();
     }
   }
-
+  //负责完成并清理应用程序的状态。当一个应用程序完成时，它会从调度器中移除，并处理与该应用程序相关的队列状态和资源清理工作。
+  // 具体来说，它会根据应用程序的队列类型（是否为叶子队列）决定是否能够完成该应用程序，并执行相应的清理工作
   private void doneApplication(ApplicationId applicationId,
       RMAppState finalState) {
     writeLock.lock();
@@ -1214,6 +1244,7 @@ public class CapacityScheduler extends
         LOG.error("Cannot finish application " + "from non-leaf queue: " + queue
             .getQueuePath());
       } else{
+        //如果队列是叶子队列，则调用 finishApplication 方法来完成应用程序，并清理资源
         queue.finishApplication(applicationId, application.getUser());
       }
       application.stop(finalState);
@@ -1222,7 +1253,7 @@ public class CapacityScheduler extends
       writeLock.unlock();
     }
   }
-
+  //应用尝试删除
   private void doneApplicationAttempt(
       ApplicationAttemptId applicationAttemptId,
       RMAppAttemptState rmAppAttemptFinalState, boolean keepContainers) {
@@ -1307,10 +1338,15 @@ public class CapacityScheduler extends
 
   @Override
   @Lock(Lock.NoLock.class)
-  public Allocation allocate(ApplicationAttemptId applicationAttemptId,
-      List<ResourceRequest> ask, List<SchedulingRequest> schedulingRequests,
-      List<ContainerId> release, List<String> blacklistAdditions,
-      List<String> blacklistRemovals, ContainerUpdates updateRequests) {
+  public Allocation allocate(ApplicationAttemptId applicationAttemptId,  //代表应用程序的尝试 ID
+      List<ResourceRequest> ask, //资源请求列表，表示应用程序对不同类型资源（如 CPU、内存等）的需求
+      List<SchedulingRequest> schedulingRequests, //用于调度的资源请求，支持更灵活的调度策略
+      List<ContainerId> release, //释放的容器列表，表示应用程序释放不再需要的资源
+      List<String> blacklistAdditions, //需要加入黑名单的节点列表，避免在这些节点上运行任务
+      List<String> blacklistRemovals, //需要从黑名单移除的节点列表。
+      ContainerUpdates updateRequests) { //容器更新请求，例如增加 CPU、内存等资源。
+
+    //获取应用程序实例
     FiCaSchedulerApp application = getApplicationAttempt(applicationAttemptId);
     if (application == null) {
       LOG.error("Calling allocate on removed or non existent application " +
@@ -1330,17 +1366,21 @@ public class CapacityScheduler extends
     }
 
     // Handle all container updates
+    //处理容器更新请求
     handleContainerUpdates(application, updateRequests);
 
     // Release containers
+    //释放不再需要的容器
     releaseContainers(release, application);
 
     AbstractLeafQueue updateDemandForQueue = null;
 
     // Sanity check for new allocation requests
+    //规范化资源请求
     normalizeResourceRequests(ask);
 
     // Normalize scheduling requests
+    //规范化调度请求
     normalizeSchedulingRequests(schedulingRequests);
 
     Allocation allocation;
@@ -1349,11 +1389,13 @@ public class CapacityScheduler extends
     // when the allocate comes in
     application.getWriteLock().lock();
     try {
+      //检查应用是否已经停止
       if (application.isStopped()) {
         return EMPTY_ALLOCATION;
       }
 
       // Process resource requests
+      //如果 ask 或 schedulingRequests 不是空
       if (!ask.isEmpty() || (schedulingRequests != null && !schedulingRequests
           .isEmpty())) {
         if (LOG.isDebugEnabled()) {
@@ -1364,6 +1406,7 @@ public class CapacityScheduler extends
         }
 
         // Update application requests
+        //更新应用的资源请求
         if (application.updateResourceRequests(ask) || application
             .updateSchedulingRequests(schedulingRequests)) {
           updateDemandForQueue = (AbstractLeafQueue) application.getQueue();
@@ -1374,15 +1417,15 @@ public class CapacityScheduler extends
           application.showRequests();
         }
       }
-
+      //更新黑名单
       application.updateBlacklist(blacklistAdditions, blacklistRemovals);
-
+      //获取最终分配的资源
       allocation = application.getAllocation(getResourceCalculator(),
           getClusterResource(), getMinimumResourceCapability());
     } finally {
       application.getWriteLock().unlock();
     }
-
+    //通知队列资源需求已更新
     if (updateDemandForQueue != null && !application
         .isWaitingForAMContainer()) {
       updateDemandForQueue.getOrderingPolicy().demandUpdated(application);
@@ -1425,7 +1468,9 @@ public class CapacityScheduler extends
 
     return getRootQueue().getQueueUserAclInfo(user);
   }
-
+  //更新调度器中关于某个节点的信息，处理节点的更新事件。
+  // 它首先执行一些时间记录与更新操作，然后根据调度配置决定是否进行调度工作。
+  // 如果配置要求同步调度（即不是异步调度），则执行资源分配并更新调度健康状况
   @Override
   protected void nodeUpdate(RMNode rmNode) {
     long begin = System.nanoTime();
@@ -1915,6 +1960,7 @@ public class CapacityScheduler extends
    * @param appAddedEvent The application add event with details about the app
    * @return The name of the queue the application should be added
    */
+  //根据应用添加事件解析出应用提交的队列名
   private String getAddedAppQueueName(AppAddedSchedulerEvent appAddedEvent) {
     //appAddedEvent uses the queue from ApplicationSubmissionContext but in
     //the case of CS it may be only a leaf name due to legacy reasons
@@ -1988,19 +2034,23 @@ public class CapacityScheduler extends
       nodeUpdate(nodeUpdatedEvent.getRMNode());
     }
     break;
+      //当应用程序被添加到调度器时，该方法会根据应用的状态（如是否为恢复中的应用）来决定如何将该应用程序添加到合适的队列
     case APP_ADDED:
     {
       AppAddedSchedulerEvent appAddedEvent = (AppAddedSchedulerEvent) event;
+      //基于应用程序的 ID、队列名称、预留 ID 以及应用是否恢复，解析出最终的队列名称
       String queueName = resolveReservationQueueName(
           getAddedAppQueueName(appAddedEvent), appAddedEvent.getApplicationId(),
           appAddedEvent.getReservationID(), appAddedEvent.getIsAppRecovering());
       if (queueName != null) {
         if (!appAddedEvent.getIsAppRecovering()) {
+          //添加应用到队列的逻辑
           addApplication(appAddedEvent.getApplicationId(), queueName,
               appAddedEvent.getUser(), appAddedEvent.getApplicatonPriority(),
               appAddedEvent.getPlacementContext(),
               appAddedEvent.isUnmanagedAM());
         } else {
+          //如果是恢复中的应用
           addApplicationOnRecovery(appAddedEvent.getApplicationId(), queueName,
               appAddedEvent.getUser(), appAddedEvent.getApplicatonPriority(),
               appAddedEvent.getPlacementContext(),
@@ -2009,6 +2059,7 @@ public class CapacityScheduler extends
       }
     }
     break;
+      //处理应用被删除的状态
     case APP_REMOVED:
     {
       AppRemovedSchedulerEvent appRemovedEvent = (AppRemovedSchedulerEvent)event;
@@ -2016,6 +2067,7 @@ public class CapacityScheduler extends
         appRemovedEvent.getFinalState());
     }
     break;
+      //应用尝试添加事件
     case APP_ATTEMPT_ADDED:
     {
       AppAttemptAddedSchedulerEvent appAttemptAddedEvent =
@@ -2025,6 +2077,7 @@ public class CapacityScheduler extends
         appAttemptAddedEvent.getIsAttemptRecovering());
     }
     break;
+      //应用尝试删除
     case APP_ATTEMPT_REMOVED:
     {
       AppAttemptRemovedSchedulerEvent appAttemptRemovedEvent =
@@ -2508,7 +2561,7 @@ public class CapacityScheduler extends
     queue.collectSchedulerApplications(apps);
     return apps;
   }
-
+  //判断是否达到了队列应用的数量限制
   public boolean isSystemAppsLimitReached() {
     if (getRootQueue().getNumApplications() < conf
         .getMaximumSystemApplications()) {
@@ -2520,22 +2573,26 @@ public class CapacityScheduler extends
   private String getDefaultReservationQueueName(String planQueueName) {
     return planQueueName + ReservationConstants.DEFAULT_QUEUE_SUFFIX;
   }
-
+  //主要作用是根据传入的队列名称、应用 ID、预留 ID 和恢复状态，解析并返回正确的队列名称。在调度系统中，如果应用程序属于预留（reservation）队列，
+  // 它会根据预留 ID 查找相应的队列。如果该队列不存在，或者是一个已过期的预留队列，方法将采取相应的处理措施
   private String resolveReservationQueueName(String queueName,
       ApplicationId applicationId, ReservationId reservationID,
       boolean isRecovering) {
     readLock.lock();
     try {
+      //根据名字从队列存储中获取队列
       CSQueue queue = getQueue(queueName);
       // Check if the queue is a plan queue
       if ((queue == null) || !(queue instanceof PlanQueue)) {
         return queueName;
       }
       if (reservationID != null) {
+        //如果 reservationID 不为空，说明应用程序属于预留队列。首先将 reservationID 转换为字符串 resQName，并通过该字符串获取对应的队列
         String resQName = reservationID.toString();
         queue = getQueue(resQName);
         if (queue == null) {
           // reservation has terminated during failover
+          //如果预留队列不存在，并且应用程序正在恢复，则根据配置决定是否将应用程序移到默认的子队列中
           if (isRecovering && conf.getMoveOnExpiry(
               getQueue(queueName).getQueuePath())) {
             // move to the default child queue of the plan

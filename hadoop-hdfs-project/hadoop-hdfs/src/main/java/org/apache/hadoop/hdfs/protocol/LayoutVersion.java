@@ -42,6 +42,7 @@ import org.apache.hadoop.classification.InterfaceAudience;
  * of the change. Please see {@link Feature} for further details.
  * <br>
  */
+//用于管理 HDFS 版本布局变化的类，它定义了 HDFS 的布局版本以及相关特性，并提供了一些方法来查询和维护这些信息
 @InterfaceAudience.Private
 public class LayoutVersion {
   /**
@@ -51,11 +52,13 @@ public class LayoutVersion {
    * workaround the issue. Otherwise we should consider it a corruption
    * and bail.
    */
+  //表示修复 HDFS-2991 问题的 HDFS 版本
   public static final int BUGFIX_HDFS_2991_VERSION = -40;
 
   /**
    * The interface to be implemented by NameNode and DataNode layout features 
    */
+  //布局特征
   public interface LayoutFeature {
     public FeatureInfo getInfo();
   }
@@ -74,6 +77,8 @@ public class LayoutVersion {
    * </li>
    * </ul>
    */
+  //用于表示 HDFS 不同布局版本（layout version）之间的特性（features）。
+  // 每个枚举值代表一个 HDFS 版本的特性变更，例如支持新的文件系统功能、数据结构优化等
   public enum Feature implements LayoutFeature {
     NAMESPACE_QUOTA(-16, "Support for namespace quotas"),
     FILE_ACCESS_TIME(-17, "Support for access time on files"),
@@ -126,7 +131,7 @@ public class LayoutVersion {
     EXTENDED_ACL(-53, "Extended ACL"),
     RESERVED_REL2_4_0(-54, -51, "Reserved for release 2.4.0", true,
         PROTOBUF_FORMAT, EXTENDED_ACL);
-
+    //每个 Feature 枚举常量都对应一个 FeatureInfo 实例，存储该特性的详细信息
     private final FeatureInfo info;
 
     /**
@@ -147,6 +152,9 @@ public class LayoutVersion {
      *        version
      * @param features set of features that are to be enabled for this version
      */
+    //lv：当前特性的布局版本号（通常是负数，如 -16）
+    //ancestorLV 默认设为 lv + 1，表示新特性是从 lv + 1 版本演变而来的
+    //reserved 设为 false，即该特性不是为旧版本保留的
     Feature(final int lv, final int ancestorLV, final String description,
         boolean reserved, Feature... features) {
       info = new FeatureInfo(lv, ancestorLV, description, reserved, features);
@@ -160,11 +168,17 @@ public class LayoutVersion {
   
   /** Feature information. */
   public static class FeatureInfo {
+    //表示当前特性的布局版本号（layout version），每次 HDFS 存储格式发生变化，都会引入一个新的布局版本号，用于追踪具体的变更
     private final int lv;
+    //表示该特性的“祖先”布局版本号，即该特性是从哪个布局版本演变而来的
     private final int ancestorLV;
+    //该特性的最小兼容布局版本号
     private final Integer minCompatLV;
+    //描述该特性的具体变化或新增功能
     private final String description;
+    //标识该特性是否为保留版本（是否专门为兼容旧版本而设计）
     private final boolean reserved;
+    //存储该特性所依赖的其他特性集合
     private final LayoutFeature[] specialFeatures;
 
     public FeatureInfo(final int lv, final int ancestorLV, final String description,
@@ -228,7 +242,7 @@ public class LayoutVersion {
       return specialFeatures;
     }
   }
-
+  //通过版本号比较
   static class LayoutFeatureComparator implements Comparator<LayoutFeature> {
     @Override
     public int compare(LayoutFeature arg0, LayoutFeature arg1) {
@@ -236,21 +250,28 @@ public class LayoutVersion {
           - arg1.getInfo().getLayoutVersion();
     }
   }
- 
+  //更新 map，将 LayoutFeature 数组中的每个特性与其支持的布局版本（LayoutVersion）建立映射关系。
+  // 该映射关系记录了不同布局版本所支持的特性集（SortedSet<LayoutFeature>）
+  //map：类型为 Map<Integer, SortedSet<LayoutFeature>>，表示布局版本与特性集的映射关系，方法会在此基础上进行更新
+  //features：类型为 LayoutFeature[]，需要处理的一组布局特性枚举常量
   public static void updateMap(Map<Integer, SortedSet<LayoutFeature>> map,
       LayoutFeature[] features) {
     // Go through all the enum constants and build a map of
     // LayoutVersion <-> Set of all supported features in that LayoutVersion
+    //构建已有特性集合
     SortedSet<LayoutFeature> existingFeatures = new TreeSet<LayoutFeature>(
         new LayoutFeatureComparator());
     for (SortedSet<LayoutFeature> s : map.values()) {
       existingFeatures.addAll(s);
     }
+    //记录前一个特性
     LayoutFeature prevF = existingFeatures.isEmpty() ? null :
         existingFeatures.first();
+    //遍历新特性数组
     for (LayoutFeature f : features) {
       final FeatureInfo info = f.getInfo();
       int minCompatLV = info.getMinimumCompatibleLayoutVersion();
+      //检查特性顺序是否合法
       if (prevF != null &&
           minCompatLV > prevF.getInfo().getMinimumCompatibleLayoutVersion()) {
         throw new AssertionError(String.format(
@@ -258,12 +279,14 @@ public class LayoutVersion {
             "version.  Check features %s and %s.", prevF, f));
       }
       prevF = f;
+      //获取祖先布局版本的特性集
       SortedSet<LayoutFeature> ancestorSet = map.get(info.getAncestorLayoutVersion());
       if (ancestorSet == null) {
         // Empty set
         ancestorSet = new TreeSet<LayoutFeature>(new LayoutFeatureComparator());
         map.put(info.getAncestorLayoutVersion(), ancestorSet);
       }
+      //构建当前布局版本的特性集
       SortedSet<LayoutFeature> featureSet = new TreeSet<LayoutFeature>(ancestorSet);
       if (info.getSpecialFeatures() != null) {
         for (LayoutFeature specialFeature : info.getSpecialFeatures()) {
@@ -305,13 +328,17 @@ public class LayoutVersion {
    * @param lv LayoutVersion
    * @return true if {@code f} is supported in layout version {@code lv}
    */
+  //于判断某个 LayoutFeature 是否受支持，依据的是给定的**布局版本（layout version，lv）**是否包含该特性
+  //map 用于存储布局版本与其支持的 LayoutFeature 集合的映射关系
+  //f：类型为 LayoutFeature，需要检查是否支持的特性
+  //lv：类型为 int，表示要查询的布局版本（layout version）
   public static boolean supports(Map<Integer, SortedSet<LayoutFeature>> map,
       final LayoutFeature f, final int lv) {
     final SortedSet<LayoutFeature> set =  map.get(lv);
     return set != null && set.contains(f);
   }
   
-  /**
+  /**获取当前版本号
    * Get the current layout version
    */
   public static int getCurrentLayoutVersion(LayoutFeature[] features) {
@@ -320,7 +347,7 @@ public class LayoutVersion {
 
   /**
    * Gets the minimum compatible layout version.
-   *
+   *获取最新版本的最小兼容版本号
    * @param features all features to check
    * @return minimum compatible layout version
    */
@@ -329,8 +356,10 @@ public class LayoutVersion {
     return getLastNonReservedFeature(features).getInfo()
         .getMinimumCompatibleLayoutVersion();
   }
-
+  //用于从 LayoutFeature 对象数组中获取最后一个（最新的）非保留特性
+  //features：一个 LayoutFeature 类型的数组，表示要搜索的特性列表
   static LayoutFeature getLastNonReservedFeature(LayoutFeature[] features) {
+    //通过从后向前遍历数组，确保找到的是最新的非保留特性
     for (int i = features.length -1; i >= 0; i--) {
       final FeatureInfo info = features[i].getInfo();
       if (!info.isReservedForOldRelease()) {

@@ -25,11 +25,13 @@ import org.apache.hadoop.yarn.util.resource.Resources;
  * Generic class capturing the information required commonly across Partitions
  * and Attributes.
  */
+//表示节点标签的资源信息和活跃节点数量。它提供了管理和操作节点标签所需的通用功能，包括更新标签的资源和节点数量。
+// 该类通常在节点标签的管理中被用于更高层次的操作，如节点的增加和移除，以及资源的累加和减少
 public abstract class AbstractLabel {
 
-  private Resource resource;
-  private int numActiveNMs;
-  private String labelName;
+  private Resource resource;//表示与节点标签关联的资源
+  private int numActiveNMs;//表示与节点标签关联的活跃节点管理器（NodeManager）的数量
+  private String labelName;//表示标签的名称
 
   public AbstractLabel() {
     super();

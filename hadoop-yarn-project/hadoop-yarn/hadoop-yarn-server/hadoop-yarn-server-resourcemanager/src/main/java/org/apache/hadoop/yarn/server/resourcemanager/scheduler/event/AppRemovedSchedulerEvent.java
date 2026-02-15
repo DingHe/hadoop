@@ -20,10 +20,11 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler.event;
 
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppState;
-
+//应用被删除事件
 public class AppRemovedSchedulerEvent extends SchedulerEvent {
-
+  //应用ID
   private final ApplicationId applicationId;
+  //状态
   private final RMAppState finalState;
 
   public AppRemovedSchedulerEvent(ApplicationId applicationId,

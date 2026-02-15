@@ -47,7 +47,7 @@ import org.slf4j.LoggerFactory;
 import static org.apache.hadoop.fs.Options.OpenFileOptions.FS_OPTION_OPENFILE_SPLIT_END;
 import static org.apache.hadoop.fs.Options.OpenFileOptions.FS_OPTION_OPENFILE_SPLIT_START;
 
-/**
+/** 负责逐行读取文本文件，并将行号作为键（LongWritable），行内容作为值（Text）
  * Treats keys as offset in file and value as line. 
  */
 @InterfaceAudience.LimitedPrivate({"MapReduce", "Pig"})
@@ -58,18 +58,18 @@ public class LineRecordReader extends RecordReader<LongWritable, Text> {
   public static final String MAX_LINE_LENGTH = 
     "mapreduce.input.linerecordreader.line.maxlength";
 
-  private long start;
-  private long pos;
-  private long end;
-  private SplitLineReader in;
-  private FSDataInputStream fileIn;
-  private Seekable filePosition;
-  private int maxLineLength;
+  private long start; //当前输入分片（split）的起始位置，字节偏移量
+  private long pos; //当前读取文件的位置，表示已处理到的字节位置
+  private long end; //当前 split 的结束偏移量（字节）
+  private SplitLineReader in; //处理行读取的核心工具类，负责按行读取输入数据，支持压缩和非压缩文件
+  private FSDataInputStream fileIn; //表示 Hadoop 文件系统的输入流
+  private Seekable filePosition; //记录当前输入流的位置
+  private int maxLineLength; //最大允许的行长度
   private LongWritable key;
   private Text value;
-  private boolean isCompressedInput;
-  private Decompressor decompressor;
-  private byte[] recordDelimiterBytes;
+  private boolean isCompressedInput; //是否为压缩输入
+  private Decompressor decompressor; //解压缩器对象，若输入数据是压缩格式，则使用该对象解压
+  private byte[] recordDelimiterBytes; //用户定义的行分隔符（默认为 \n）
 
   public LineRecordReader() {
   }

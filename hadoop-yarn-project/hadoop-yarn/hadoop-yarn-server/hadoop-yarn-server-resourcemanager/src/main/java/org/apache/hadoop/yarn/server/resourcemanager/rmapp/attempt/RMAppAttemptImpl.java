@@ -1036,7 +1036,8 @@ public class RMAppAttemptImpl implements RMAppAttempt, Recoverable {
     setAMRMToken(rmContext.getAMRMTokenSecretManager().createAndGetAMRMToken(
         applicationAttemptId));
   }
-
+  // RMAppAttemptImpl（即资源管理器应用尝试）的状态机转移的一个基本实现。
+  // 状态机转移用于处理在应用尝试过程中的不同事件，定义了当特定事件发生时，如何改变应用的状态
   private static class BaseTransition implements
       SingleArcTransition<RMAppAttemptImpl, RMAppAttemptEvent> {
 
@@ -1046,12 +1047,13 @@ public class RMAppAttemptImpl implements RMAppAttempt, Recoverable {
     }
 
   }
-
+  //负责处理应用尝试（RMAppAttempt）启动状态的转移。
+  // 该类在应用尝试开始时进行一系列的初始化操作，包括注册应用尝试、创建安全令牌、添加应用尝试到调度器等
   private static final class AttemptStartedTransition extends BaseTransition {
 	@Override
     public void transition(RMAppAttemptImpl appAttempt,
         RMAppAttemptEvent event) {
-
+      //表示是否需要将应用尝试的状态从上次尝试转移到当前尝试
 	    boolean transferStateFromPreviousAttempt = false;
       if (event instanceof RMAppStartAttemptEvent) {
         transferStateFromPreviousAttempt =
@@ -1061,9 +1063,10 @@ public class RMAppAttemptImpl implements RMAppAttempt, Recoverable {
       appAttempt.startTime = System.currentTimeMillis();
 
       // Register with the ApplicationMasterService
+      //向 ApplicationMasterService 注册当前的应用尝试
       appAttempt.masterService
           .registerAppAttempt(appAttempt.applicationAttemptId);
-
+      //检查是否启用了安全性（例如 Kerberos）。如果启用了安全性，则需要为应用尝试生成安全令牌
       if (UserGroupInformation.isSecurityEnabled()) {
         appAttempt.clientTokenMasterKey =
             appAttempt.rmContext.getClientToAMTokenSecretManager()
@@ -1072,6 +1075,7 @@ public class RMAppAttemptImpl implements RMAppAttempt, Recoverable {
 
       // Add the applicationAttempt to the scheduler and inform the scheduler
       // whether to transfer the state from previous attempt.
+      //将应用尝试添加到调度器中
       appAttempt.eventHandler.handle(new AppAttemptAddedSchedulerEvent(
         appAttempt.applicationAttemptId, transferStateFromPreviousAttempt));
     }
@@ -1091,6 +1095,7 @@ public class RMAppAttemptImpl implements RMAppAttempt, Recoverable {
     public RMAppAttemptState transition(RMAppAttemptImpl appAttempt,
         RMAppAttemptEvent event) {
       ApplicationSubmissionContext subCtx = appAttempt.submissionContext;
+      //检查是否为 unmanagedAM（非托管 AM）
       if (!subCtx.getUnmanagedAM()) {
         // Need reset #containers before create new attempt, because this request
         // will be passed to scheduler, and scheduler will deduct the number after
@@ -1100,10 +1105,11 @@ public class RMAppAttemptImpl implements RMAppAttempt, Recoverable {
         // TODO: change these fields when we want to support
         // priority or multiple containers AM container allocation.
         for (ResourceRequest amReq : appAttempt.amReqs) {
+          //重置 AM 资源请求的 numContainers 和 priority
           amReq.setNumContainers(1);
           amReq.setPriority(AM_CONTAINER_PRIORITY);
         }
-
+        //计算适合运行 AM 的节点数量，用于后续调度决策
         int numNodes =
             RMServerUtils.getApplicableNodeCountForAM(appAttempt.rmContext,
                 appAttempt.conf, appAttempt.amReqs);
@@ -1121,6 +1127,7 @@ public class RMAppAttemptImpl implements RMAppAttempt, Recoverable {
         for (ResourceRequest amReq : appAttempt.amReqs) {
           if (amReq.getNodeLabelExpression() == null && ResourceRequest.ANY
               .equals(amReq.getResourceName())) {
+            //遍历 AM 的资源请求，检查是否缺少 NodeLabelExpression（节点标签表达式
             String queue = appAttempt.rmApp.getQueue();
 
             //Load queue only once since queue will be same across attempts
@@ -1150,6 +1157,7 @@ public class RMAppAttemptImpl implements RMAppAttempt, Recoverable {
             if (queueInfo != null) {
               LOG.debug("Setting default node label expression : {}",
                   queueInfo.getDefaultNodeLabelExpression());
+              //使用默认的 NodeLabelExpression
               labelExp = queueInfo.getDefaultNodeLabelExpression();
             }
 
@@ -1159,16 +1167,20 @@ public class RMAppAttemptImpl implements RMAppAttempt, Recoverable {
 
         // AM resource has been checked when submission
         Allocation amContainerAllocation =
+            //请求调度器分配 AM 资源
             appAttempt.scheduler.allocate(
-                appAttempt.applicationAttemptId,
-                appAttempt.amReqs, null, EMPTY_CONTAINER_RELEASE_LIST,
-                amBlacklist.getBlacklistAdditions(),
+                appAttempt.applicationAttemptId,//应用尝试 ID
+                appAttempt.amReqs,//AM 资源请求列表
+                null,
+                EMPTY_CONTAINER_RELEASE_LIST, //空的容器释放列表
+                amBlacklist.getBlacklistAdditions(), //黑名单更新信息，包括新增和移除的黑名单节点
                 amBlacklist.getBlacklistRemovals(),
                 new ContainerUpdates());
         if (amContainerAllocation != null
             && amContainerAllocation.getContainers() != null) {
           assert (amContainerAllocation.getContainers().size() == 0);
         }
+        //记录调度时间并返回 SCHEDULED 状态
         appAttempt.scheduledTime = System.currentTimeMillis();
         return RMAppAttemptState.SCHEDULED;
       } else {

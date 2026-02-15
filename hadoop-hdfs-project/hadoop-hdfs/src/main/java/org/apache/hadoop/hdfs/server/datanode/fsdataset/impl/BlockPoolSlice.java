@@ -89,43 +89,46 @@ import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.FS_GETSPACEUSED
  *
  * This class is synchronized by {@link FsVolumeImpl}.
  */
+//表示存储在一个数据卷（volume）上的一个区块池的一个切片（slice）
+//多个 BlockPoolSlice 实例在集群中共享同一个块池 ID，合起来代表了一个完整的块池
+//主要负责块池数据的存储和管理，提供关于块的存储路径管理、存储空间使用等功能，并与数据节点的存储目录（如已完成块、临时块、正在写入的块等）相关联
 public class BlockPoolSlice {
   static final Logger LOG = LoggerFactory.getLogger(BlockPoolSlice.class);
 
-  private final String bpid;
-  private final FsVolumeImpl volume; // volume to which this BlockPool belongs to
-  private final File currentDir; // StorageDirectory/current/bpid/current
+  private final String bpid; //块池 ID，用于标识块池
+  private final FsVolumeImpl volume; // volume to which this BlockPool belongs to 当前块池切片所在的卷（FsVolumeImpl）。该卷表示存储设备（如硬盘）上的数据目录
+  private final File currentDir; // StorageDirectory/current/bpid/current 存储块池数据的当前目录，路径为 StorageDirectory/current/bpid/current
   // directory where finalized replicas are stored
-  private final File finalizedDir;
-  private final File lazypersistDir;
-  private final File rbwDir; // directory store RBW replica
-  private final File tmpDir; // directory store Temporary replica
-  private final int ioFileBufferSize;
+  private final File finalizedDir; //存储最终完成的块的目录，路径为 currentDir/StorageDirectory/STORAGE_DIR_FINALIZED
+  private final File lazypersistDir; //存储“懒保存”块的目录
+  private final File rbwDir; // directory store RBW replica 存储“正在写入”块的目录（RBW，即正在写入的块）
+  private final File tmpDir; // directory store Temporary replica 存储临时块的目录
+  private final int ioFileBufferSize; //IO操作时文件缓冲区的大小
   @VisibleForTesting
   public static final String DU_CACHE_FILE = "dfsUsed";
-  private final Runnable shutdownHook;
-  private volatile boolean dfsUsedSaved = false;
+  private final Runnable shutdownHook; //应用关闭时的钩子，用于在关闭时保存 DFS 使用情况（dfsUsed）
+  private volatile boolean dfsUsedSaved = false; //标志变量，表示是否已经保存了 DFS 使用情况
   private static final int SHUTDOWN_HOOK_PRIORITY = 30;
 
   /**
    * Only tests are allowed to modify the value. For source code,
    * this should be treated as final only.
    */
-  private boolean deleteDuplicateReplicas;
+  private boolean deleteDuplicateReplicas; //是否删除重复的副本
   private static final String REPLICA_CACHE_FILE = "replicas";
-  private final long replicaCacheExpiry;
-  private final File replicaCacheDir;
-  private AtomicLong numOfBlocks = new AtomicLong();
-  private final long cachedDfsUsedCheckTime;
+  private final long replicaCacheExpiry;//副本缓存过期时间
+  private final File replicaCacheDir; //副本缓存目录
+  private AtomicLong numOfBlocks = new AtomicLong(); //块的数量
+  private final long cachedDfsUsedCheckTime; //缓存的 DFS 使用检查时间
   private final Timer timer;
-  private final int maxDataLength;
-  private final FileIoProvider fileIoProvider;
+  private final int maxDataLength; //IPC 最大数据长度
+  private final FileIoProvider fileIoProvider;//文件 IO 提供者
   private final Configuration config;
-  private final File bpDir;
+  private final File bpDir;//块池的根目录
 
-  private static ForkJoinPool addReplicaThreadPool = null;
+  private static ForkJoinPool addReplicaThreadPool = null; //用于处理副本添加的线程池
   private static final int VOLUMES_REPLICA_ADD_THREADPOOL_SIZE = Runtime
-      .getRuntime().availableProcessors();
+      .getRuntime().availableProcessors(); //副本添加线程池的大小
   private static final Comparator<File> FILE_COMPARATOR =
       new Comparator<File>() {
     @Override
@@ -135,7 +138,7 @@ public class BlockPoolSlice {
   };
 
   // TODO:FEDERATION scalability issue - a thread per DU is needed
-  private volatile GetSpaceUsed dfsUsage;
+  private volatile GetSpaceUsed dfsUsage; //用于获取 DFS 使用情况的对象，提供存储空间使用的信息
 
   /**
    * Create a blook pool slice

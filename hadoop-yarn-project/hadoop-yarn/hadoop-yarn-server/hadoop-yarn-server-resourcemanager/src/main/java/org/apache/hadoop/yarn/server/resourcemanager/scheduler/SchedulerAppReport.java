@@ -28,13 +28,14 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainer;
  * Represents an application attempt, and the resources that the attempt is 
  * using.
  */
+//YARN 资源调度器（Scheduler）中某个应用尝试（Application Attempt）的状态报告，主要用于记录该尝试正在使用的资源
 @Evolving
 @LimitedPrivate("yarn")
 public class SchedulerAppReport {
   
-  private final Collection<RMContainer> live;
-  private final Collection<RMContainer> reserved;
-  private final boolean pending;
+  private final Collection<RMContainer> live;//当前运行的容器集合，表示该应用尝试正在使用的容器
+  private final Collection<RMContainer> reserved;//预留的容器集合，表示该应用尝试为未来任务预留的资源
+  private final boolean pending;//应用尝试是否处于等待状态，若为 true，则表示该应用仍在等待资源分配
   
   public SchedulerAppReport(SchedulerApplicationAttempt app) {
     this.live = app.getLiveContainers();

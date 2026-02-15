@@ -31,7 +31,7 @@ import org.apache.hadoop.classification.InterfaceStability;
 public interface ResourceManagerMXBean {
   /**
    * Gets if security is enabled.
-   *
+   * 安全是否启动
    * @return true, if security is enabled.
    * */
   boolean isSecurityEnabled();

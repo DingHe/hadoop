@@ -20,7 +20,7 @@ package org.apache.hadoop.fs.permission;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 
-/**
+/** 表示 Hadoop 文件系统中 ACL（Access Control List，访问控制列表）条目的类型。ACL 是一种细粒度的权限控制机制，允许对文件和目录的访问进行更精确的控制
  * Specifies the type of an ACL entry.
  */
 @InterfaceAudience.Public
@@ -31,14 +31,14 @@ public enum AclEntryType {
    * which applies to the file owner, or named, which applies to the specific
    * named user.
    */
-  USER,
+  USER,//针对特定用户的 ACL 条目。可以是未命名（适用于文件的所有者）或命名（适用于指定用户
 
   /**
    * An ACL entry applied to a specific group.  These ACL entries can be
    * unnamed, which applies to the file's group, or named, which applies to the
    * specific named group.
    */
-  GROUP,
+  GROUP,//针对特定用户组的 ACL 条目。可以是未命名（适用于文件所属组）或命名（适用于特定的用户组）
 
   /**
    * An ACL mask entry.  Mask entries are unnamed.  During permission checks,
@@ -48,13 +48,13 @@ public enum AclEntryType {
    * absent from the mask entry are removed from the effective permissions used
    * during the permission check.
    */
-  MASK,
+  MASK,//掩码条目，用于限制特定用户和组的有效权限。它与组类成员的权限交互，决定最终的有效权限
 
   /**
    * An ACL entry that applies to all other users that were not covered by one
    * of the more specific ACL entry types.
    */
-  OTHER;
+  OTHER;//适用于所有其他未被USER或GROUP明确覆盖的用户的 ACL 条目
 
   @Override
   @InterfaceStability.Unstable

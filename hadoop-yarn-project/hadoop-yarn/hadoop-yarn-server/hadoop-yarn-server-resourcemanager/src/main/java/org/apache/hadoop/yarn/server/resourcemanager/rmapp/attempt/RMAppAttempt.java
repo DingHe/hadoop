@@ -48,24 +48,37 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
  * {@link YarnConfiguration#RM_AM_MAX_ATTEMPTS}. For specific
  * implementation take a look at {@link RMAppAttemptImpl}.
  */
+//RMAppAttempt 主要负责：
+//维护应用尝试的 状态（如 NEW, RUNNING, FAILED, FINISHED 等）。
+//记录应用尝试的 运行信息（如 ApplicationAttemptId, 运行节点 NodeId，RPC 端口等）。
+//管理与 Application Master（AM） 相关的资源，如：
+//AM 的运行容器（Container）
+//AM 进程的状态（FinalApplicationStatus）
+//AM 资源使用报告（ApplicationResourceUsageReport）
+//处理 安全认证 相关内容，如 AM 与 RM 之间的认证 AMRMToken 和 Client 访问 AM 的认证 ClientToAMToken。
+//维护 调度信息，如黑名单管理（BlacklistManager），已完成的容器列表（ContainerStatus）。
+//生成 应用尝试的报告（ApplicationAttemptReport），用于向外部用户提供状态信息。
 public interface RMAppAttempt extends EventHandler<RMAppAttemptEvent> {
 
   /**
    * Get the application attempt id for this {@link RMAppAttempt}.
    * @return the {@link ApplicationAttemptId} for this RM attempt.
    */
+  //获取应用尝试 ID
   ApplicationAttemptId getAppAttemptId();
 
   /**
    * The state of the {@link RMAppAttempt}.
    * @return the state {@link RMAppAttemptState} of this {@link RMAppAttempt}
    */
+  //获取当前应用尝试的状态
   RMAppAttemptState getAppAttemptState();
 
   /**
    * The host on which the {@link RMAppAttempt} is running/ran on.
    * @return the host on which the {@link RMAppAttempt} ran/is running on.
    */
+  //获取 AM 运行的节点
   String getHost();
 
   /**
@@ -73,12 +86,14 @@ public interface RMAppAttempt extends EventHandler<RMAppAttemptEvent> {
    * @return the rpc port of the {@link RMAppAttempt} to which the clients can connect
    * to.
    */
+  //获取 AM 的 RPC 端口
   int getRpcPort();
 
   /**
    * The url at which the status of the application attempt can be accessed.
    * @return the url at which the status of the attempt can be accessed.
    */
+  //获取应用的 Web 追踪 URL
   String getTrackingUrl();
 
   /**
@@ -88,6 +103,7 @@ public interface RMAppAttempt extends EventHandler<RMAppAttemptEvent> {
    * @return the url at which the status of the attempt can be accessed and is
    * not fronted by a proxy.
    */
+  //获取 AM 原始 Web URL
   String getOriginalTrackingUrl();
 
   /**
@@ -101,12 +117,14 @@ public interface RMAppAttempt extends EventHandler<RMAppAttemptEvent> {
    * Diagnostics information for the application attempt.
    * @return diagnostics information for the application attempt.
    */
+  //获取诊断信息
   String getDiagnostics();
 
   /**
    * Progress for the application attempt.
    * @return the progress for this {@link RMAppAttempt}
    */
+  //获取应用尝试的进度	，取值 0.0 - 1.0，表示任务完成度
   float getProgress();
 
   /**
@@ -114,6 +132,7 @@ public interface RMAppAttempt extends EventHandler<RMAppAttemptEvent> {
    * @return the final status that is set by the AM when unregistering itself. Can return a null 
    * if the AM has not unregistered itself. 
    */
+  //获取应用的最终状态
   FinalApplicationStatus getFinalApplicationStatus();
 
   /**
@@ -121,6 +140,7 @@ public interface RMAppAttempt extends EventHandler<RMAppAttemptEvent> {
    * finished containers to empty.
    * @return the list of just finished containers, re setting the finished containers.
    */
+  //返回最近完成的容器列表，并清空列表
   List<ContainerStatus> pullJustFinishedContainers();
 
   /**
@@ -129,6 +149,7 @@ public interface RMAppAttempt extends EventHandler<RMAppAttemptEvent> {
    * @return the list of just finished containers, this does not reset the
    * finished containers.
    */
+  //只是返回已完成的容器列表，不清空数据
   ConcurrentMap<NodeId, List<ContainerStatus>>
       getJustFinishedContainersReference();
 

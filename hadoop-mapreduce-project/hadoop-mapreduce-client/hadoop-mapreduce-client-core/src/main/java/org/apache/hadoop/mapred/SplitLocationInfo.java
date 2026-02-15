@@ -20,13 +20,13 @@ package org.apache.hadoop.mapred;
 
 import org.apache.hadoop.classification.InterfaceAudience.Public;
 import org.apache.hadoop.classification.InterfaceStability.Evolving;
-
+//描述 输入数据切片（InputSplit） 在不同存储介质（如磁盘、内存）上的位置信息
 @Public
 @Evolving
 public class SplitLocationInfo {
-  private boolean inMemory;
-  private String location;
-  
+  private boolean inMemory; // 标识数据是否存储在 内存 中，true 表示在内存中，false 表示不在内存。
+  private String location; // 存储该数据切片的 节点名称（如 DataNode 主机名或 IP 地址）。
+
   public SplitLocationInfo(String location, boolean inMemory) {
     this.location = location;
     this.inMemory = inMemory;

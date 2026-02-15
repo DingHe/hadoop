@@ -47,18 +47,24 @@ import org.apache.hadoop.classification.VisibleForTesting;
  * Common node sorting class which will do sorting based on policy spec.
  * @param <N> extends SchedulerNode.
  */
+//用于对 SchedulerNode 进行排序的通用类。它基于不同的策略（policy）对多个节点进行排序，以便优化调度决策
 public class MultiNodeSorter<N extends SchedulerNode> extends AbstractService {
-
+  //存储具体的多节点查找和排序策略
+  //该策略用于对多个 SchedulerNode 进行排序，并刷新节点集合
   private MultiNodeLookupPolicy<N> multiNodePolicy;
   private static final Logger LOG =
       LoggerFactory.getLogger(MultiNodeSorter.class);
 
   // ScheduledExecutorService which schedules the PreemptionChecker to run
   // periodically.
+  //线程池，用于定期执行排序任务
   private ScheduledExecutorService ses;
+  //存储调度任务的句柄，用于控制排序任务的启动和停止
   private ScheduledFuture<?> handler;
+  //标记 MultiNodeSorter 是否已停止，volatile 保证多线程可见性
   private volatile boolean stopped;
   private RMContext rmContext;
+  //存储排序策略的配置，包括策略名称和排序间隔
   private MultiNodePolicySpec policySpec;
 
   public MultiNodeSorter(RMContext rmContext,
@@ -123,20 +129,23 @@ public class MultiNodeSorter<N extends SchedulerNode> extends AbstractService {
     }
     super.serviceStop();
   }
-
+  //主要作用是 基于节点标签（Node Labels）对集群中的 SchedulerNode 进行重新排序，并将排序后的节点集合更新到 multiNodePolicy 中
   @SuppressWarnings("unchecked")
   @VisibleForTesting
   public void reSortClusterNodes() {
     Set<String> nodeLabels = new HashSet<>();
+    //获取集群的所有节点标签（包括默认的 NO_LABEL）
     nodeLabels
         .addAll(rmContext.getNodeLabelManager().getClusterNodeLabelNames());
     nodeLabels.add(RMNodeLabelsManager.NO_LABEL);
     for (String label : nodeLabels) {
       Map<NodeId, SchedulerNode> nodesByPartition = new HashMap<>();
+      //获取该标签下的所有 SchedulerNode
       List<SchedulerNode> nodes = ((AbstractYarnScheduler) rmContext
           .getScheduler()).getNodeTracker().getNodesPerPartition(label);
       if (nodes != null) {
         nodes.forEach(n -> nodesByPartition.put(n.getNodeID(), n));
+        //更新 multiNodePolicy，将当前标签下的节点集合传递给 multiNodePolicy 进行存储和刷新
         multiNodePolicy.addAndRefreshNodesSet(
             (Collection<N>) nodesByPartition.values(), label);
       }

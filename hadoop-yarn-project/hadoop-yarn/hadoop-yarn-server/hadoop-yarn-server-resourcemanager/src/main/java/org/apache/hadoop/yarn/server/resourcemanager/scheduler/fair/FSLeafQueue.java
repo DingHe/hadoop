@@ -47,7 +47,9 @@ import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerApplicat
 import org.apache.hadoop.yarn.util.resource.Resources;
 
 import static org.apache.hadoop.yarn.util.resource.Resources.none;
-
+//FSLeafQueue 类是 Apache Hadoop YARN 的公平调度器（Fair Scheduler）中的一个队列类，它代表了一个叶子队列。
+// 在资源管理器（Resource Manager）中，队列结构是树状的，FSLeafQueue 作为叶子队列，负责处理单个应用程序的调度请求，
+// 管理该队列中各个应用的资源需求和分配，支持公平共享和最小共享策略
 @Private
 @Unstable
 public class FSLeafQueue extends FSQueue {
@@ -58,23 +60,28 @@ public class FSLeafQueue extends FSQueue {
   private FSContext context;
 
   // apps that are runnable
+  //存储当前可以调度的应用（即可运行的应用）。这些应用的资源需求被调度器考虑
   private final List<FSAppAttempt> runnableApps = new ArrayList<>();
+  //存储当前不可运行的应用。这些应用在某些条件下不可调度，通常是由于资源不足或被暂停
   private final List<FSAppAttempt> nonRunnableApps = new ArrayList<>();
   // assignedApps keeps track of applications that have no appAttempts
+  //用于跟踪没有应用尝试的应用，这些应用已经分配了队列，但尚未启动应用尝试
   private final Set<ApplicationId> assignedApps = new HashSet<>();
   // get a lock with fair distribution for app list updates
   private final ReadWriteLock rwl = new ReentrantReadWriteLock(true);
   private final Lock readLock = rwl.readLock();
   private final Lock writeLock = rwl.writeLock();
-  
+  //表示当前队列的资源需求。它是通过计算所有应用的资源需求而得出的
   private Resource demand = Resources.createResource(0);
   
   // Variables used for preemption
+  //记录上次队列处于最小共享状态的时间
   private long lastTimeAtMinShare;
 
   // Track the AM resource usage for this queue
+  //表示当前队列的 AM（Application Master）资源使用情况
   private Resource amResourceUsage;
-
+  //管理活跃用户的信息和资源使用
   private final ActiveUsersManager activeUsersManager;
 
   public FSLeafQueue(String name, FairScheduler scheduler,

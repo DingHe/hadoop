@@ -25,6 +25,12 @@ import org.apache.hadoop.yarn.api.records.Resource;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+//SchedulerHealth 类用于记录和跟踪YARN资源调度器的健康状态及操作信息。该类主要负责：
+//记录调度器的最新运行时间戳
+//记录上一次调度运行时分配、预留、释放的资源情况
+//记录最近的资源分配、释放、预留、抢占操作的详细信息
+//统计最近的资源操作次数
+//统计自资源管理器（ResourceManager, RM）启动以来累计的资源操作次数
 /**
  * SchedulerHealth class holds the details of the schedulers operations.
  *
@@ -83,15 +89,24 @@ public class SchedulerHealth {
     }
   }
 
+  //ALLOCATION（资源分配）：调度器为某个应用分配资源的操作
+  //RELEASE（资源释放）：调度器回收已分配资源的操作
+  //PREEMPTION（资源抢占）：调度器强制从低优先级任务回收资源，以分配给更高优先级任务的操作
+  //RESERVATION（资源保留）：调度器为某个应用保留资源的操作，以便未来使用
+  //FULFILLED_RESERVATION（满足资源保留）：某个应用的资源保留最终被成功使用的操作
   enum Operation {
     ALLOCATION, RELEASE, PREEMPTION, RESERVATION, FULFILLED_RESERVATION
   }
-
+  //记录上一次调度器运行的时间戳
   private long lastSchedulerRunTime;
+  //存储上一次调度运行时各类操作（如分配、预留等）涉及的 Resource（资源）
   private Map<Operation, Resource> lastSchedulerRunDetails;
+  //存储最近一次的资源分配、释放、预留、抢占的详细信息
   private Map<Operation, DetailedInformation> lastSchedulerHealthDetails;
+  //存储调度器最近一次运行时各类操作（如分配、释放）的计数
   private Map<Operation, Long> schedulerOperationCounts;
   // this is for counts since the RM started, never reset
+  //存储自 RM 启动以来各类操作（如分配、释放）的累计计数，不会被重置
   private Map<Operation, Long> schedulerOperationAggregateCounts;
 
   SchedulerHealth() {

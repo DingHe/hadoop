@@ -29,6 +29,10 @@ import org.apache.hadoop.yarn.util.Records;
  * Contains all the state data that needs to be stored persistently 
  * for {@link AMRMTokenSecretManager}
  */
+//管理 Application Master（AM） 与 Resource Manager（RM） 之间的 Token 相关密钥状态。
+// 这个类负责存储 当前主密钥 和 下一个主密钥，确保 AM-RM Token 的安全性和可续性
+  //提供一个持久化存储机制，确保 AMRMTokenSecretManager 的密钥状态可以在 RM 重启后恢复
+  //维护当前使用的密钥 (currentMasterKey) 和下一个即将生效的密钥 (nextMasterKey)
 @Public
 @Unstable
 public abstract class AMRMTokenSecretManagerState {
@@ -36,8 +40,8 @@ public abstract class AMRMTokenSecretManagerState {
       MasterKey currentMasterKey, MasterKey nextMasterKey) {
     AMRMTokenSecretManagerState data =
         Records.newRecord(AMRMTokenSecretManagerState.class);
-    data.setCurrentMasterKey(currentMasterKey);
-    data.setNextMasterKey(nextMasterKey);
+    data.setCurrentMasterKey(currentMasterKey); //当前用于验证和生成 AM-RM Token 的密钥。所有正在使用的 Token 都会依赖于这个密钥进行身份认证
+    data.setNextMasterKey(nextMasterKey); //即将生效的下一个密钥，用于密钥轮换。在密钥更新流程中，当前密钥会被替换为下一个密钥，以确保 Token 安全性和有效性
     return data;
   }
 

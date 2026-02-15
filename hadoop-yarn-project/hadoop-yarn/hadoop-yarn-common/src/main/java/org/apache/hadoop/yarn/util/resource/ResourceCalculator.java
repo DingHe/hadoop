@@ -26,6 +26,8 @@ import java.util.Set;
 /**
  * A set of {@link Resource} comparison and manipulation interfaces.
  */
+//主要用于提供各种资源比较和操作的接口。它的作用是计算、比较和调整资源（如内存、CPU等）的使用，
+// 以便在资源分配和调度过程中进行合理的资源管理
 @Private
 @Unstable
 public abstract class ResourceCalculator {
@@ -45,6 +47,11 @@ public abstract class ResourceCalculator {
    *                   resource types
    * @return -1 if {@code lhs} is smaller, 0 if equal and 1 if it is larger
    */
+  //clusterResource：集群的资源容量
+  //lhs：第一个资源对象，用于比较
+  //rhs：第二个资源对象，用于比较
+  //singleType：是否仅考虑单一资源类型。如果为 true，则只考虑一个资源类型（例如内存或CPU），否则考虑所有资源类型
+  //-1 表示 lhs 小于 rhs，0 表示相等，1 表示 lhs 大于 rhs
   public abstract int compare(
       Resource clusterResource, Resource lhs, Resource rhs, boolean singleType);
 
@@ -60,7 +67,9 @@ public abstract class ResourceCalculator {
   public int compare(Resource clusterResource, Resource lhs, Resource rhs) {
     return compare(clusterResource, lhs, rhs, false);
   }
-
+  //a：被除数
+  //b：除数
+  //该方法执行 a 除以 b 的操作，并向上取整，防止丢失精度
   public static int divideAndCeil(int a, int b) {
     if (b == 0) {
       return 0;
@@ -131,6 +140,7 @@ public abstract class ResourceCalculator {
    * @param required required resources
    * @return number of containers which can be allocated
    */
+  //该方法计算可以分配的容器数量，依据可用资源和所需资源的大小来决定
   public abstract long computeAvailableContainers(
       Resource available, Resource required);
 
@@ -143,6 +153,7 @@ public abstract class ResourceCalculator {
    * @param stepFactor factor by which to normalize up 
    * @return resulting normalized resource
    */
+  //该方法将资源 r 乘以 by，并通过 stepFactor 规范化上调资源的值
   public abstract Resource multiplyAndNormalizeUp(
       Resource r, double by, Resource stepFactor);
 
@@ -155,6 +166,7 @@ public abstract class ResourceCalculator {
    * @param stepFactor factor by which to normalize up
    * @return resulting normalized resource
    */
+  //该方法通过给定的最小和最大资源值，结合步长，规范化资源 r 的值
   public abstract Resource multiplyAndNormalizeUp(
       Resource r, double[] by, Resource stepFactor);
 

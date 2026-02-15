@@ -64,7 +64,8 @@ import org.apache.hadoop.util.Preconditions;
 import org.apache.hadoop.util.functional.InvocationRaisingIOE;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
+//管理 Hadoop YARN 中委托令牌的类。委托令牌（Delegation Token）是 HDFS 和 YARN 中用于授权的机制，
+// 允许用户将权限委托给其他实体。这个类的核心职责包括生成、存储、更新和删除委托令牌，并确保其在有效期内正常工作
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public abstract 
@@ -694,6 +695,7 @@ extends AbstractDelegationTokenIdentifier>
   }
 
   /** Class to encapsulate a token's renew date and password. */
+  //封装Token的更新日期和密码
   @InterfaceStability.Evolving
   public static class DelegationTokenInformation implements Writable {
     long renewDate;
@@ -818,10 +820,11 @@ extends AbstractDelegationTokenIdentifier>
    * is secretMgr running
    * @return true if secret mgr is running
    */
+
   public synchronized boolean isRunning() {
     return running;
   }
-  
+  //删除过期密码的线程
   private class ExpiredTokenRemover extends Thread {
     private long lastMasterKeyUpdate;
     private long lastTokenCacheCleanup;

@@ -81,7 +81,7 @@ import org.apache.hadoop.util.Preconditions;
 
 /**
  * FSImage handles checkpointing and logging of the namespace edits.
- * 
+ * NameNode定期将文件系统的命名空间（文件目录树、文件/目录元信息）保存到fsimage中，定期将editlog合并到fsimage中。
  */
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
@@ -93,7 +93,7 @@ public class FSImage implements Closeable {
    * Priority of the FSImageSaver shutdown hook: {@value}.
    */
   public static final int SHUTDOWN_HOOK_PRIORITY = 10;
-
+  //编辑日志
   protected FSEditLog editLog = null;
   private boolean isUpgradeFinalized = false;
 
@@ -121,6 +121,7 @@ public class FSImage implements Closeable {
    * For non-HA, a new fsimage will be locally generated along with a new
    * VERSION file. This set is not used for non-HA mode.
    */
+  //存储新添加的存储目录。
   private Set<StorageDirectory> newDirs = null;
 
   /* Used to make sure there are no concurrent checkpoints for a given txid
@@ -174,7 +175,8 @@ public class FSImage implements Closeable {
     archivalManager = new NNStorageRetentionManager(conf, storage, editLog);
     FSImageFormatProtobuf.initParallelLoad(conf);
   }
- 
+  //用于初始化一个新的文件系统镜像，格式化文件系统，清除旧的元数据并准备为新的HDFS集群使用。该方法通常在HDFS的NameNode首次启动时被调用，以初始化文件系统的结构
+  //force: 这是一个布尔值，表示是否强制执行格式化操作。如果为true，即使存在已有的数据，也会强制格式化
   void format(FSNamesystem fsn, String clusterId, boolean force)
       throws IOException {
     long fileCount = fsn.getFilesTotal();
@@ -186,9 +188,9 @@ public class FSImage implements Closeable {
     LOG.info("Allocated new BlockPoolId: " + ns.getBlockPoolID());
     ns.clusterID = clusterId;
     
-    storage.format(ns);
-    editLog.formatNonFileJournals(ns, force);
-    saveFSImageInAllDirs(fsn, 0);
+    storage.format(ns);//格式化存储目录，新建currrent目录，然后写入版本文件和事务ID从0开始
+    editLog.formatNonFileJournals(ns, force);//格式化所有非文件的日志管理器
+    saveFSImageInAllDirs(fsn, 0);//保存当前镜像文件
   }
   
   /**
@@ -221,12 +223,16 @@ public class FSImage implements Closeable {
    * @throws IOException
    * @return true if the image needs to be saved or false otherwise
    */
+  //用于在启动过程中恢复和读取文件系统镜像
+  //startOpt (StartupOption startOpt): 启动选项，决定了启动时文件系统的恢复方式，如格式化、导入、回滚等
+  //target (FSNamesystem target): 文件系统的命名空间对象，用于恢复目标文件系统
+  //recovery (MetaRecoveryContext recovery): 用于交互式恢复过程，管理用户输入和恢复的上下文
   boolean recoverTransitionRead(StartupOption startOpt, FSNamesystem target,
       MetaRecoveryContext recovery)
       throws IOException {
     assert startOpt != StartupOption.FORMAT : 
       "NameNode formatting should be performed before reading the image";
-    
+    //获取镜像目录和编辑日志目录，确保它们存在。如果这些目录不存在且 startOpt 不是 IMPORT，则抛出异常
     Collection<URI> imageDirs = storage.getImageDirectories();
     Collection<URI> editsDirs = editLog.getEditURIs();
 
@@ -238,6 +244,7 @@ public class FSImage implements Closeable {
     
     // 1. For each data directory calculate its state and 
     // check whether all is consistent before transitioning.
+    //检查每个文件目录的状态
     Map<StorageDirectory, StorageState> dataDirStates = 
              new HashMap<StorageDirectory, StorageState>();
     boolean isFormatted = recoverStorageDirs(startOpt, storage, dataDirStates);
@@ -253,7 +260,7 @@ public class FSImage implements Closeable {
       throw new IOException("NameNode is not formatted.");      
     }
 
-
+    //如果是METADATAVERSION选项，只打印版本信息
     int layoutVersion = storage.getLayoutVersion();
     if (startOpt == StartupOption.METADATAVERSION) {
       System.out.println("HDFS Image Version: " + layoutVersion);
@@ -261,7 +268,7 @@ public class FSImage implements Closeable {
           storage.getServiceLayoutVersion());
       return false;
     }
-
+    //如果版本大于-3，则不支持升级
     if (layoutVersion < Storage.LAST_PRE_UPGRADE_LAYOUT_VERSION) {
       NNStorage.checkVersionUpgradable(storage.getLayoutVersion());
     }
@@ -281,7 +288,7 @@ public class FSImage implements Closeable {
           + StartupOption.UPGRADE.getName() + "\" option to start"
           + " a new upgrade.");
     }
-    
+    //处理更新操作的culsterid和blockpoolid
     storage.processStartupOptionsForUpgrade(startOpt, layoutVersion);
 
     // 2. Format unformatted dirs.
@@ -301,6 +308,7 @@ public class FSImage implements Closeable {
         // triggered.
         LOG.info("Storage directory " + sd.getRoot() + " is not formatted.");
         LOG.info("Formatting ...");
+        //如果状态为 NOT_FORMATTED（未格式化），则清空该目录
         sd.clearDirectory(); // create empty current dir
         // For non-HA, no further action is needed here, as saveNamespace will
         // take care of the rest.
@@ -309,6 +317,7 @@ public class FSImage implements Closeable {
         }
         // If HA is enabled, save the dirs to create a version file later when
         // a checkpoint image is saved.
+        //如果启用 HA 模式，记录未格式化的目录，稍后在保存镜像时处理
         if (newDirs == null) {
           newDirs = new HashSet<StorageDirectory>();
         }
@@ -321,11 +330,13 @@ public class FSImage implements Closeable {
 
     // 3. Do transitions
     switch(startOpt) {
+    //执行升级操作，保存新镜像，返回 false，表示不需要再次保存
     case UPGRADE:
     case UPGRADEONLY:
       doUpgrade(target);
       return false; // upgrade saved image already
     case IMPORT:
+      //执行检查点导入，保存新镜像，返回 false
       doImportCheckpoint(target);
       return false; // import checkpoint saved image already
     case ROLLBACK:
@@ -366,6 +377,12 @@ public class FSImage implements Closeable {
    * @param dataDirStates output of storage directory states
    * @return true if there is at least one valid formatted storage directory
    */
+  //分析并恢复 NameNode 的存储目录状态
+  //处理未完成的转换操作（如升级、回滚、检查点）
+  //验证和记录每个存储目录的状态到 dataDirStates 中
+  //检查文件系统是否已格式化，如果至少有一个有效的已格式化目录，返回 true，否则返回 false
+  //storage：NameNode 的存储管理对象，提供存储目录的访问和操作
+  //dataDirStates：输出参数，存储各个目录的状态
   public static boolean recoverStorageDirs(StartupOption startOpt,
       NNStorage storage, Map<StorageDirectory, StorageState> dataDirStates)
       throws IOException {
@@ -377,13 +394,14 @@ public class FSImage implements Closeable {
                       storage.dirIterator(); it.hasNext();) {
       StorageDirectory sd = it.next();
       StorageState curState;
-      if (startOpt == StartupOption.METADATAVERSION) {
+      if (startOpt == StartupOption.METADATAVERSION) {//如果启动选项为 METADATAVERSION，只需读取存储的布局版本信息，方法立即返回 true
         /* All we need is the layout version. */
         storage.readProperties(sd);
         return true;
       }
 
       try {
+        //分析存储目录的状态
         curState = sd.analyzeStorage(startOpt, storage);
         // sd is locked but not opened
         switch(curState) {
@@ -404,6 +422,7 @@ public class FSImage implements Closeable {
           storage.readProperties(sd, startOpt);
           isFormatted = true;
         }
+        //如果启动选项为 IMPORT，则要求所有镜像目录为空，否则抛出异常，禁止导入
         if (startOpt == StartupOption.IMPORT && isFormatted)
           // import of a checkpoint is allowed only into empty image directories
           throw new IOException("Cannot import image from a checkpoint. " 
@@ -418,18 +437,22 @@ public class FSImage implements Closeable {
   }
 
   /** Check if upgrade is in progress. */
+  // 用于在执行 HDFS NameNode 升级前进行一致性检查，确保所有存储目录中不存在未完成的上一次文件系统状态（如未完成的升级或回滚操作）。
+  // 如果发现旧的文件系统状态，则抛出异常，阻止升级继续执行
   public static void checkUpgrade(NNStorage storage) throws IOException {
     // Upgrade or rolling upgrade is allowed only if there are 
     // no previous fs states in any of the local directories
     for (Iterator<StorageDirectory> it = storage.dirIterator(false); it.hasNext();) {
       StorageDirectory sd = it.next();
+      //对于每个存储目录，调用 sd.getPreviousDir() 获取表示上次升级或回滚残留数据的 previous 目录
+      //如果该目录存在，意味着存在未完成的升级或回滚操作，不能执行新的升级
       if (sd.getPreviousDir().exists())
         throw new InconsistentFSStateException(sd.getRoot(),
             "previous fs state should not exist during upgrade. "
             + "Finalize or rollback first.");
     }
   }
-
+ //检查更新
   void checkUpgrade() throws IOException {
     checkUpgrade(storage);
   }
@@ -449,19 +472,21 @@ public class FSImage implements Closeable {
       return false;
     }
   }
-
+  //用于执行 HDFS NameNode 的升级操作，确保文件系统元数据从旧版本迁移到新版本
   void doUpgrade(FSNamesystem target) throws IOException {
     checkUpgrade();
 
     // load the latest image
 
     // Do upgrade for each directory
+    //加载最新镜像
     this.loadFSImage(target, StartupOption.UPGRADE, null);
     target.checkRollingUpgrade("upgrade namenode");
     
     long oldCTime = storage.getCTime();
     storage.cTime = now();  // generate new cTime for the state
     int oldLV = storage.getLayoutVersion();
+    //升级后的布局版本，使用 getServiceLayoutVersion() 获取
     storage.layoutVersion = storage.getServiceLayoutVersion();
     
     List<StorageDirectory> errorSDs =
@@ -665,20 +690,25 @@ public class FSImage implements Closeable {
    * the final path component, and the functions called below do not
    * resolve symlinks that are the final path component.
    *
-   * @return whether the image should be saved
+   * @return whether the image should be saved 如果需要保存新的 FSImage，返回 true，否则为 false。
    * @throws IOException
    */
+  //target  文件系统的核心结构，加载元数据并应用编辑日志
+  //startOpt  启动选项，决定是常规启动、升级、回滚、恢复等模式。
+  //recovery 元数据恢复上下文，允许在故障情况下执行元数据恢复操作。
   private boolean loadFSImage(FSNamesystem target, StartupOption startOpt,
       MetaRecoveryContext recovery)
       throws IOException {
     final boolean rollingRollback
         = RollingUpgradeStartupOption.ROLLBACK.matches(startOpt);
     final EnumSet<NameNodeFile> nnfs;
+    //如果启动选项为 ROLLBACK，只加载回滚镜像 (IMAGE_ROLLBACK)
     if (rollingRollback) {
       // if it is rollback of rolling upgrade, only load from the rollback image
       nnfs = EnumSet.of(NameNodeFile.IMAGE_ROLLBACK);
     } else {
       // otherwise we can load from both IMAGE and IMAGE_ROLLBACK
+      //否则，加载普通镜像 (IMAGE) 和回滚镜像 (IMAGE_ROLLBACK)
       nnfs = EnumSet.of(NameNodeFile.IMAGE, NameNodeFile.IMAGE_ROLLBACK);
     }
     final FSImageStorageInspector inspector = storage
@@ -936,13 +966,19 @@ public class FSImage implements Closeable {
     return lastAppliedTxId - prevLastAppliedTxId;
   }
 
-  /**
+  /** 用于加载文件系统镜像的核心方法之一。这个方法的目的是从指定的镜像文件中加载文件系统的命名空间，
+   * 并通过对比与该镜像文件相关的 .md5 文件中的 MD5 校验值，验证镜像文件的完整性
    * Load the image namespace from the given image file, verifying
    * it against the MD5 sum stored in its associated .md5 file.
    */
+  //File imageFile 待加载的文件系统镜像文件。该文件包含了文件系统的命名空间信息和其他相关数据
+  //FSNamesystem target 表示目标文件系统的命名系统，镜像将加载到这个目标命名系统中
+  //MetaRecoveryContext 用于恢复文件系统的元数据。如果在加载过程中遇到错误或不一致性，这个对象将帮助恢复相关的元数据
+  //requireSameLayoutVersion 指示是否要求加载的镜像文件与当前的文件系统布局版本一致
   private void loadFSImage(File imageFile, FSNamesystem target,
       MetaRecoveryContext recovery, boolean requireSameLayoutVersion)
       throws IOException {
+    //读取与镜像文件相关的 MD5 校验值
     MD5Hash expectedMD5 = MD5FileUtils.readStoredMd5ForFile(imageFile);
     if (expectedMD5 == null) {
       throw new IOException("No MD5 file found corresponding to image file "
@@ -961,8 +997,9 @@ public class FSImage implements Closeable {
       boolean requireSameLayoutVersion) throws IOException {
     // BlockPoolId is required when the FsImageLoader loads the rolling upgrade
     // information. Make sure the ID is properly set.
+    //为目标文件系统命名系统（target）设置了一个 BlockPoolId
     target.setBlockPoolId(this.getBlockPoolID());
-
+    //加载器负责加载镜像文件 curFile，并且在加载过程中检查镜像文件的布局版本是否符合要求（由 requireSameLayoutVersion 控制）
     FSImageFormat.LoaderDelegator loader = FSImageFormat.newLoader(conf, target);
     loader.load(curFile, requireSameLayoutVersion);
 
@@ -975,14 +1012,14 @@ public class FSImage implements Closeable {
           " is corrupt with MD5 checksum of " + readImageMd5 +
           " but expecting " + expectedMd5);
     }
-
+    //记录和设置事务 ID
     long txId = loader.getLoadedImageTxId();
     LOG.info("Loaded image for txid " + txId + " from " + curFile);
     lastAppliedTxId = txId;
     storage.setMostRecentCheckpointInfo(txId, curFile.lastModified());
   }
 
-  /**
+  /**用于将文件系统镜像（FSImage）保存到指定的存储目录中，并进行压缩和保存校验信息
    * Save the contents of the FS image to the file.
    */
   void saveFSImage(SaveNamespaceContext context, StorageDirectory sd,
@@ -990,19 +1027,22 @@ public class FSImage implements Closeable {
     long txid = context.getTxId();
     File newFile = NNStorage.getStorageFile(sd, NameNodeFile.IMAGE_NEW, txid);
     File dstFile = NNStorage.getStorageFile(sd, dstType, txid);
-    
+    //负责将文件系统的命名空间保存到磁盘
     FSImageFormatProtobuf.Saver saver = new FSImageFormatProtobuf.Saver(context,
         conf);
+    //根据配置文件的设置对镜像文件进行压缩
     FSImageCompression compression = FSImageCompression.createCompression(conf);
     long numErrors = saver.save(newFile, compression);
+    //如果在保存过程中发现错误（即 numErrors > 0），则认为镜像可能损坏，并记录错误日志
     if (numErrors > 0) {
       // The image is likely corrupted.
       LOG.error("Detected " + numErrors + " errors while saving FsImage " +
           dstFile);
       exitAfterSave.set(true);
     }
-
+    //保存 MD5 校验
     MD5FileUtils.saveMD5File(dstFile, saver.getSavedDigest());
+    //更新存储的最新检查点的事务 ID 和时间戳
     storage.setMostRecentCheckpointInfo(txid, Time.now());
   }
 
@@ -1028,7 +1068,7 @@ public class FSImage implements Closeable {
   /**
    * FSImageSaver is being run in a separate thread when saving
    * FSImage. There is one thread per each copy of the image.
-   *
+   * 在一个独立的线程中执行文件系统镜像（FSImage）的保存操作，每个存储目录对应一个线程。它负责保存 FSImage 到存储目录，并在操作过程中处理异常和取消操作
    * FSImageSaver assumes that it was launched from a thread that holds
    * FSNamesystem lock and waits for the execution of FSImageSaver thread
    * to finish.
@@ -1037,9 +1077,9 @@ public class FSImage implements Closeable {
    * and writing it out.
    */
   private class FSImageSaver implements Runnable {
-    private final SaveNamespaceContext context;
-    private final StorageDirectory sd;
-    private final NameNodeFile nnf;
+    private final SaveNamespaceContext context;//保存文件系统状态的上下文对象
+    private final StorageDirectory sd;//表示存储目录对象
+    private final NameNodeFile nnf;//表示文件类型的枚举对象，类型为 NameNodeFile，用于标识保存的文件类型（例如 IMAGE）
 
     public FSImageSaver(SaveNamespaceContext context, StorageDirectory sd,
         NameNodeFile nnf) {
@@ -1051,6 +1091,7 @@ public class FSImage implements Closeable {
     @Override
     public void run() {
       // Deletes checkpoint file in every storage directory when shutdown.
+      //定义了一个 cancelCheckpointFinalizer 的 Runnable，它会在系统关闭时执行，删除已经取消的检查点
       Runnable cancelCheckpointFinalizer = () -> {
         try {
           deleteCancelledCheckpoint(context.getTxId());
@@ -1060,6 +1101,7 @@ public class FSImage implements Closeable {
           LOG.error("FSImageSaver cancel checkpoint threw an exception:", e);
         }
       };
+      //通过 ShutdownHookManager 注册关闭钩子，确保在关闭时删除取消的检查点
       ShutdownHookManager.get().addShutdownHook(cancelCheckpointFinalizer,
           SHUTDOWN_HOOK_PRIORITY);
       try {
@@ -1190,7 +1232,7 @@ public class FSImage implements Closeable {
     }
   }
 
-  /**
+  /**保存镜像文件
    * @see #saveFSImageInAllDirs(FSNamesystem, NameNodeFile, long, Canceler)
    */
   protected synchronized void saveFSImageInAllDirs(FSNamesystem source, long txid)
@@ -1212,20 +1254,27 @@ public class FSImage implements Closeable {
   public void removeFromCheckpointing(long txid) {
     currentlyCheckpointing.remove(txid);
   }
-
+  //将 文件系统镜像（FSImage） 保存到所有可用的存储目录中，并进行一些后续操作，如清理旧的存储和处理取消操作
+  //source：表示文件系统的 FSNamesystem 对象，通常包含文件系统的元数据，表示源文件系统的状态。
+  //nnf：表示 NameNodeFile 类型的对象，通常表示操作的文件名
+  //txid：一个长整型的事务 ID，表示此次保存操作的事务 ID。它用于标识文件系统状态的一个一致性快照
+  //canceler：用于取消操作的对象。如果该参数为 null，则在方法内部创建一个新的 Canceler 实例
   private synchronized void saveFSImageInAllDirs(FSNamesystem source,
       NameNodeFile nnf, long txid, Canceler canceler) throws IOException {
+    //启动检查点保存阶段
     StartupProgress prog = NameNode.getStartupProgress();
     prog.beginPhase(Phase.SAVING_CHECKPOINT);
+    //检查是否存在用于存储文件系统镜像的存储目录。如果没有，抛出异常 IOException
     if (storage.getNumStorageDirs(NameNodeDirType.IMAGE) == 0) {
       throw new IOException("No image directories available!");
     }
     if (canceler == null) {
       canceler = new Canceler();
     }
+    //创建一个 SaveNamespaceContext 对象，它封装了文件系统状态、事务 ID 和取消器，便于后续在保存过程中使用
     SaveNamespaceContext ctx = new SaveNamespaceContext(
         source, txid, canceler);
-    
+    //遍历所有存储目录（类型为 IMAGE），并为每个存储目录创建一个新的线程来保存文件系统镜像
     try {
       List<Thread> saveThreads = new ArrayList<Thread>();
       // save images into current
@@ -1237,7 +1286,9 @@ public class FSImage implements Closeable {
         saveThreads.add(saveThread);
         saveThread.start();
       }
+      //调用 waitForThreads 方法等待所有保存线程完成
       waitForThreads(saveThreads);
+      //清空保存线程列表
       saveThreads.clear();
       storage.reportErrorsOnDirectories(ctx.getErrorSDs());
   
@@ -1250,12 +1301,13 @@ public class FSImage implements Closeable {
         ctx.checkCancelled(); // throws
         assert false : "should have thrown above!";
       }
-  
+      //重命名检查点文件
       renameCheckpoint(txid, NameNodeFile.IMAGE_NEW, nnf, false);
   
       // Since we now have a new checkpoint, we can clean up some
       // old edit logs and checkpoints.
       // Do not purge anything if we just wrote a corrupted FsImage.
+      //清理旧的存储和检查点
       if (!exitAfterSave.get()) {
         purgeOldStorage(nnf);
         archivalManager.purgeCheckpoints(NameNodeFile.IMAGE_NEW);
@@ -1263,6 +1315,7 @@ public class FSImage implements Closeable {
     } finally {
       // Notify any threads waiting on the checkpoint to be canceled
       // that it is complete.
+      //调用 markComplete 标记保存操作完成，结束保存阶段
       ctx.markComplete();
       ctx = null;
     }
@@ -1328,20 +1381,23 @@ public class FSImage implements Closeable {
     }
   }
 
-  /**
+  /** 用于删除在检查点取消时已创建的文件。具体来说，它会在每个存储目录中查找已取消的检查点文件，并尝试删除它们。
+   * 如果文件无法删除，方法会记录警告并报告删除失败的目录
    * Deletes the checkpoint file in every storage directory,
    * since the checkpoint was cancelled.
    */
   private void deleteCancelledCheckpoint(long txid) throws IOException {
     ArrayList<StorageDirectory> al = Lists.newArrayList();
-
+    //查找所有的镜像文件
     for (StorageDirectory sd : storage.dirIterable(NameNodeDirType.IMAGE)) {
+      //根据给定的存储目录（sd）、文件类型（IMAGE_NEW）和事务 ID（txid）构造出检查点文件的路径
       File ckpt = NNStorage.getStorageFile(sd, NameNodeFile.IMAGE_NEW, txid);
-      if (ckpt.exists() && !ckpt.delete()) {
+      if (ckpt.exists() && !ckpt.delete()) {//如果文件删除失败，记录警告日志并将该目录添加到 al 列表中
         LOG.warn("Unable to delete cancelled checkpoint in " + sd);
         al.add(sd);            
       }
     }
+    //报告这些目录的问题
     storage.reportErrorsOnDirectories(al);
   }
 

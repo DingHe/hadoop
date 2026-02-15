@@ -26,12 +26,14 @@ import org.apache.hadoop.classification.InterfaceStability.Evolving;
  * event handlers based on event types.
  * 
  */
+//将不同类型的事件（Event）分发到对应的事件处理器（EventHandler）。
+//这个接口允许通过注册特定的事件类型及其处理器，使得事件可以在系统中流转并被正确处理
 @Public
 @Evolving
 public interface Dispatcher {
-
+  //通过这个方法，外部可以获取一个事件处理器（EventHandler），用于接收并处理事件
   EventHandler<Event> getEventHandler();
-
+  //将特定类型的事件（eventType）和对应的事件处理器（handler）注册到分发器中
   void register(Class<? extends Enum> eventType, EventHandler handler);
 
 }

@@ -37,13 +37,13 @@ import org.apache.hadoop.io.Writable;
  * InputFormat#getSplits(JobContext)} and passed to
  * {@link InputFormat#createRecordReader(InputSplit,TaskAttemptContext)}. */
 @InterfaceAudience.Public
-@InterfaceStability.Stable
+@InterfaceStability.Stable  //表示输入文件的一个片段，主要用于将大文件拆分为多个片段，以便在分布式计算中并行处理，支持序列化和反序列化，便于在 Spark 节点之间传输
 public class FileSplit extends InputSplit implements Writable {
-  private Path file;
-  private long start;
-  private long length;
-  private String[] hosts;
-  private SplitLocationInfo[] hostInfos;
+  private Path file;  // 文件路径
+  private long start;  // 切片的起始位置（字节偏移量）
+  private long length;  // 切片长度（字节数）
+  private String[] hosts;  // 存储该数据切片的主机列表
+  private SplitLocationInfo[] hostInfos;  // 详细的主机和存储类型信息
 
   public FileSplit() {}
 
@@ -62,7 +62,7 @@ public class FileSplit extends InputSplit implements Writable {
   }
   
   /** Constructs a split with host and cached-blocks information
-  *
+  * 带主机和缓存信息的构造方法
   * @param file the file name
   * @param start the position of the first byte in the file to process
   * @param length the number of bytes in the file to process

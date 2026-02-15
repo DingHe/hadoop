@@ -20,11 +20,11 @@ package org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt;
 
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.event.AbstractEvent;
-
+//表示 应用尝试（Application Attempt） 相关的事件
 public class RMAppAttemptEvent extends AbstractEvent<RMAppAttemptEventType> {
 
-  private final ApplicationAttemptId appAttemptId;
-  private final String diagnosticMsg;
+  private final ApplicationAttemptId appAttemptId;//应用尝试 ID
+  private final String diagnosticMsg;//诊断信息，用于存储与该事件相关的诊断信息，例如错误原因或调试信息
 
   public RMAppAttemptEvent(ApplicationAttemptId appAttemptId,
       RMAppAttemptEventType type) {

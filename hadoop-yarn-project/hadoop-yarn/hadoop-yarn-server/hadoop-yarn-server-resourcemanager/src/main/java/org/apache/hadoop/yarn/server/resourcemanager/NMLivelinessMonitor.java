@@ -27,7 +27,8 @@ import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeEventType;
 import org.apache.hadoop.yarn.util.AbstractLivelinessMonitor;
-
+// 用于监控 NodeManager (NM) 的活跃状态，如果某个 NodeManager 在 expireInterval 时间内没有发送心跳，就会触发 EXPIRE 事件，
+// 将该节点标记为不可用，并通知 ResourceManager (RM) 进行资源调整
 public class NMLivelinessMonitor extends AbstractLivelinessMonitor<NodeId> {
 
   private EventHandler<Event> dispatcher;

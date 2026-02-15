@@ -36,16 +36,16 @@ import org.apache.hadoop.util.Preconditions;
 /**
  * NamespaceInfo is returned by the name-node in reply 
  * to a data-node handshake.
- * 
+ * 存储和管理与HDFS命名节点（NameNode）相关的命名空间信息。它主要用于数据节点（DataNode）与命名节点进行握手时，命名节点返回给数据节点的响应
  */
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class NamespaceInfo extends StorageInfo {
-  final String  buildVersion;
-  String blockPoolID = "";    // id of the block pool
-  String softwareVersion;
-  long capabilities;
-  HAServiceState state;
+  final String  buildVersion;//存储构建版本信息，表示当前命名节点的构建版本
+  String blockPoolID = "";    // id of the block pool 存储块池的ID（Block Pool ID），用于标识HDFS中存储数据的逻辑分组
+  String softwareVersion;  //存储软件版本信息，表示当前命名节点所运行的软件版本
+  long capabilities;       //表示命名节点支持的能力标志，使用位掩码存储多个特性
+  HAServiceState state;    //存储命名节点的高可用性（HA）服务状态（HAServiceState），用于指示命名节点的运行状态，如是否处于活动或待命状态
 
   // only authoritative on the server-side to determine advertisement to
   // clients.  enum will update the supported values

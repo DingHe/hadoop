@@ -38,16 +38,21 @@ import java.util.concurrent.ConcurrentSkipListSet;
  * resource usage of nodes at given time.
  * </p>
  */
+//按节点的资源使用情况排序，以便调度器优先选择资源使用率较低的节点进行任务调度
+//维护一个分区（partition）到节点集合（Set<N>）的映射，并且每个集合中的节点按资源使用情况排序
+//该策略适用于 基于资源利用率优化的任务调度
 public class ResourceUsageMultiNodeLookupPolicy<N extends SchedulerNode>
     implements MultiNodeLookupPolicy<N> {
-
+  //存储不同分区（partition）对应的已排序节点集合
   protected Map<String, Set<N>> nodesPerPartition = new ConcurrentHashMap<>();
   protected Comparator<N> comparator;
 
   public ResourceUsageMultiNodeLookupPolicy() {
+    //定义节点的排序规则，用于 ConcurrentSkipListSet 对节点进行排序
     this.comparator = new Comparator<N>() {
       @Override
       public int compare(N o1, N o2) {
+        //资源分配少的节点优先级更高（即资源使用率低的节点会排在前面）
         int allocatedDiff = o1.getAllocatedResource()
             .compareTo(o2.getAllocatedResource());
         if (allocatedDiff == 0) {
@@ -63,7 +68,7 @@ public class ResourceUsageMultiNodeLookupPolicy<N extends SchedulerNode>
       String partition) {
     return getNodesPerPartition(partition).iterator();
   }
-
+  //添加新的SchedulerNode集合到 nodesPerPartition，并进行排序，确保分区内的节点始终按资源使用率排序
   @Override
   public void addAndRefreshNodesSet(Collection<N> nodes,
       String partition) {

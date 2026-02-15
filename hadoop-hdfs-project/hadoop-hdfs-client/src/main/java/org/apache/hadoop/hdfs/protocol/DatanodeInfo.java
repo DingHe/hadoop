@@ -33,7 +33,7 @@ import java.util.List;
 
 import static org.apache.hadoop.hdfs.DFSUtilClient.percent2String;
 
-/**
+/** 继承自 DatanodeID，在此基础上扩展了关于 DataNode（HDFS 数据节点）的动态状态信息，如存储容量、使用情况、网络拓扑位置、维护状态等。该类用于追踪和管理 HDFS 集群中 DataNode 的详细信息
  * This class extends the primary identifier of a Datanode with ephemeral
  * state, eg usage information, current administrative state, and the
  * network location that is communicated to clients.
@@ -41,30 +41,34 @@ import static org.apache.hadoop.hdfs.DFSUtilClient.percent2String;
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class DatanodeInfo extends DatanodeID implements Node {
-  private long capacity;
-  private long dfsUsed;
-  private long nonDfsUsed;
-  private long remaining;
-  private long blockPoolUsed;
-  private long cacheCapacity;
-  private long cacheUsed;
-  private long lastUpdate;
-  private long lastUpdateMonotonic;
-  private int xceiverCount;
-  private volatile String location = NetworkTopology.DEFAULT_RACK;
-  private String softwareVersion;
-  private List<String> dependentHostNames = new LinkedList<>();
-  private String upgradeDomain;
-  public static final DatanodeInfo[] EMPTY_ARRAY = {};
-  private int numBlocks;
+  //存储相关属性
+  private long capacity; // DataNode 总存储容量（单位：字节）
+  private long dfsUsed; // HDFS 使用的存储容量（单位：字节）
+  private long nonDfsUsed;// 非 HDFS 数据使用的容量（单位：字节，如操作系统文件）
+  private long remaining;// 剩余可用存储空间（单位：字节）
+  private long blockPoolUsed;// Block Pool 使用的存储容量（单位：字节）
+  private long cacheCapacity;// DataNode 缓存总容量（单位：字节）
+  private long cacheUsed;// DataNode 缓存已使用容量（单位：字节）
+  //时间相关属性
+  private long lastUpdate;// DataNode 最后一次汇报心跳的时间戳（毫秒级）
+  private long lastUpdateMonotonic;// 单调时间源，记录 DataNode 最后心跳时间（相对于系统启动的时间），避免因系统时间回拨导致的错误
+  //节点负载与位置相关属性
+  private int xceiverCount;// DataNode 当前的传输线程数量（并发数据传输数量）
+  private volatile String location = NetworkTopology.DEFAULT_RACK;// DataNode 所在的网络拓扑位置，默认为默认机架
+  //软件和依赖信息
+  private String softwareVersion;// DataNode 使用的软件版本
+  private List<String> dependentHostNames = new LinkedList<>(); // 依赖的主机列表（如 DataNode 联邦模式）
+  private String upgradeDomain;// DataNode 所属的升级域，用于分批升级 DataNode
+  public static final DatanodeInfo[] EMPTY_ARRAY = {};//定义空 DatanodeInfo 数组的常量，避免多次创建新实例，提升性能
+  private int numBlocks;// DataNode 上存储的 HDFS 数据块数量
 
   // Datanode administrative states
   public enum AdminStates {
-    NORMAL("In Service"),
-    DECOMMISSION_INPROGRESS("Decommission In Progress"),
-    DECOMMISSIONED("Decommissioned"),
-    ENTERING_MAINTENANCE("Entering Maintenance"),
-    IN_MAINTENANCE("In Maintenance");
+    NORMAL("In Service"),// 正常服务中
+    DECOMMISSION_INPROGRESS("Decommission In Progress"),// 退役进行中
+    DECOMMISSIONED("Decommissioned"),// 已退役
+    ENTERING_MAINTENANCE("Entering Maintenance"),// 进入维护中
+    IN_MAINTENANCE("In Maintenance");// 维护状态中
 
     final String value;
 
@@ -84,11 +88,11 @@ public class DatanodeInfo extends DatanodeID implements Node {
       return NORMAL;
     }
   }
-
-  protected AdminStates adminState;
-  private long maintenanceExpireTimeInMS;
-  private long lastBlockReportTime;
-  private long lastBlockReportMonotonic;
+  //节点状态信息
+  protected AdminStates adminState;// DataNode 的管理状态
+  private long maintenanceExpireTimeInMS;// 维护模式到期时间
+  private long lastBlockReportTime;// DataNode 最后一次汇报块信息的时间戳
+  private long lastBlockReportMonotonic;// 单调时间源，记录 DataNode 最后汇报块信息的时间，避免因系统时间回拨导致的错误
 
   protected DatanodeInfo(DatanodeInfo from) {
     super(from);

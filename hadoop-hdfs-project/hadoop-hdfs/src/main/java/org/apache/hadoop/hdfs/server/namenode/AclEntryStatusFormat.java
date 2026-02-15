@@ -34,24 +34,33 @@ import org.apache.hadoop.hdfs.util.LongBitFormat;
  * incompatible.
  *
  */
+//主要功能是将 ACL（Access Control List，访问控制列表） 中的每个 AclEntry 对象编码为一个 32 位整数，
+// 并提供了将其编码、解码的方法
+//ACL（Access Control List） 是一种文件系统级别的访问控制机制，
+// 它比传统的文件权限（如 POSIX 权限）更加细粒度，允许为文件或目录指定多个用户或用户组的权限。
+// 通过 ACL，系统管理员可以为特定的用户、用户组和其他用户设置不同的读取、写入和执行权限
+//传统文件权限（如 Linux 的 rwx 权限）只允许对文件或目录设置三类权限：所有者、所属组和其他用户
+//ACL 提供了更加细粒度的控制，可以为不同的用户和组设置不同的权限。它不仅支持为单个用户和组设置权限，还支持为“其他用户”和“掩码”设置权限
 public enum AclEntryStatusFormat implements LongBitFormat.Enum {
 
-  PERMISSION(null, 3),
-  TYPE(PERMISSION.BITS, 2),
-  SCOPE(TYPE.BITS, 1),
-  NAME(SCOPE.BITS, 24);
+  PERMISSION(null, 3),//文件操作权限
+  TYPE(PERMISSION.BITS, 2),//ACL 条目类型
+  SCOPE(TYPE.BITS, 1),//ACL 条目作用范围
+  NAME(SCOPE.BITS, 24);//用户或用户组的标识符
 
+  //静态数组缓存了对应的枚举值，方便通过索引快速获取枚举对象，避免多次调用 values() 方法
   private static final FsAction[] FSACTION_VALUES = FsAction.values();
   private static final AclEntryScope[] ACL_ENTRY_SCOPE_VALUES =
       AclEntryScope.values();
   private static final AclEntryType[] ACL_ENTRY_TYPE_VALUES =
       AclEntryType.values();
-
+  //使用 LongBitFormat 类对每个字段进行编码和解码，处理位操作的细节
   private final LongBitFormat BITS;
 
   private AclEntryStatusFormat(LongBitFormat previous, int length) {
     BITS = new LongBitFormat(name(), previous, length, 0);
   }
+  //aclEntry：32 位编码的 ACL 条目
 
   static AclEntryScope getScope(int aclEntry) {
     int ordinal = (int) SCOPE.BITS.retrieve(aclEntry);
@@ -71,7 +80,7 @@ public enum AclEntryStatusFormat implements LongBitFormat.Enum {
   static String getName(int aclEntry) {
     return getName(aclEntry, null);
   }
-
+   //使用序列号从 stringTable 中获取实际的用户名或用户组名
   static String getName(int aclEntry,
                         SerialNumberManager.StringTable stringTable) {
     SerialNumberManager snm = getSerialNumberManager(getType(aclEntry));
@@ -81,7 +90,8 @@ public enum AclEntryStatusFormat implements LongBitFormat.Enum {
     }
     return null;
   }
-
+  //参数：aclEntry：要编码的 ACL 条目
+  //返回编码后的整数
   static int toInt(AclEntry aclEntry) {
     long aclEntryInt = 0;
     aclEntryInt = SCOPE.BITS

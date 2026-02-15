@@ -231,7 +231,7 @@ public class Resources {
   public static Resource clone(Resource res) {
     return Resource.newInstance(res);
   }
-
+  //两个资源相加
   public static Resource addTo(Resource lhs, Resource rhs) {
     int maxLength = ResourceUtils.getNumberOfCountableResourceTypes();
     for (int i = 0; i < maxLength; i++) {

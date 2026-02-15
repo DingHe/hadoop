@@ -84,10 +84,17 @@ public class DBInputFormat<T extends DBWritable>
   /**
    * A InputSplit that spans a set of rows
    */
+    //Hadoop MapReduce 中专门用于从关系型数据库读取数据的一个内部类
+    //核心作用是定义一个数据分块（Split），该分块代表一个关系型数据库表中的一部分行范围
+    //与基于文件的 InputSplit（如 FileSplit）不同，DBInputSplit 不基于字节偏移量或文件路径，而是基于行索引或记录编号。
+    //主要作用包括：
+    //定义并行任务范围： 将数据库中的一个大表逻辑地划分为多个连续的行范围。每个 DBInputSplit 对应一个 Map Task 需要处理的数据子集。
+    //实现数据读取并行化： MapReduce 框架将读取整个表的操作分解为对多个 DBInputSplit 的并行处理，通过 SQL 语句中的 LIMIT 和 OFFSET（或基于分区键）来实现每个 Task 独立读取自己的行范围。
   @InterfaceStability.Evolving
   public static class DBInputSplit extends InputSplit implements Writable {
-
+    //结束行索引（排他）。 表示该 Split 包含的最后一行记录的索引/编号。该 Split 包含从 start 到 end - 1 的所有行。
     private long end = 0;
+    //起始行索引（包含）。 表示该 Split 包含的第一行记录的索引/编号。
     private long start = 0;
 
     /**

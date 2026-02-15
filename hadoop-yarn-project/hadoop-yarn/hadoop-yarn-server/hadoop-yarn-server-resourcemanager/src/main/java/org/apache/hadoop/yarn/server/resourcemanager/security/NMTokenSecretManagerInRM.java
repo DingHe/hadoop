@@ -52,6 +52,7 @@ public class NMTokenSecretManagerInRM extends BaseNMTokenSecretManager {
   private final Timer timer;
   private final long rollingInterval;
   private final long activationDelay;
+  //记录应用尝试对应的节点信息
   private final ConcurrentHashMap<ApplicationAttemptId, HashSet<NodeId>> appAttemptToNodeKeyMap;
   
   public NMTokenSecretManagerInRM(Configuration conf) {

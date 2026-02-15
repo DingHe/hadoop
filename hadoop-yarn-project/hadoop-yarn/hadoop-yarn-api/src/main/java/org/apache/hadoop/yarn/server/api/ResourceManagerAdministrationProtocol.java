@@ -70,22 +70,28 @@ import org.apache.hadoop.yarn.server.api.protocolrecords.GetSubClustersRequest;
 import org.apache.hadoop.yarn.server.api.protocolrecords.GetSubClustersResponse;
 import org.apache.hadoop.yarn.server.api.protocolrecords.DeleteFederationQueuePoliciesRequest;
 import org.apache.hadoop.yarn.server.api.protocolrecords.DeleteFederationQueuePoliciesResponse;
-
+//用于资源管理器（ResourceManager）管理操作的协议接口。它定义了多个管理操作方法，
+// 这些方法由 YARN 的管理工具或管理员用来进行集群的配置更新、节点资源调整、队列刷新、ACL（Access Control List）管理等操作。
+// 该接口包括了对集群、队列、节点资源以及用户和服务权限的管理
+//所有的管理操作都通过 Request 和 Response 对象传递参数和返回结果
 @Private
 public interface ResourceManagerAdministrationProtocol extends GetUserMappingsProtocol {
 
   @Private
   @Idempotent
+  //刷新 YARN 的队列配置，使得最新的队列信息被加载到资源管理器中
   public RefreshQueuesResponse refreshQueues(RefreshQueuesRequest request) 
   throws StandbyException, YarnException, IOException;
 
   @Private
   @Idempotent
+  //刷新资源管理器中节点的状态，通常用于节点增加、删除或者状态变更后，确保 ResourceManager 更新其状态
   public RefreshNodesResponse refreshNodes(RefreshNodesRequest request)
   throws StandbyException, YarnException, IOException;
 
   @Private
   @Idempotent
+  //刷新超级用户组配置，通常是修改 supergroup 等与权限相关的配置后触发刷新
   public RefreshSuperUserGroupsConfigurationResponse 
   refreshSuperUserGroupsConfiguration(
       RefreshSuperUserGroupsConfigurationRequest request)
@@ -93,12 +99,14 @@ public interface ResourceManagerAdministrationProtocol extends GetUserMappingsPr
 
   @Private
   @Idempotent
+  //用于刷新系统中用户与组之间的映射关系，确保权限管理正确
   RefreshUserToGroupsMappingsResponse refreshUserToGroupsMappings(
       RefreshUserToGroupsMappingsRequest request)
   throws StandbyException, YarnException, IOException;
 
   @Private
   @Idempotent
+  //刷新资源管理器中管理员的权限信息，确保最新的权限配置生效
   public RefreshAdminAclsResponse refreshAdminAcls(
       RefreshAdminAclsRequest request)
   throws YarnException, IOException;

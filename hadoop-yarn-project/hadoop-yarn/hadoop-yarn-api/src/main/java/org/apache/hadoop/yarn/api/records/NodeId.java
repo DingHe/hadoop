@@ -31,6 +31,7 @@ import org.apache.hadoop.yarn.util.Records;
  * identify the node. Thus, it is unique across restarts of any 
  * <code>NodeManager</code>.</p>
  */
+//代表节点的ID
 @Public
 @Stable
 public abstract class NodeId implements Comparable<NodeId> {

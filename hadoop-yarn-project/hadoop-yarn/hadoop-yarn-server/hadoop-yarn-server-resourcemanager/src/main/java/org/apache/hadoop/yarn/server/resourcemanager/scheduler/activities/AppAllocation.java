@@ -34,15 +34,18 @@ import java.util.stream.Collectors;
  * time.
  * Each application allocation may have several allocation attempts.
  */
+// AppAllocation 类用于记录单个应用程序在一段时间内的资源分配情况。
+// 每个应用的资源分配可能会有多个尝试（allocation attempts），该类用于存储这些尝试的详细信息，并提供相关的管理和查询方法。
+// 它主要用于 YARN 资源管理器的调度过程中，帮助追踪应用程序的资源申请、分配状态以及失败或成功的分配尝试
 public class AppAllocation {
-  private Priority priority;
-  private NodeId nodeId;
-  private ContainerId containerId;
-  private ActivityState activityState;
-  private String diagnostic;
-  private String queueName;
-  private List<ActivityNode> allocationAttempts;
-  private long timestamp;
+  private Priority priority; //该应用的优先级，影响调度的先后顺序
+  private NodeId nodeId; //该应用分配资源的节点 ID
+  private ContainerId containerId; //成功分配的容器 ID（如果有）
+  private ActivityState activityState;//记录当前应用的调度状态，如 SKIPPED、REJECTED、ALLOCATED 等
+  private String diagnostic; //诊断信息，记录分配失败或其他状态变更的原因
+  private String queueName; //该应用所属的调度队列名称
+  private List<ActivityNode> allocationAttempts; //记录该应用的所有分配尝试，包括每次尝试的状态、节点、请求信息等
+  private long timestamp; //记录最近一次状态变更的时间戳
 
   public AppAllocation(Priority priority, NodeId nodeId, String queueName) {
     this.priority = priority;
@@ -106,6 +109,8 @@ public class AppAllocation {
   public List<ActivityNode> getAllocationAttempts() {
     return allocationAttempts;
   }
+  //requestPriorities：指定需要保留的请求优先级集合
+  //allocationRequestIds：指定需要保留的分配请求 ID 集合
 
   public AppAllocation filterAllocationAttempts(Set<Integer> requestPriorities,
       Set<Long> allocationRequestIds) {

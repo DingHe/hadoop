@@ -46,23 +46,33 @@ import org.apache.hadoop.classification.VisibleForTesting;
  * that have recently been invalidated and are thought to live
  * on the machine in question.
  */
+//管理了所有关于待删除块的集合，并且确保在集群中对无效块的管理得当，避免性能问题
 @InterfaceAudience.Private
 class InvalidateBlocks {
+  //键是 DatanodeInfo 对象（代表数据节点的信息），值是 LightWeightHashSet<Block>（每个数据节点对应的无效块的集合）。
+  // 该映射表用于存储每个数据节点的无效块
   private final Map<DatanodeInfo, LightWeightHashSet<Block>>
       nodeToBlocks = new HashMap<>();
+  //与 nodeToBlocks 类似，但它仅存储具有块类型 STRIPED（即分布式块组，通常用于 Erasure Coding）的无效块
   private final Map<DatanodeInfo, LightWeightHashSet<Block>>
       nodeToECBlocks = new HashMap<>();
+  //用于记录待删除的块的总数，类型是 LongAdder，可以在多个线程之间高效地增减
   private final LongAdder numBlocks = new LongAdder();
+  //类似于 numBlocks，但用于记录待删除的 EC（Erasure Coding）块的总数
   private final LongAdder numECBlocks = new LongAdder();
+  //每次操作时最多可以删除的块数量
   private final int blockInvalidateLimit;
+  //用于管理块的 ID，并确定某个块是否是分布式块
   private final BlockIdManager blockIdManager;
 
   /**
    * The period of pending time for block invalidation since the NameNode
    * startup
    */
+  //自 NameNode 启动以来，块无效化的等待时间（以毫秒为单位）。在这个时间范围内，块的删除被推迟
   private final long pendingPeriodInMs;
   /** the startup time */
+  //NameNode 启动的时间（以单调时钟时间为单位）。它用于计算距离启动已过的时间
   private final long startupTime = Time.monotonicNow();
 
   InvalidateBlocks(final int blockInvalidateLimit, long pendingPeriodInMs,
@@ -108,11 +118,11 @@ class InvalidateBlocks {
   long getECBlocks() {
     return numECBlocks.longValue();
   }
-
+  //返回给定数据节点的普通块集合
   private LightWeightHashSet<Block> getBlocksSet(final DatanodeInfo dn) {
     return nodeToBlocks.get(dn);
   }
-
+  //返回给定数据节点的 EC 块集合
   private LightWeightHashSet<Block> getECBlocksSet(final DatanodeInfo dn) {
     return nodeToECBlocks.get(dn);
   }

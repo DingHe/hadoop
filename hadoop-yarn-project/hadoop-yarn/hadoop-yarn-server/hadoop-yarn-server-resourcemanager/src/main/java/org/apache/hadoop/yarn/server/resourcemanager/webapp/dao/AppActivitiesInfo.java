@@ -36,14 +36,20 @@ import java.util.List;
 /**
  * DAO object to display application activity.
  */
+//AppActivitiesInfo 是一个 数据传输对象（DAO, Data Access Object），用于展示应用程序的调度活动信息。
+// 该类主要用于YARN资源管理器的 Web 界面（RM Web UI） 或 API，向用户提供特定应用的调度记录，包括：
+//应用ID
+//调度诊断信息（如错误原因）
+//调度的时间戳和可读日期
+//该应用的资源分配记录（封装在 AppAllocationInfo 对象列表中）
 @XmlRootElement(name = "appActivities")
 @XmlAccessorType(XmlAccessType.FIELD)
 public class AppActivitiesInfo {
-  private String applicationId;
-  private String diagnostic;
-  private Long timestamp;
-  private String dateTime;
-  private List<AppAllocationInfo> allocations;
+  private String applicationId;//该对象关联的 YARN 应用 ID（ApplicationId）
+  private String diagnostic;//诊断信息，用于存储应用在调度过程中的错误或状态信息。例如：资源不足、调度失败等
+  private Long timestamp; //记录该对象创建时的时间戳（毫秒级）。
+  private String dateTime; //记录 timestamp 对应的 可读时间（Date.toString() 形式）。
+  private List<AppAllocationInfo> allocations; //该应用的资源分配记录，包含多个 AppAllocationInfo，描述应用的多次资源调度尝试
 
   private static final Logger LOG =
       LoggerFactory.getLogger(AppActivitiesInfo.class);

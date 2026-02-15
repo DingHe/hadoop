@@ -40,6 +40,10 @@ import org.apache.hadoop.yarn.util.Records;
  * @see ApplicationSubmissionContext
  * @see ContainerManagementProtocol#startContainers(org.apache.hadoop.yarn.api.protocolrecords.StartContainersRequest)
  */
+//代表了在 YARN 中 容器所需的本地资源，这些资源通常会在容器启动之前由 NodeManager 进行本地化。
+// 通过该类，应用程序可以指定其需要的资源类型、可见性、大小等属性，
+// 帮助 YARN 确定哪些资源需要上传到本地文件系统或者共享缓存
+
 @Public
 @Stable
 public abstract class LocalResource {
@@ -58,13 +62,13 @@ public abstract class LocalResource {
       LocalResourceVisibility visibility, long size, long timestamp,
       String pattern, boolean shouldBeUploadedToSharedCache) {
     LocalResource resource = Records.newRecord(LocalResource.class);
-    resource.setResource(url);
-    resource.setType(type);
-    resource.setVisibility(visibility);
-    resource.setSize(size);
-    resource.setTimestamp(timestamp);
-    resource.setPattern(pattern);
-    resource.setShouldBeUploadedToSharedCache(shouldBeUploadedToSharedCache);
+    resource.setResource(url);//资源的 URL 地址，指向该资源的位置
+    resource.setType(type);//资源的类型，如归档文件、普通文件等
+    resource.setVisibility(visibility);//资源的可见性，决定是否公开资源给其他容器
+    resource.setSize(size);//资源的大小
+    resource.setTimestamp(timestamp);//资源的时间戳
+    resource.setPattern(pattern);//用于从压缩文件中提取文件的模式
+    resource.setShouldBeUploadedToSharedCache(shouldBeUploadedToSharedCache);//标记是否应将资源上传到共享缓存
     return resource;
   }
 

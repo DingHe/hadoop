@@ -33,19 +33,27 @@ import org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod;
 import org.apache.hadoop.security.token.TokenIdentifier;
 
 import org.apache.hadoop.classification.VisibleForTesting;
-
+//表示Hadoop中的委托令牌标识符。委托令牌通常用于跨多个会话、多个节点或不同用户之间的身份验证和授权。
+// 这个类封装了与委托令牌相关的各种信息，例如令牌的拥有者、更新者、最大有效期等
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public abstract class AbstractDelegationTokenIdentifier 
 extends TokenIdentifier {
+  //表示该类的版本。用于标识该类在序列化或反序列化过程中所使用的版本
   private static final byte VERSION = 0;
-
+   //表示令牌的拥有者。拥有者通常是发起委托令牌的用户或服务
   private Text owner;
+  //表示令牌的更新者。即谁有权限续期这个令牌
   private Text renewer;
+  //表示令牌所代表的实际用户。在某些场景下，这可以用来表示代表其他用户操作的服务账户
   private Text realUser;
+  //表示令牌的发放日期，通常是一个时间戳。这个值是令牌创建时的时间
   private long issueDate;
+  //表示令牌的最大有效期，通常是一个时间戳。超过此日期后，令牌将失效
   private long maxDate;
+  //表示令牌的序列号。通常用于唯一标识令牌在同一时间段内的不同实例
   private int sequenceNumber;
+  //表示与此令牌相关的主密钥的 ID。这个密钥用于加密和解密令牌内容
   private int masterKeyId = 0;
   
   public AbstractDelegationTokenIdentifier() {

@@ -38,7 +38,7 @@ import org.apache.hadoop.io.WritableFactory;
  * monotonically increasing 8-byte number for each block that is maintained
  * persistently by the NameNode. However, for the purposes of this class, two
  * Blocks are considered equal iff they have the same block ID.
- *
+ *  Hadoop 分布式文件系统（HDFS）中的一个数据块。每个数据块都有一个唯一的 ID 和相关的生成戳（generation stamp），用于确保数据块在 HDFS 中的唯一性和版本控制
  * @see Block#equals(Object)
  * @see Block#hashCode()
  * @see Block#compareTo(Block)
@@ -46,8 +46,8 @@ import org.apache.hadoop.io.WritableFactory;
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class Block implements Writable, Comparable<Block> {
-  public static final String BLOCK_FILE_PREFIX = "blk_";
-  public static final String METADATA_EXTENSION = ".meta";
+  public static final String BLOCK_FILE_PREFIX = "blk_";//定义块文件的前缀名称常量，如 "blk_"。在 HDFS 中，所有的块文件名称都以该前缀开头
+  public static final String METADATA_EXTENSION = ".meta";//定义块元数据文件的扩展名常量，如 ".meta"，用于标识与数据块相关的元数据文件
   static {                                      // register a ctor
     WritableFactories.setFactory(Block.class, new WritableFactory() {
       @Override
@@ -56,19 +56,19 @@ public class Block implements Writable, Comparable<Block> {
   }
 
   public static final Pattern blockFilePattern = Pattern
-      .compile(BLOCK_FILE_PREFIX + "(-??\\d++)$");
+      .compile(BLOCK_FILE_PREFIX + "(-??\\d++)$");//定义用于匹配块文件名称的正则表达式模式
   public static final Pattern metaFilePattern = Pattern
-      .compile(BLOCK_FILE_PREFIX + "(-??\\d++)_(\\d++)\\" + METADATA_EXTENSION
+      .compile(BLOCK_FILE_PREFIX + "(-??\\d++)_(\\d++)\\" + METADATA_EXTENSION //定义用于匹配元数据文件名称的正则表达式模式
           + "$");
   public static final Pattern metaOrBlockFilePattern = Pattern
       .compile(BLOCK_FILE_PREFIX + "(-??\\d++)(_(\\d++)\\" + METADATA_EXTENSION
-          + ")?$");
+          + ")?$"); //定义用于匹配块文件或元数据文件名称的正则表达式模式
 
   public static boolean isBlockFilename(File f) {
     String name = f.getName();
     return blockFilePattern.matcher(name).matches();
   }
-
+  //根据块文件名或者块标识ID
   public static long filename2id(String name) {
     Matcher m = blockFilePattern.matcher(name);
     return m.matches() ? Long.parseLong(m.group(1)) : 0;
@@ -100,12 +100,12 @@ public class Block implements Writable, Comparable<Block> {
     return m.matches() ? Long.parseLong(m.group(1)) : 0;
   }
 
-  private long blockId;
-  private long numBytes;
-  private long generationStamp;
-
+  private long blockId; //表示块的 ID，是该数据块的唯一标识符
+  private long numBytes; //表示块的大小（以字节为单位），即数据块所占的存储空间
+  private long generationStamp;//表示数据块的生成戳。它是一个递增的数字，用于标识数据块的版本
+  //默认构造函数，初始化一个 ID 为 0，大小为 0，生成戳为 HdfsConstants.GRANDFATHER_GENERATION_STAMP 的数据块
   public Block() {this(0, 0, 0);}
-
+  //根据给定的 ID、大小和生成戳创建一个数据块
   public Block(final long blkid, final long len, final long generationStamp) {
     set(blkid, len, generationStamp);
   }

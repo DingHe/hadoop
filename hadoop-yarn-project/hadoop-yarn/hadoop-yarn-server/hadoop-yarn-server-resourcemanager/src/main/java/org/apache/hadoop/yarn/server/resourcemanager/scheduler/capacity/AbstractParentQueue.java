@@ -79,31 +79,39 @@ import org.apache.hadoop.yarn.util.resource.Resources;
 
 import static org.apache.hadoop.yarn.nodelabels.CommonNodeLabelsManager.NO_LABEL;
 import static org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacitySchedulerConfiguration.getACLsForFlexibleAutoCreatedParentQueue;
-
+//维护子队列列表 childQueues，支持层级队列结构
+//负责队列的容量、权重、资源分配等配置管理
+//维护调度策略（如 queueOrderingPolicy），确保公平性和资源利用率
+//处理队列的 ACL（访问控制列表）配置
+//计算和管理有效的最小资源比率（effectiveMinResourceRatio）
+//确保子队列的容量配置模式（百分比、权重、绝对资源）一致
 public abstract class AbstractParentQueue extends AbstractCSQueue {
   private static final Logger LOG =
       LoggerFactory.getLogger(AbstractParentQueue.class);
-
+  //存储当前父队列下的所有子队列
   protected final List<CSQueue> childQueues;
+  //标识当前队列是否是根队列（rootQueue）。
   private final boolean rootQueue;
+  //记录当前队列中的应用程序数量。
   private AtomicInteger numApplications = new AtomicInteger(0);
 
   private final RecordFactory recordFactory =
       RecordFactoryProvider.getRecordFactory(null);
-
+  //处理队列的排序策略。
   private QueueOrderingPolicy queueOrderingPolicy;
-
+  //记录上次跳过队列的 debug 日志时间戳。
   private long lastSkipQueueDebugLoggingTimestamp = -1;
-
+  //记录可运行的应用程序数量。
   private int runnableApps;
-
+  //是否允许子队列的容量总和为零（可能影响公平性）。
   private final boolean allowZeroCapacitySum;
-
+  //处理动态创建队列时的模板配置。
   private AutoCreatedQueueTemplate autoCreatedQueueTemplate;
 
   // A ratio of the queue's effective minimum resource and the summary of the configured
   // minimum resource of its children grouped by labels and calculated for each resource names
   // distinctively.
+  //存储按标签分组的子队列最小资源比率。
   private final Map<String, Map<String, Float>> effectiveMinResourceRatio =
       new ConcurrentHashMap<>();
 
@@ -552,15 +560,6 @@ public abstract class AbstractParentQueue extends AbstractCSQueue {
     return isDynamicQueue() || queueContext.getConfiguration().
         isAutoQueueCreationV2Enabled(getQueuePath());
   }
-  /**
-   * Check whether this queue supports legacy(v1) dynamic child queue creation.
-   * @return true if queue is eligible to create child queues dynamically using
-   * the legacy system, false otherwise
-   */
-  public boolean isEligibleForLegacyAutoQueueCreation() {
-    return isDynamicQueue() || queueContext.getConfiguration().
-        isAutoCreateChildQueueEnabled(getQueuePath());
-  }
 
   @Override
   public void reinitialize(CSQueue newlyParsedQueue,
@@ -678,7 +677,7 @@ public abstract class AbstractParentQueue extends AbstractCSQueue {
     }
     return queuesMap;
   }
-
+  //叶子队列，最终也是调用到这里来提交应用
   @Override
   public void submitApplication(ApplicationId applicationId, String user,
       String queue) throws AccessControlException {
@@ -704,7 +703,7 @@ public abstract class AbstractParentQueue extends AbstractCSQueue {
       }
     }
   }
-
+  //提交应用前的检查
   public void validateSubmitApplication(ApplicationId applicationId,
       String userName, String queue) throws AccessControlException {
     writeLock.lock();
@@ -742,7 +741,7 @@ public abstract class AbstractParentQueue extends AbstractCSQueue {
       String queue) {
     // finish attempt logic.
   }
-
+  //增加应用的计数
   private void addApplication(ApplicationId applicationId,
       String user) {
     numApplications.incrementAndGet();

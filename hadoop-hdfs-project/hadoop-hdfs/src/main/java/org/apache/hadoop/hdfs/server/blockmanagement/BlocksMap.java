@@ -30,6 +30,9 @@ import org.apache.hadoop.util.LightWeightGSet;
  * block's metadata currently includes blockCollection it belongs to and
  * the datanodes that store the block.
  */
+//主要用于管理 HDFS 中块的映射关系，它维护了从 Block 到 BlockInfo 的映射，存储了块的元数据（如存储的节点、所属的文件等）。
+// 它提供了对块的添加、删除、查询以及配额管理等操作。
+// 同时，它还维护了块的统计信息，如复制块和 EC 块组的数量，确保了 HDFS 的数据块管理和配额统计功能
 class BlocksMap {
   public static class StorageIterator implements Iterator<DatanodeStorageInfo> {
     private final BlockInfo blockInfo;
@@ -64,12 +67,15 @@ class BlocksMap {
   }
 
   /** Constant {@link LightWeightGSet} capacity. */
+  //表示 BlocksMap 的容量，也就是存储 Block 的集合的大小
   private final int capacity;
-  
+  // GSet<Block, BlockInfo> 类型的属性，表示存储 Block 与其对应的 BlockInfo 对象之间的映射关系
   private GSet<Block, BlockInfo> blocks;
-
-  private final LongAdder totalReplicatedBlocks = new LongAdder();
-  private final LongAdder totalECBlockGroups = new LongAdder();
+  //LongAdder 内部维护了一组变量（Cell 数组），而不是单一的计数器
+  //多个线程可以同时对不同的变量进行累加，从而避免了对同一个变量的频繁竞争
+  //当需要获取最终的累加值时，LongAdder 会将所有内部变量的值相加
+  private final LongAdder totalReplicatedBlocks = new LongAdder();//记录已复制的块的数量
+  private final LongAdder totalECBlockGroups = new LongAdder();//记录存储的 EC（Erasure Code）块组的数量
 
   BlocksMap(int capacity) {
     // Use 2% of total memory to size the GSet capacity
@@ -107,6 +113,9 @@ class BlocksMap {
   /**
    * Add block b belonging to the specified block collection to the map.
    */
+  //b：要添加的 BlockInfo 对象，表示一个块
+  //bc：BlockCollection 对象，表示块所属的块集合（通常是一个文件或目录）
+  //首先从 blocks 集合中获取 b 对应的 BlockInfo 对象，如果不存在就将 b 加入到集合中
   BlockInfo addBlockCollection(BlockInfo b, BlockCollection bc) {
     BlockInfo info = blocks.get(b);
     if (info != b) {
@@ -123,17 +132,19 @@ class BlocksMap {
    * remove it from all data-node lists it belongs to;
    * and remove all data-node locations associated with the block.
    */
+  //block：要移除的 BlockInfo 对象
   void removeBlock(BlockInfo block) {
     BlockInfo blockInfo = blocks.remove(block);
     if (blockInfo == null) {
       return;
     }
+    //如果 blockInfo 不为 null，则首先递减统计数
     decrementBlockStat(block);
 
     assert blockInfo.getBlockCollectionId() == INodeId.INVALID_INODE_ID;
     final int size = blockInfo.isStriped() ?
-        blockInfo.getCapacity() : blockInfo.numNodes();
-    for(int idx = size - 1; idx >= 0; idx--) {
+        blockInfo.getCapacity() : blockInfo.numNodes();  //block在多少个节点上
+    for(int idx = size - 1; idx >= 0; idx--) {//把所有相关的block删除
       DatanodeDescriptor dn = blockInfo.getDatanode(idx);
       if (dn != null) {
         removeBlock(dn, blockInfo); // remove from the list and wipe the location

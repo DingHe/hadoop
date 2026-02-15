@@ -24,10 +24,14 @@ import org.apache.hadoop.classification.InterfaceStability.Unstable;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.proto.YarnProtos.ApplicationIdProto;
 
+// ApplicationIdPBImpl 是 ApplicationId 的 Protocol Buffers (PB) 实现类，
+// 作用是将 ApplicationId 转换为 ApplicationIdProto，便于数据序列化、网络传输以及持久化存储
 @Private
 @Unstable
 public class ApplicationIdPBImpl extends ApplicationId {
+  //存储了 ApplicationId 的 PB 对象，当 ApplicationIdPBImpl 需要获取 ID 或集群时间戳时，直接从 proto 读取数据
   ApplicationIdProto proto = null;
+  //builder：用于构造 proto，在 build() 方法调用后被清除，避免不必要的内存占用
   ApplicationIdProto.Builder builder = null;
 
   public ApplicationIdPBImpl() {

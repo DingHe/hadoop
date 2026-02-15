@@ -60,13 +60,14 @@ import static org.apache.hadoop.io.erasurecode.ErasureCodeConstants.REPLICATION_
 
 import org.apache.hadoop.classification.VisibleForTesting;
 import org.apache.hadoop.util.Preconditions;
-
+//NameNode 端用于表示文件的核心数据结构。
+// 负责存储文件的基本元数据，如块信息、存储策略、复制因子等
 /** I-node for closed file. */
 @InterfaceAudience.Private
 public class INodeFile extends INodeWithAdditionalFields
     implements INodeFileAttributes, BlockCollection {
 
-  /**
+  /**EC纠删码的块为1
    * Erasure Coded striped blocks have replication factor of 1.
    */
   public static final short DEFAULT_REPL_FOR_STRIPED_BLOCKS = 1;
@@ -121,10 +122,16 @@ public class INodeFile extends INodeWithAdditionalFields
    * BLOCK_LAYOUT_AND_REDUNDANCY format for striped block:
    * 1 [11-bit ErasureCodingPolicy ID]
    */
+  //描述 INodeFile 中 header 属性的格式。它通过二进制位对文件块的冗余、存储策略、块大小等信息进行编码。
+  // 这个格式设计有助于高效地存储并提取文件块的相关信息
   enum HeaderFormat {
-    PREFERRED_BLOCK_SIZE(null, 48, 1),
+    PREFERRED_BLOCK_SIZE(null, 48, 1),//表示文件块的首选大小。占 48 位，最小值为 1
+    //紧跟在 PREFERRED_BLOCK_SIZE 后，占用 12 位。这个字段存储了关于块布局（例如是否是条带化块或副本块）以及冗余的信息
+    //1 位用于标识块的类型（副本块或条带化块）
+    //11 位用于表示副本数或纠删码（EC）的策略ID
     BLOCK_LAYOUT_AND_REDUNDANCY(PREFERRED_BLOCK_SIZE.BITS,
         HeaderFormat.LAYOUT_BIT_WIDTH + 11, 0),
+    //紧跟在 BLOCK_LAYOUT_AND_REDUNDANCY 后，占用存储策略ID的位数，用于描述数据存储的策略
     STORAGE_POLICY_ID(BLOCK_LAYOUT_AND_REDUNDANCY.BITS,
         BlockStoragePolicySuite.ID_BIT_LENGTH, 0);
 
@@ -134,13 +141,15 @@ public class INodeFile extends INodeWithAdditionalFields
      * Number of bits used to encode block layout type.
      * Different types can be replica or EC
      */
+    //表示块布局类型的位宽，当前为 1 位，区分副本块和条带化块
     private static final int LAYOUT_BIT_WIDTH = 1;
+    //最大冗余度，等于 11 位的最大值，即 2047
     private static final int MAX_REDUNDANCY = (1 << 11) - 1;
 
     HeaderFormat(LongBitFormat previous, int length, long min) {
       BITS = new LongBitFormat(name(), previous, length, min);
     }
-
+    //从 header 中提取副本数（冗余度）。如果是条带化块，则返回默认值 DEFAULT_REPL_FOR_STRIPED_BLOCKS（默认为1）。如果是副本块，则提取副本数
     static short getReplication(long header) {
       if (isStriped(header)) {
         return DEFAULT_REPL_FOR_STRIPED_BLOCKS;
@@ -150,16 +159,16 @@ public class INodeFile extends INodeWithAdditionalFields
         return (short) (layoutRedundancy & MAX_REDUNDANCY);
       }
     }
-
+    //从 header 中提取纠删码（EC）策略ID
     static byte getECPolicyID(long header) {
       long layoutRedundancy = BLOCK_LAYOUT_AND_REDUNDANCY.BITS.retrieve(header);
       return (byte) (layoutRedundancy & MAX_REDUNDANCY);
     }
-
+    //从 header 中提取块的首选大小
     static long getPreferredBlockSize(long header) {
       return PREFERRED_BLOCK_SIZE.BITS.retrieve(header);
     }
-
+    //从 header 中提取存储策略ID
     static byte getStoragePolicyID(long header) {
       return (byte)STORAGE_POLICY_ID.BITS.retrieve(header);
     }
@@ -169,11 +178,11 @@ public class INodeFile extends INodeWithAdditionalFields
     static final long BLOCK_TYPE_MASK = 1 << 11;
     // Mask to determine if the block type is striped.
     static final long BLOCK_TYPE_MASK_STRIPED = 1 << 11;
-
+    //判断 header 是否是条带化块。通过检查 header 中的布局冗余信息来确定
     static boolean isStriped(long header) {
       return getBlockType(header) == STRIPED;
     }
-
+    //判断块的类型（副本块或条带化块）。通过 header 中的布局冗余信息来解析
     static BlockType getBlockType(long header) {
       long layoutRedundancy = BLOCK_LAYOUT_AND_REDUNDANCY.BITS.retrieve(header);
       long blockType = layoutRedundancy & BLOCK_TYPE_MASK;
@@ -184,7 +193,7 @@ public class INodeFile extends INodeWithAdditionalFields
       }
     }
 
-    /**
+    /**根据块类型（副本块或条带化块）、副本数和纠删码策略ID构建布局冗余信息
      * Construct block layout redundancy based on the given BlockType,
      * replication factor and EC PolicyID.
      */
@@ -234,7 +243,7 @@ public class INodeFile extends INodeWithAdditionalFields
       }
       return layoutRedundancy;
     }
-
+    //将首选块大小、布局冗余信息和存储策略ID转换为一个长整型（long）数值，表示为 header
     static long toLong(long preferredBlockSize, long layoutRedundancy,
         byte storagePolicyID) {
       long h = 0;
@@ -248,9 +257,14 @@ public class INodeFile extends INodeWithAdditionalFields
     }
 
   }
-
+  //主要用于存储文件的块布局信息，存储策略 ID (4 bit)，块布局和冗余信息 (12 bit)，首选块大小 (48 bit)
+  //块布局和冗余：
+  // 最高位 (1 bit)：表示块是复制型 (Replica) 还是纠删码 (Erasure Coded, EC)
+  //低 11 位，如果是复制型：存储副本因子，如果是EC 型：存储EC 策略 ID
   private long header = 0L;
-
+  //存储该文件的所有 BlockInfo 对象，每个 BlockInfo 代表一个 HDFS 数据块
+  //如果文件是复制存储 (Contiguous block)，则 BlockInfo 数组中的块按顺序存储
+  //如果文件是EC (Erasure Coding) 存储，则 BlockInfoStriped 结构用于表示条带化存储的块
   private BlockInfo[] blocks;
 
   INodeFile(long id, byte[] name, PermissionStatus permissions, long mtime,
@@ -319,13 +333,13 @@ public class INodeFile extends INodeWithAdditionalFields
   public boolean isUnderConstruction() {
     return getFileUnderConstructionFeature() != null;
   }
-
+  //文件从正常状态转为构建转改
   INodeFile toUnderConstruction(String clientName, String clientMachine) {
     Preconditions.checkState(!isUnderConstruction(),
         "file is already under construction");
     FileUnderConstructionFeature uc = new FileUnderConstructionFeature(
         clientName, clientMachine);
-    addFeature(uc);
+    addFeature(uc);//添加构建状态的特性
     return this;
   }
 
@@ -333,11 +347,12 @@ public class INodeFile extends INodeWithAdditionalFields
    * Convert the file to a complete file, i.e., to remove the Under-Construction
    * feature.
    */
+  //文件从构建状态转为正常状态
   void toCompleteFile(long mtime, int numCommittedAllowed, short minReplication) {
     final FileUnderConstructionFeature uc = getFileUnderConstructionFeature();
     Preconditions.checkNotNull(uc, "File %s is not under construction", this);
     assertAllBlocksComplete(numCommittedAllowed, minReplication);
-    removeFeature(uc);
+    removeFeature(uc); //删除构建状态的设置
     setModificationTime(mtime);
   }
 

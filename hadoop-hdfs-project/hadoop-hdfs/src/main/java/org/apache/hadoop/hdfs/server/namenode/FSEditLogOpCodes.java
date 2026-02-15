@@ -28,22 +28,22 @@ import org.apache.hadoop.hdfs.server.namenode.FSEditLogOp.*;
 @InterfaceStability.Unstable
 public enum FSEditLogOpCodes {
   // last op code in file
-  OP_ADD                        ((byte)  0, AddOp.class),
+  OP_ADD                        ((byte)  0, AddOp.class), //代表文件系统中执行“添加”操作（如添加文件或目录）的编辑操作
   // deprecated operation
-  OP_RENAME_OLD                 ((byte)  1, RenameOldOp.class),
-  OP_DELETE                     ((byte)  2, DeleteOp.class),
-  OP_MKDIR                      ((byte)  3, MkdirOp.class),
-  OP_SET_REPLICATION            ((byte)  4, SetReplicationOp.class),
-  @Deprecated OP_DATANODE_ADD   ((byte)  5), // obsolete
+  OP_RENAME_OLD                 ((byte)  1, RenameOldOp.class), //代表旧版的重命名操作，这个操作已经被废弃
+  OP_DELETE                     ((byte)  2, DeleteOp.class),//表示执行删除操作，通常是删除文件或目录
+  OP_MKDIR                      ((byte)  3, MkdirOp.class),//表示创建一个目录的操作
+  OP_SET_REPLICATION            ((byte)  4, SetReplicationOp.class),//用于设置文件的副本数
+  @Deprecated OP_DATANODE_ADD   ((byte)  5), // obsolete 这两个操作码表示添加或移除数据节点，已经废弃
   @Deprecated OP_DATANODE_REMOVE((byte)  6), // obsolete
-  OP_SET_PERMISSIONS            ((byte)  7, SetPermissionsOp.class),
-  OP_SET_OWNER                  ((byte)  8, SetOwnerOp.class),
-  OP_CLOSE                      ((byte)  9, CloseOp.class),
-  OP_SET_GENSTAMP_V1            ((byte) 10, SetGenstampV1Op.class),
-  OP_SET_NS_QUOTA               ((byte) 11, SetNSQuotaOp.class), // obsolete
+  OP_SET_PERMISSIONS            ((byte)  7, SetPermissionsOp.class),//表示设置文件或目录的权限
+  OP_SET_OWNER                  ((byte)  8, SetOwnerOp.class),//表示设置文件或目录的所有者
+  OP_CLOSE                      ((byte)  9, CloseOp.class), //表示关闭文件
+  OP_SET_GENSTAMP_V1            ((byte) 10, SetGenstampV1Op.class),//表示设置版本号（1版）的操作
+  OP_SET_NS_QUOTA               ((byte) 11, SetNSQuotaOp.class), // obsolete 表示设置和清除命名空间配额的操作，这两个操作已废弃
   OP_CLEAR_NS_QUOTA             ((byte) 12, ClearNSQuotaOp.class), // obsolete
-  OP_TIMES                      ((byte) 13, TimesOp.class), // set atime, mtime
-  OP_SET_QUOTA                  ((byte) 14, SetQuotaOp.class),
+  OP_TIMES                      ((byte) 13, TimesOp.class), // set atime, mtime 表示设置文件的访问时间（atime）和修改时间（mtime）
+  OP_SET_QUOTA                  ((byte) 14, SetQuotaOp.class),//表示设置文件系统的配额
   // filecontext rename
   OP_RENAME                     ((byte) 15, RenameOp.class),
   // concat files
@@ -89,8 +89,8 @@ public enum FSEditLogOpCodes {
   // Note that the current range of the valid OP code is 0~127
   OP_INVALID                    ((byte) -1);
 
-  private final byte opCode;
-  private final Class<? extends FSEditLogOp> opClass;
+  private final byte opCode;//代表每个操作的唯一编码
+  private final Class<? extends FSEditLogOp> opClass;//用于存储每个操作对应的类
 
   /**
    * Constructor

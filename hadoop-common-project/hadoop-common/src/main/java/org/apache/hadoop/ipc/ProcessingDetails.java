@@ -30,29 +30,32 @@ import java.util.concurrent.TimeUnit;
  * Stores the times that a call takes to be processed through each step and
  * its response status.
  */
+// 记录 RPC（远程过程调用）执行过程中各个阶段所消耗的时间，以及该调用的返回状态。
+// 此类主要用于性能监控和问题诊断，帮助跟踪请求在 HDFS 系统中处理的各个步骤耗时情况，方便定位瓶颈和异常
 @InterfaceStability.Unstable
 @InterfaceAudience.Private
 public class ProcessingDetails {
   public static final Logger LOG =
       LoggerFactory.getLogger(ProcessingDetails.class);
+  //用于设置和存储时间的单位（如纳秒、微秒、毫秒等）。所有的时间记录都依据该单位进行转换和存储
   private final TimeUnit valueTimeUnit;
 
   /**
    * The different stages to track the time of.
    */
   public enum Timing {
-    ENQUEUE,          // time for reader to insert in call queue.
-    QUEUE,            // time in the call queue.
-    HANDLER,          // handler overhead not spent in processing/response.
+    ENQUEUE,          // time for reader to insert in call queue. 请求进入调用队列的时间，表示从读取请求到加入队列的耗时
+    QUEUE,            // time in the call queue. 请求在调用队列中等待的时间，表示从入队到被处理器取走的耗时
+    HANDLER,          // handler overhead not spent in processing/response. 处理器的开销时间，不包括实际处理和响应时间，主要记录调度和上下文切换等操作的耗时
     PROCESSING,       // time handler spent processing the call. always equal to
-                      // lock_free + lock_wait + lock_shared + lock_exclusive
-    LOCKFREE,         // processing with no lock.
-    LOCKWAIT,         // processing while waiting for lock.
-    LOCKSHARED,       // processing with a read lock.
-    LOCKEXCLUSIVE,    // processing with a write lock.
-    RESPONSE;         // time to encode and send response.
+                      // lock_free + lock_wait + lock_shared + lock_exclusive 处理器处理请求的总时间，包含无锁、锁等待、共享锁、独占锁四个子阶段时间之和
+    LOCKFREE,         // processing with no lock. 在没有锁竞争的情况下处理请求的时间
+    LOCKWAIT,         // processing while waiting for lock. 等待锁的时间，表示请求处理过程中因获取锁而等待的时间
+    LOCKSHARED,       // processing with a read lock. 持有共享锁（读锁）时处理请求的时间
+    LOCKEXCLUSIVE,    // processing with a write lock. 持有独占锁（写锁）时处理请求的时间
+    RESPONSE;         // time to encode and send response. 编码响应结果并发送给客户端所耗费的时间
   }
-
+  //用于存储各个时间阶段的耗时，按 Timing 枚举的顺序依次保存
   private long[] timings = new long[Timing.values().length];
 
   // Rpc return status of this call

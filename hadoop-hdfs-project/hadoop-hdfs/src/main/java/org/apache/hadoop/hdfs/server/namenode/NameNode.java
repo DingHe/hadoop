@@ -1360,30 +1360,32 @@ public class NameNode extends ReconfigurableBase implements
    * Verify that configured directories exist, then
    * Interactively confirm that formatting is desired 
    * for each existing directory and format them.
-   * 
+   *  对 HDFS 的 NameNode 进行格式化
    * @param conf configuration to use
-   * @param force if true, format regardless of whether dirs exist
-   * @return true if formatting was aborted, false otherwise
+   * @param force if true, format regardless of whether dirs exist  表示是否强制格式化
+   * @return true if formatting was aborted, false otherwise 示格式化时是否进行交互式确认
    * @throws IOException
    */
   private static boolean format(Configuration conf, boolean force,
       boolean isInteractive) throws IOException {
+    //获取集群信息并进行初始化
     String nsId = DFSUtil.getNamenodeNameServiceId(conf);
     String namenodeId = HAUtil.getNameNodeId(conf, nsId);
     initializeGenericKeys(conf, nsId, namenodeId);
     checkAllowFormat(conf);
-
+    //如果启用了 Kerberos 安全认证，则进行登录操作，确保格式化操作的安全性
     if (UserGroupInformation.isSecurityEnabled()) {
       InetSocketAddress socAddr = DFSUtilClient.getNNAddress(conf);
       SecurityUtil.login(conf, DFS_NAMENODE_KEYTAB_FILE_KEY,
           DFS_NAMENODE_KERBEROS_PRINCIPAL_KEY, socAddr.getHostName());
     }
-    
+    //获取命名空间和编辑日志的目录，这些目录需要进行格式化
     Collection<URI> nameDirsToFormat = FSNamesystem.getNamespaceDirs(conf);
     List<URI> editDirsToFormat = 
                  FSNamesystem.getNamespaceEditsDirs(conf);
 
     // if clusterID is not provided - see if you can find the current one
+    //确定集群 ID
     String clusterId = StartupOption.FORMAT.getClusterId();
     if(clusterId == null || clusterId.equals("")) {
       //Generate a new cluster id
@@ -1391,6 +1393,7 @@ public class NameNode extends ReconfigurableBase implements
     }
 
     LOG.info("Formatting using clusterid: {}", clusterId);
+    //创建 FSImage 实例和 FSNamesystem 实例，并初始化编辑日志，为格式化做准备
     FSNamesystem fsn = null;
     try (FSImage fsImage = new FSImage(conf, nameDirsToFormat, editDirsToFormat)) {
       fsn = new FSNamesystem(conf, fsImage);
@@ -1398,6 +1401,7 @@ public class NameNode extends ReconfigurableBase implements
 
       // Abort NameNode format if reformat is disabled and if
       // meta-dir already exists
+      //如果禁用了重新格式化（即 DFS_REFORMAT_DISABLED 配置为 true），则检查存储目录是否已经有数据。如果有数据，抛出异常并中止格式化
       if (conf.getBoolean(DFSConfigKeys.DFS_REFORMAT_DISABLED,
           DFSConfigKeys.DFS_REFORMAT_DISABLED_DEFAULT)) {
         force = false;
@@ -1410,11 +1414,11 @@ public class NameNode extends ReconfigurableBase implements
           }
         }
       }
-
+      //确认是否执行格式化
       if (!fsImage.confirmFormat(force, isInteractive)) {
         return true; // aborted
       }
-
+      //执行格式化操作
       fsImage.format(fsn, clusterId, force);
     } catch (IOException ioe) {
       LOG.warn("Encountered exception during format", ioe);
@@ -1424,7 +1428,7 @@ public class NameNode extends ReconfigurableBase implements
         fsn.close();
       }
     }
-    return false;
+    return false; //false：如果格式化成功执行  true：如果格式化被中止（例如用户取消操作或格式化不被允许）
   }
 
   public static void checkAllowFormat(Configuration conf) throws IOException {
@@ -1644,14 +1648,15 @@ public class NameNode extends ReconfigurableBase implements
   private static void printUsage(PrintStream out) {
     out.println(USAGE + "\n");
   }
-
+  //遍历命令行参数，判断不同的启动选项并更新 startOpt 变量。在解析过程中，
+  // 它还会检查和处理一些特定的选项，如 -force 和 -clusterid，以便正确地配置启动参数。如果某些选项组合不符合预期，方法会记录错误并返回 null
   @VisibleForTesting
   static StartupOption parseArguments(String args[]) {
-    int argsLen = (args == null) ? 0 : args.length;
+    int argsLen = (args == null) ? 0 : args.length; //表示传入的命令行参数数组的长度。如果 args 为 null，则 argsLen 为 0
     StartupOption startOpt = StartupOption.REGULAR;
     for(int i=0; i < argsLen; i++) {
       String cmd = args[i];
-      if (StartupOption.FORMAT.getName().equalsIgnoreCase(cmd)) {
+      if (StartupOption.FORMAT.getName().equalsIgnoreCase(cmd)) { //如果命令行参数是 -format，则 startOpt 被设置为 StartupOption.FORMAT，这表示启动格式化模式
         startOpt = StartupOption.FORMAT;
         for (i = i + 1; i < argsLen; i++) {
           if (args[i].equalsIgnoreCase(StartupOption.CLUSTERID.getName())) {
@@ -1672,13 +1677,13 @@ public class NameNode extends ReconfigurableBase implements
                   + StartupOption.CLUSTERID.getName() + " flag");
               return null;
             }
-            startOpt.setClusterId(clusterId);
+            startOpt.setClusterId(clusterId); //如果遇到 -clusterid，则获取它后面的值并设置 startOpt 的集群 ID
           }
-
+          //如果遇到 -force，则设置 startOpt 的 forceFormat 为 true，表示强制格式化
           if (args[i].equalsIgnoreCase(StartupOption.FORCE.getName())) {
             startOpt.setForceFormat(true);
           }
-
+          //如果遇到 -noninteractive，则设置 startOpt 的 interactiveFormat 为 false，表示非交互式格式化
           if (args[i].equalsIgnoreCase(StartupOption.NONINTERACTIVE.getName())) {
             startOpt.setInteractiveFormat(false);
           }
@@ -1694,7 +1699,7 @@ public class NameNode extends ReconfigurableBase implements
       } else if (StartupOption.OBSERVER.getName().equalsIgnoreCase(cmd)) {
         startOpt = StartupOption.OBSERVER;
       } else if (StartupOption.UPGRADE.getName().equalsIgnoreCase(cmd)
-          || StartupOption.UPGRADEONLY.getName().equalsIgnoreCase(cmd)) {
+          || StartupOption.UPGRADEONLY.getName().equalsIgnoreCase(cmd)) { //如果命令行参数是 -upgrade 或 -upgradeonly，则将 startOpt 设置为相应的启动选项
         startOpt = StartupOption.UPGRADE.getName().equalsIgnoreCase(cmd) ? 
             StartupOption.UPGRADE : StartupOption.UPGRADEONLY;
         /* Can be followed by CLUSTERID with a required parameter or
@@ -1702,7 +1707,7 @@ public class NameNode extends ReconfigurableBase implements
          */
         while (i + 1 < argsLen) {
           String flag = args[i + 1];
-          if (flag.equalsIgnoreCase(StartupOption.CLUSTERID.getName())) {
+          if (flag.equalsIgnoreCase(StartupOption.CLUSTERID.getName())) { //如果遇到 -clusterid，则获取其后面的值并设置为集群 ID
             if (i + 2 < argsLen) {
               i += 2;
               startOpt.setClusterId(args[i]);
@@ -1711,7 +1716,7 @@ public class NameNode extends ReconfigurableBase implements
                   + StartupOption.CLUSTERID.getName() + " flag");
               return null;
             }
-          } else if (flag.equalsIgnoreCase(StartupOption.RENAMERESERVED
+          } else if (flag.equalsIgnoreCase(StartupOption.RENAMERESERVED //如果遇到 -renamereserved，则设置重命名保留对
               .getName())) {
             if (i + 2 < argsLen) {
               FSImageFormat.setRenameReservedPairs(args[i + 2]);
@@ -1725,7 +1730,7 @@ public class NameNode extends ReconfigurableBase implements
             return null;
           }
         }
-      } else if (StartupOption.ROLLINGUPGRADE.getName().equalsIgnoreCase(cmd)) {
+      } else if (StartupOption.ROLLINGUPGRADE.getName().equalsIgnoreCase(cmd)) { //如果命令行参数是 -rollingupgrade，则设置 startOpt 为 StartupOption.ROLLINGUPGRADE
         startOpt = StartupOption.ROLLINGUPGRADE;
         ++i;
         if (i >= argsLen) {
@@ -1859,12 +1864,12 @@ public class NameNode extends ReconfigurableBase implements
 
     boolean aborted = false;
     switch (startOpt) {
-    case FORMAT:
+    case FORMAT: //如果 startOpt 为 FORMAT，则调用 format 方法进行格式化，传递是否强制格式化和是否交互式格式化的参数，并在格式化后终止进程
       aborted = format(conf, startOpt.getForceFormat(),
           startOpt.getInteractiveFormat());
       terminate(aborted ? 1 : 0);
       return null; // avoid javac warning
-    case GENCLUSTERID:
+    case GENCLUSTERID: //如果 startOpt 为 GENCLUSTERID，生成一个新的集群 ID 并打印，之后终止进程
       String clusterID = NNStorage.newClusterID();
       LOG.info("Generated new cluster id: {}", clusterID);
       terminate(0);
@@ -1964,10 +1969,10 @@ public class NameNode extends ReconfigurableBase implements
   public static void main(String argv[]) throws Exception {
     if (DFSUtil.parseHelpArgument(argv, NameNode.USAGE, System.out, true)) {
       System.exit(0);
-    }
+    }  //打印帮助信息
 
     try {
-      StringUtils.startupShutdownMessage(NameNode.class, argv, LOG);
+      StringUtils.startupShutdownMessage(NameNode.class, argv, LOG); //打印日志信息
       NameNode namenode = createNameNode(argv, null);
       if (namenode != null) {
         namenode.join();

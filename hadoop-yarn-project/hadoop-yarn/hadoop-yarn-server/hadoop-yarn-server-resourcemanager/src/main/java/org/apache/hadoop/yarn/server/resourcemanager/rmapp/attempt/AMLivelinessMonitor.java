@@ -29,7 +29,10 @@ import org.apache.hadoop.yarn.util.AbstractLivelinessMonitor;
 import org.apache.hadoop.yarn.util.Clock;
 
 import java.util.concurrent.TimeUnit;
-
+//监控YARN资源管理器中应用程序尝试（Application Attempt）的活跃状态。
+// 该类会定期检查应用程序尝试（ApplicationAttemptId）的心跳状态，
+// 若在指定的时间内未收到心跳，则会触发过期事件并通过事件分发器（dispatcher）发送相应的过期事件。
+// 主要目的是确保资源管理器能够及时处理未响应的应用程序尝试
 public class AMLivelinessMonitor extends AbstractLivelinessMonitor<ApplicationAttemptId> {
 
   private EventHandler<Event> dispatcher;
@@ -47,6 +50,7 @@ public class AMLivelinessMonitor extends AbstractLivelinessMonitor<ApplicationAt
   public void serviceInit(Configuration conf) throws Exception {
     super.serviceInit(conf);
     long expireIntvl;
+    //从配置中获取过期时间（RM_AM_EXPIRY_INTERVAL_MS），并根据该配置设置expireInterval（过期时间）和monitorInterval（监控间隔）
     String rmAmExpiryIntervalMS = conf.get(YarnConfiguration.RM_AM_EXPIRY_INTERVAL_MS);
     if (NumberUtils.isDigits(rmAmExpiryIntervalMS)) {
       expireIntvl = conf.getLong(YarnConfiguration.RM_AM_EXPIRY_INTERVAL_MS,

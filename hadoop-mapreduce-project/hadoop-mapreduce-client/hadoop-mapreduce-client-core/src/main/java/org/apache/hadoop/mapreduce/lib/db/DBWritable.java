@@ -77,7 +77,7 @@ import org.apache.hadoop.io.Writable;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Stable
-public interface DBWritable {
+public interface DBWritable {  //负责从数据库读取或者写入数据
 
   /**
    * Sets the fields of the object in the {@link PreparedStatement}.

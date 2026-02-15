@@ -36,7 +36,11 @@ import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_CALLER_C
 /**
  * A class defining the caller context for auditing coarse granularity
  * operations.
- *
+ * 记录和传递调用者的上下文信息，主要应用于审计和跟踪 Hadoop 文件系统（HDFS）中的操作。该类是不可变类（immutable），一旦创建不能修改
+ * 记录客户端的关键信息（如客户端 IP、端口、用户信息等）
+ * 支持生成用于验证的签名，确保调用信息的可靠性
+ * 通过 ThreadLocal 机制，支持线程级的调用上下文管理，方便在多线程环境中追踪操作来源
+ * 为 HDFS 操作提供审计信息，方便问题排查、性能分析和操作溯源
  * This class is immutable.
  */
 @InterfaceAudience.Public
@@ -45,11 +49,16 @@ public final class CallerContext {
   public static final Charset SIGNATURE_ENCODING = StandardCharsets.UTF_8;
 
   // field names
-  public static final String CLIENT_IP_STR = "clientIp";
+  public static final String CLIENT_IP_STR = "clientIp";//客户端 IP 的字段名。
+  //客户端端口的字段名。
   public static final String CLIENT_PORT_STR = "clientPort";
+  //客户端 ID 的字段名。
   public static final String CLIENT_ID_STR = "clientId";
+  //客户端调用 ID 的字段名。
   public static final String CLIENT_CALL_ID_STR = "clientCallId";
+  //实际执行操作的用户字段名。
   public static final String REAL_USER_STR = "realUser";
+  //代理用户端口字段名，适用于代理场景。
   public static final String PROXY_USER_PORT = "proxyUserPort";
   /** The caller context.
    *
@@ -57,6 +66,7 @@ public final class CallerContext {
    * server. The default length limit is
    * {@link org.apache.hadoop.fs.CommonConfigurationKeysPublic#HADOOP_CALLER_CONTEXT_MAX_SIZE_DEFAULT}
    */
+  //调用者的上下文信息，形如 key:value。
   private final String context;
 
   /** The caller's signature for validation.
@@ -66,6 +76,7 @@ public final class CallerContext {
    * context will be abandoned. The default length limit is
    * {@link org.apache.hadoop.fs.CommonConfigurationKeysPublic#HADOOP_CALLER_CONTEXT_SIGNATURE_MAX_SIZE_DEFAULT}
    */
+  //调用者上下文的签名，用于完整性校验。
   private final byte[] signature;
 
   private CallerContext(Builder builder) {
@@ -123,6 +134,7 @@ public final class CallerContext {
   }
 
   /** The caller context builder. */
+  //Builder 是用于构建 CallerContext 的静态内部类，采用建造者模式简化对象创建。
   public static final class Builder {
     public static final String KEY_VALUE_SEPARATOR = ":";
     /**

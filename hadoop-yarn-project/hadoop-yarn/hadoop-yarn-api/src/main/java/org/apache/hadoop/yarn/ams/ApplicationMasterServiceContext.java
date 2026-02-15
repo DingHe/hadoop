@@ -24,6 +24,10 @@ package org.apache.hadoop.yarn.ams;
  * is free to type cast this based on the availability of the context's
  * implementation in the classpath.
  */
+//标记接口（Marker Interface），它用于在 ApplicationMasterService 处理器（Processor）中注入上下文对象。
+//标记接口的特点是不包含任何方法，仅用于标识一个类属于特定的类型
+//主要作用：
+//用于依赖注入（DI），ApplicationMasterService 可以接收实现该接口的对象，而不关心具体的实现细节
 public interface ApplicationMasterServiceContext {
 
 }

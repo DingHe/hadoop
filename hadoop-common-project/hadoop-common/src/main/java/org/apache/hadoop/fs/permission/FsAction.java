@@ -20,26 +20,29 @@ package org.apache.hadoop.fs.permission;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 
-/**
+/**表示 文件系统权限 的枚举类，遵循 POSIX 风格的权限模型（r、w、x）。
+ * 每个枚举值表示一种文件访问权限，并提供了一些基本操作（如与、或、非等）
  * File system actions, e.g. read, write, etc.
  */
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public enum FsAction {
   // POSIX style
-  NONE("---"),
-  EXECUTE("--x"),
-  WRITE("-w-"),
-  WRITE_EXECUTE("-wx"),
-  READ("r--"),
-  READ_EXECUTE("r-x"),
-  READ_WRITE("rw-"),
-  ALL("rwx");
+  NONE("---"), //000	无权限
+  EXECUTE("--x"),//001	仅执行权限
+  WRITE("-w-"),//010	仅写权限
+  WRITE_EXECUTE("-wx"),//011	写和执行权限
+  READ("r--"),//100	仅读权限
+  READ_EXECUTE("r-x"),//101	读和执行权限
+  READ_WRITE("rw-"),//110	读和写权限
+  ALL("rwx");//111	读、写、执行三种权限全部具备
 
   /** Retain reference to value array. */
+  //缓存所有枚举值，避免多次调用 values()，提高性能
   private final static FsAction[] vals = values();
 
   /** Symbolic representation */
+  //每个枚举项对应的 POSIX 字符串形式，方便输出和比较
   public final String SYMBOL;
 
   private FsAction(String s) {
@@ -48,7 +51,7 @@ public enum FsAction {
 
   /**
    * Return true if this action implies that action.
-   * @param that FsAction that.
+   * @param that FsAction that. that 是要检查是否被当前权限包含的目标 FsAction 对象
    * @return if implies true,not false.
    */
   public boolean implies(FsAction that) {

@@ -50,15 +50,23 @@ import java.util.stream.Collectors;
  * @see LocalDirsHandlerService
  * @see TimedHealthReporterService
  */
+//检查节点的健康状况并向调用方报告健康信息。它是一个复合服务（CompositeService），即它可以包含多个子服务并组合它们的功能。其主要功能包括：
+//收集和合并多个健康检查报告。
+//提供健康状态检查（如节点是否健康，健康报告等）。
+//报告异常并将其传递给 ExceptionReporter
+
 public class NodeHealthCheckerService extends CompositeService
     implements HealthReporter {
 
   public static final Logger LOG =
       LoggerFactory.getLogger(NodeHealthCheckerService.class);
+  //最大允许的健康检查脚本数量，默认为4。超过此数量的脚本会导致配置异常
   private static final int MAX_SCRIPTS = 4;
-
+  //包含多个健康检查服务。这些服务用来收集和报告节点的健康信息
   private List<HealthReporter> reporters;
+  //用于处理节点的本地目录相关操作。它是一个健康检查组件，负责检查节点的存储健康状态
   private LocalDirsHandlerService dirsHandler;
+  //用于报告异常信息
   private ExceptionReporter exceptionReporter;
 
   public static final String SEPARATOR = ";";
@@ -98,6 +106,7 @@ public class NodeHealthCheckerService extends CompositeService
    * @throws Exception if not a {@link HealthReporter}
    *         implementation is provided to this function
    */
+  //添加健康检查服务
   @VisibleForTesting
   void addHealthReporter(Service service) throws Exception {
     if (service != null) {

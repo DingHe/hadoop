@@ -36,8 +36,11 @@ import org.apache.hadoop.classification.InterfaceStability.Evolving;
  *   preempted if it blocks a GUARANTEED container from being executed.
  * </ul>
  */
+//用于定义容器执行策略的枚举类型。它决定了 YARN 容器（Container）在 NodeManager（NM）上运行的方式，影响资源分配、调度策略以及抢占行为
 @Public
 @Evolving
 public enum ExecutionType {
-  GUARANTEED, OPPORTUNISTIC
+  GUARANTEED,//保证执行模式，表示容器一旦被分配到 NodeManager（NM），就保证能够启动并执行，且不会被抢占
+  OPPORTUNISTIC//机会执行模式，表示容器的执行是非确定性的，可能不会立即执行，并且可能会被 GUARANTEED 容器抢占。
+
 }

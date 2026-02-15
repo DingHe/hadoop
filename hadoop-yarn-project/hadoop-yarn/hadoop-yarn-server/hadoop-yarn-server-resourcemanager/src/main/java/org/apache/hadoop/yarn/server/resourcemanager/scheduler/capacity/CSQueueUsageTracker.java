@@ -20,22 +20,30 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity;
 
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.QueueResourceQuotas;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.ResourceUsage;
-
+//跟踪队列资源使用情况的类，主要负责：
+//记录资源使用情况（如已使用资源、等待资源等）。
+//管理容器 (Container) 数量（增加/减少）。
+//存储队列资源配额 (QueueResourceQuotas)。
+//维护最新的任务提交时间戳（适用于动态队列）
 public class CSQueueUsageTracker {
+  //该队列的度量指标（如资源分配统计）。
   private final CSQueueMetrics metrics;
+  //当前队列中运行的容器数量。
   private int numContainers;
 
   /**
    * The timestamp of the last submitted application to this queue.
    * Only applies to dynamic queues.
    */
+  //该队列中最近提交应用的时间戳（仅适用于动态队列）。
   private long lastSubmittedTimestamp;
 
   /**
    * Tracks resource usage by label like used-resource / pending-resource.
    */
+  //队列的资源使用情况（如已使用资源、等待资源等）。
   private final ResourceUsage queueUsage;
-
+  //队列的资源配额（如最大资源限制）。
   private final QueueResourceQuotas queueResourceQuotas;
 
   public CSQueueUsageTracker(CSQueueMetrics metrics) {

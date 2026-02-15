@@ -58,6 +58,12 @@ import org.slf4j.LoggerFactory;
  * A class that provides the facilities of reading and writing
  * secret keys and Tokens.
  */
+//用于管理 Hadoop 中的安全凭证，包括令牌（Token）和密钥（Secret Key），以支持安全认证和授权机制。
+// 它提供了存储、读取、写入和合并这些凭证的方法，确保 Hadoop 组件能够安全地访问受保护的资源。
+//在 YARN 和 Hadoop 生态系统中，应用程序可能需要访问不同的服务（如 HDFS、HBase 等），但不希望直接暴露用户名和密码。
+// 因此，Hadoop 采用了令牌（Token）机制，这些令牌是短期有效的，并可用于验证身份。
+// 而密钥（Secret Key）主要用于加密数据或生成身份验证签名。
+// Credentials 允许应用程序管理这些凭证并在不同组件之间传递它们
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public class Credentials implements Writable {
@@ -85,8 +91,13 @@ public class Credentials implements Writable {
   }
 
   private static final Logger LOG = LoggerFactory.getLogger(Credentials.class);
-
+  //密钥存储
+  //key: Text —— 密钥的名称（别名）
+  //value: byte[] —— 具体的密钥值，以字节数组形式存储
   private  Map<Text, byte[]> secretKeysMap = new HashMap<Text, byte[]>();
+  //令牌存储
+  //key: Text —— 令牌的名称（别名）
+  //value: Token<? extends TokenIdentifier> —— 令牌对象，标识用户的访问权限
   private  Map<Text, Token<? extends TokenIdentifier>> tokenMap =
       new HashMap<Text, Token<? extends TokenIdentifier>>();
 
@@ -118,6 +129,7 @@ public class Credentials implements Writable {
    * @param alias the alias for the key
    * @param t the token object
    */
+  //添加一个令牌
   public void addToken(Text alias, Token<? extends TokenIdentifier> t) {
     if (t == null) {
       LOG.warn("Null token ignored for " + alias);
@@ -222,6 +234,7 @@ public class Credentials implements Writable {
    * @throws IOException  raised on errors performing I/O.
    * @return Credentials.
    */
+  //读取Token的存储文件
   public static Credentials readTokenStorageFile(Path filename,
                                                  Configuration conf)
   throws IOException {
@@ -302,7 +315,7 @@ public class Credentials implements Writable {
     // by default store in the oldest supported format for compatibility
     writeTokenStorageToStream(os, SerializedFormat.WRITABLE);
   }
-
+  //写出Toekn内容
   public void writeTokenStorageToStream(DataOutputStream os,
       SerializedFormat format) throws IOException {
     switch (format) {

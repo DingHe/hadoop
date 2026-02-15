@@ -28,6 +28,9 @@ import org.apache.hadoop.io.Text;
 /**
  * This is the interface for plugins that handle tokens.
  */
+//定义了一个处理令牌续期和取消的插件接口。
+// 它用于管理和续期 Hadoop 集群中的令牌，以确保令牌在其有效期内能够被有效地续期或者取消。
+// 这个类的实现由具体的插件提供，插件负责处理不同类型的令牌
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public abstract class TokenRenewer {
@@ -37,6 +40,8 @@ public abstract class TokenRenewer {
    * @param kind the kind of the token
    * @return true if this renewer can renew it
    */
+  //kind：表示令牌的种类（例如，HDFS令牌、YARN令牌等）
+  //此方法用于判断当前的 TokenRenewer 实例是否能够处理某种类型的令牌
   public abstract boolean handleKind(Text kind);
 
   /**
@@ -46,6 +51,7 @@ public abstract class TokenRenewer {
    * @return true if the token may be renewed or cancelled
    * @throws IOException raised on errors performing I/O.
    */
+  //用于检查给定的令牌是否被管理。只有被管理的令牌才能进行续期或者取消
   public abstract boolean isManaged(Token<?> token) throws IOException;
 
     /**
@@ -60,6 +66,7 @@ public abstract class TokenRenewer {
      *                              or otherwise occupied, and the thread is interrupted,
      *                              either before or during the activity.
      */
+    //用于续期给定的令牌，并返回续期后的令牌过期时间
   public abstract long renew(Token<?> token,
                              Configuration conf
                              ) throws IOException, InterruptedException;
@@ -75,6 +82,7 @@ public abstract class TokenRenewer {
      *                              or otherwise occupied, and the thread is interrupted,
      *                              either before or during the activity.
      */
+    //取消给定的令牌
   public abstract void cancel(Token<?> token,
                               Configuration conf
                               ) throws IOException, InterruptedException;

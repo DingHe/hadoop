@@ -58,6 +58,11 @@ import org.apache.hadoop.util.functional.FutureIO;
  * i.e. (k,v) is (LongWritable, Text).
  * The location hints will span the whole mapred cluster.
  */
+//Hadoop MapReduce 中一个特殊的 InputFormat，它的核心作用是强制控制每个 Map Task 处理的输入行数
+//与默认的 TextInputFormat（按文件块大小划分 Split）不同，NLineInputFormat 会逻辑上将每个输入文件切分成若干个 InputSplit，确保每个 Split 包含恰好 N 行数据（除非文件末尾不足 N 行）。
+//这个格式主要用于以下场景：
+//参数扫描 (Parameter Sweeps)： 当需要 Map Task 不依赖数据本地性，而是根据控制文件中的一组参数（每行一个参数集）来运行相同的计算时。
+//固定任务粒度： 强制每个 Map Task 的工作量保持一致（即处理相同的行数 N），而不受文件块大小的限制。
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public class NLineInputFormat extends FileInputFormat<LongWritable, Text> { 
@@ -77,6 +82,7 @@ public class NLineInputFormat extends FileInputFormat<LongWritable, Text> {
    * 
    * @see FileInputFormat#getSplits(JobContext)
    */
+  //核心 Split 生成逻辑
   public List<InputSplit> getSplits(JobContext job)
   throws IOException {
     List<InputSplit> splits = new ArrayList<InputSplit>();

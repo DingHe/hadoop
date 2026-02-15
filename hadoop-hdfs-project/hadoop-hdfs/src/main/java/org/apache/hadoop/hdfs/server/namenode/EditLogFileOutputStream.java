@@ -46,12 +46,12 @@ public class EditLogFileOutputStream extends EditLogOutputStream {
       LoggerFactory.getLogger(EditLogFileOutputStream.class);
   public static final int MIN_PREALLOCATION_LENGTH = 1024 * 1024;
 
-  private File file;
-  private FileOutputStream fp; // file stream for storing edit logs
-  private FileChannel fc; // channel of the file stream for sync
-  private EditsDoubleBuffer doubleBuf;
-  static final ByteBuffer fill = ByteBuffer.allocateDirect(MIN_PREALLOCATION_LENGTH);
-  private boolean shouldSyncWritesAndSkipFsync = false;
+  private File file; //表示存储编辑日志的文件对象
+  private FileOutputStream fp; // file stream for storing edit logs 用于向文件写入数据
+  private FileChannel fc; // channel of the file stream for sync 用于提供更高效的文件写入操作，支持文件的随机访问和同步操作
+  private EditsDoubleBuffer doubleBuf;//双缓冲区，用于存储待写入的编辑日志操作。双缓冲区可以减少直接写入文件时的延迟
+  static final ByteBuffer fill = ByteBuffer.allocateDirect(MIN_PREALLOCATION_LENGTH);//用于预分配文件空间。当文件需要扩展时，它会用默认值填充新分配的空间
+  private boolean shouldSyncWritesAndSkipFsync = false;//指示是否在写操作时跳过文件的fsync()操作。用于优化性能，防止在每次写入后同步磁盘
 
   private static boolean shouldSkipFsyncForTests = false;
 

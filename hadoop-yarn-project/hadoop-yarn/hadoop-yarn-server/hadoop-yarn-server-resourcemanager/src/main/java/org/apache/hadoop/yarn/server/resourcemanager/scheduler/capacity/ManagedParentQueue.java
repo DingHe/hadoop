@@ -51,6 +51,8 @@ import static org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.C
  * co-exist along with auto-created leaf queues. The auto creation is limited
  * to leaf queues currently.
  */
+//负责处理可以自动创建子队列的父队列
+//启用了自动创建子队列的父队列。初始时，该队列没有任何子队列，但可以根据配置动态创建子队列
 public class ManagedParentQueue extends AbstractManagedParentQueue {
 
   private boolean shouldFailAutoCreationWhenGuaranteedCapacityExceeded = false;

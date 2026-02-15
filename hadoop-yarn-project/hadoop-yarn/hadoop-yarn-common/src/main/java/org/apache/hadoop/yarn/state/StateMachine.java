@@ -20,7 +20,11 @@ package org.apache.hadoop.yarn.state;
 
 import org.apache.hadoop.classification.InterfaceAudience.Public;
 import org.apache.hadoop.classification.InterfaceStability.Evolving;
-
+//有限状态机（Finite State Machine, FSM）接口，
+// 它定义了状态机的基本行为，包括获取当前状态、获取前一个状态，以及执行状态转换的方法
+//STATE：状态枚举，表示系统可能处于的不同状态，例如 RMStateStoreState（ACTIVE、FENCED）。
+//EVENTTYPE：事件类型的枚举，表示不同的状态转换事件，例如 RMStateStoreEventType（如 STORE_APP_ATTEMPT、REMOVE_APP）。
+//EVENT：事件对象，封装了触发状态转换的具体信息，例如 RMStateStoreEvent
 @Public
 @Evolving
 public interface StateMachine

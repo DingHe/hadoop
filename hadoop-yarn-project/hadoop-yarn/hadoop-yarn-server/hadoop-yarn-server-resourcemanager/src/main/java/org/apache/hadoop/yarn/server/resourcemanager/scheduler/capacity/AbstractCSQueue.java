@@ -82,58 +82,76 @@ import static org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.Q
  * Provides implementation of {@code CSQueue} methods common for every queue class in Capacity
  * Scheduler.
  */
+//维护队列的资源使用情况、调度能力、配额等信息。
+//处理队列的层次结构，包括子队列和父队列的关系。
+//进行访问控制，确保不同用户对队列的操作符合权限要求。
+//处理 YARN 任务调度时的资源分配、预留、调整等操作
 public abstract class AbstractCSQueue implements CSQueue {
   private static final Logger LOG =
       LoggerFactory.getLogger(AbstractCSQueue.class);
+  //处理队列的资源分配设置。
   protected final QueueAllocationSettings queueAllocationSettings;
+  //该队列的父队列，如果是根队列，则为 null。
   volatile CSQueue parent;
+  //队列的唯一标识路径，例如 root.a.b 表示 b 队列是 a 的子队列
   protected final QueuePath queuePath;
+  //队列的节点标签设置，定义队列在哪些节点上运行
   protected QueueNodeLabelsSettings queueNodeLabelsSettings;
   private volatile QueueAppLifetimeAndLimitSettings queueAppLifetimeSettings;
   private CSQueuePreemptionSettings preemptionSettings;
 
   private volatile QueueState state = null;
+  //代表队列的授权实体，管理访问权限
   protected final PrivilegedEntity queueEntity;
 
   final ResourceCalculator resourceCalculator;
+  //该队列支持的资源类型集合，如 memory-mb、vcores 等。
   Set<String> resourceTypes;
   final RMNodeLabelsManager labelManager;
+  //多节点排序策略名称，用于调度计算时的优先级排序
   private String multiNodeSortingPolicyName = null;
-
+  //访问控制列表，定义哪些用户可以访问该队列。
   Map<AccessType, AccessControlList> acls =
       new HashMap<AccessType, AccessControlList>();
+  //指示是否在没有资源时继续尝试预留。
   volatile boolean reservationsContinueLooking;
 
   // Track capacities like
   // used-capacity/abs-used-capacity/capacity/abs-capacity,
   // etc.
+  //维护队列的容量相关信息，如最大容量、使用容量等。
   QueueCapacities queueCapacities;
+  //追踪队列的资源使用情况，如已用资源、正在使用的容器数等。
   CSQueueUsageTracker usageTracker;
-
+  //队列容量的配置方式
   public enum CapacityConfigType {
     NONE, PERCENTAGE, ABSOLUTE_RESOURCE
   };
 
   protected CapacityConfigType capacityConfigType =
       CapacityConfigType.NONE;
-
+  //队列配置的容量向量。
   protected Map<String, QueueCapacityVector> configuredCapacityVectors;
+  //队列配置的最大容量向量。
   protected Map<String, QueueCapacityVector> configuredMaxCapacityVectors;
 
   private final RecordFactory recordFactory =
       RecordFactoryProvider.getRecordFactory(null);
+  //提供访问调度器全局上下文的能力。
   protected CapacitySchedulerQueueContext queueContext;
   protected YarnAuthorizationProvider authorizer = null;
-
+  //记录队列的调度活动信息。
   protected ActivitiesManager activitiesManager;
 
   protected ReentrantReadWriteLock.ReadLock readLock;
   protected ReentrantReadWriteLock.WriteLock writeLock;
-
+  //队列的优先级，数值越高，优先级越高。
   volatile Priority priority = Priority.newInstance(0);
+  //记录用户的权重信息，影响资源分配。
   private UserWeights userWeights = UserWeights.createEmpty();
 
   // is it a dynamic queue?
+  //标识队列是否为动态队列。
   private boolean dynamicQueue = false;
 
   public AbstractCSQueue(CapacitySchedulerQueueContext queueContext, String queueName,
@@ -1383,7 +1401,7 @@ public abstract class AbstractCSQueue implements CSQueue {
       readLock.unlock();
     }
   }
-
+  //设置是否是动态队列标志
   public void setDynamicQueue(boolean dynamicQueue) {
     writeLock.lock();
 
@@ -1423,7 +1441,7 @@ public abstract class AbstractCSQueue implements CSQueue {
         (idleDurationSeconds > queueContext.getConfiguration().
             getAutoExpiredDeletionTime());
   }
-
+  //更新最近提交应用的时间
   void updateLastSubmittedTimeStamp() {
     writeLock.lock();
     try {

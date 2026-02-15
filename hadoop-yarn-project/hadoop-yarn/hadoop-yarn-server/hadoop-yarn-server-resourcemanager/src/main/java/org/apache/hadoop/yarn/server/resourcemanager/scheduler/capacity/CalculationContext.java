@@ -24,10 +24,11 @@ import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.QueueCap
 /**
  * A storage class that wraps arguments used in a resource calculation iteration.
  */
+//计算资源分配时的 上下文存储类，用于封装 队列（queue）、资源名称 和 计算类型，并提供了一些快捷方法来获取队列的最小/最大容量配置
 public class CalculationContext {
-  private final String resourceName;
-  private final ResourceUnitCapacityType capacityType;
-  private final CSQueue queue;
+  private final String resourceName; //表示计算的资源名称，如 "memory-mb" 或 "vcores"
+  private final ResourceUnitCapacityType capacityType;//表示 计算单位（如百分比或绝对值）
+  private final CSQueue queue;//表示当前计算的 CSQueue（即 CapacityScheduler 的队列）
 
   public CalculationContext(String resourceName, ResourceUnitCapacityType capacityType,
                             CSQueue queue) {

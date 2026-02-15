@@ -38,23 +38,27 @@ import org.apache.hadoop.yarn.api.records.NodeLabel;
  * Provides base implementation of NodeDescriptorsProvider with Timer and
  * expects subclass to provide TimerTask which can fetch node descriptors.
  */
+//提供了节点描述符（Node Descriptors）提供者的基础实现。它包含了定时任务的管理，期望子类提供具体的任务实现来获取节点描述符
 public abstract class AbstractNodeDescriptorsProvider<T>
     extends AbstractService implements NodeDescriptorsProvider<T> {
+  //表示禁用定时任务（即不进行定时获取节点描述符），其值为 -1
   public static final long DISABLE_NODE_DESCRIPTORS_PROVIDER_FETCH_TIMER = -1;
 
   // Delay after which timer task are triggered to fetch node descriptors.
   // Default interval is -1 means it is an one time task, each implementation
   // will override this value from configuration.
+  //表示定时任务的间隔时间，单位为毫秒。默认值为 -1，表示任务只执行一次
   private long intervalTime = -1;
 
   // Timer used to schedule node descriptors fetching
+  //用于定时调度获取节点描述符的任务
   private Timer scheduler;
 
   protected Lock readLock = null;
   protected Lock writeLock = null;
-
+  //表示定时任务，该任务将负责定期更新节点描述符
   protected TimerTask timerTask;
-
+  //存储节点描述符的集合，类型为 Set<T>，用来存储从提供者获取的节点描述符
   private Set<T> nodeDescriptors = Collections
       .unmodifiableSet(new HashSet<>(0));
 

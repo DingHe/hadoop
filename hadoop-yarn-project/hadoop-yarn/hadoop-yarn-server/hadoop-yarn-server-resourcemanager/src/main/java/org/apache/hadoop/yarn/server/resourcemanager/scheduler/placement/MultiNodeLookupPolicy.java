@@ -33,6 +33,8 @@ import java.util.Set;
  * allocator can choose nodes based on need.
  * </p>
  */
+//用于定义 YARN 资源调度中多节点选择策略。
+//它的主要作用是为不同的任务调度算法提供一种通用的方式来选择、存储和排序节点，从而实现更优化的资源分配
 public interface MultiNodeLookupPolicy<N extends SchedulerNode> {
   /**
    * Get iterator of preferred node depends on requirement and/or availability.
@@ -44,6 +46,10 @@ public interface MultiNodeLookupPolicy<N extends SchedulerNode> {
    *
    * @return iterator of preferred node
    */
+  //返回一个按优先级排序的节点迭代器，用于调度器选择合适的 SchedulerNode 进行资源分配
+  //支持按节点标签（Partition）筛选，即不同标签的节点可能会有不同的优先级排序
+  //nodes：所有可用的 SchedulerNode 集合（未排序）
+  //partition：要查找的节点标签（例如 GPU、HDFS_STORAGE、NO_LABEL 等）
   Iterator<N> getPreferredNodeIterator(Collection<N> nodes, String partition);
 
   /**
@@ -54,6 +60,9 @@ public interface MultiNodeLookupPolicy<N extends SchedulerNode> {
    * @param partition
    *          node label
    */
+  //将新的 SchedulerNode 集合添加到当前策略中，并根据选定的调度算法进行排序或刷新
+  //nodes：要添加的 SchedulerNode 集合
+  //partition：对应的节点标签
   void addAndRefreshNodesSet(Collection<N> nodes, String partition);
 
   /**
@@ -64,6 +73,8 @@ public interface MultiNodeLookupPolicy<N extends SchedulerNode> {
    *
    * @return collection of sorted nodes
    */
+  //返回特定标签（Partition）下的已排序节点集合，供调度器获取可用的 SchedulerNode 资源
+  //partition：要查询的节点标签
   Set<N> getNodesPerPartition(String partition);
 
 }

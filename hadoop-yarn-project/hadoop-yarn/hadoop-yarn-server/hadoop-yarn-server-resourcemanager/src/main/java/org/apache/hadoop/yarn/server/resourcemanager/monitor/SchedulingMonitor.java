@@ -31,17 +31,27 @@ import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
 
 import org.apache.hadoop.classification.VisibleForTesting;
 
+// SchedulingMonitor 是 YARN 资源管理器（ResourceManager, RM）中的一个调度监视器，
+// 它的主要功能是定期执行调度策略（SchedulingEditPolicy），以便动态调整资源分配策略，如抢占（Preemption）、预留（Reservation）等。
+// 具体而言，它的作用包括：
+// 初始化和管理调度策略，确保调度策略在 YARN 运行期间能够正确执行。
+// 定期执行调度检查（PreemptionChecker），在指定的时间间隔内执行 SchedulingEditPolicy 的 editSchedule() 方法。
+// 支持动态调整调度监控的执行频率，如果调度策略的监控间隔发生变化，则自动调整执行频率。
+// 通过 ScheduledExecutorService 实现周期性任务调度，确保调度策略能够在后台持续运行
 public class SchedulingMonitor extends AbstractService {
-
+  //调度策略实例，由外部传入，实现了 SchedulingEditPolicy 接口
   private final SchedulingEditPolicy scheduleEditPolicy;
   private static final Logger LOG =
       LoggerFactory.getLogger(SchedulingMonitor.class);
 
   // ScheduledExecutorService which schedules the PreemptionChecker to run
   // periodically.
+  // 任务调度线程池，用于周期性地执行调度检查任务
   private ScheduledExecutorService ses;
   private ScheduledFuture<?> handler;
+  //表示调度监控器是否已停止，用于防止在已停止的状态下重复启动
   private volatile boolean stopped;
+  //监控时间间隔，即多久执行一次调度策略。
   private long monitorInterval;
   private RMContext rmContext;
 

@@ -62,6 +62,7 @@ import org.apache.hadoop.yarn.exceptions.YarnException;
  * as stopping the container or obtaining status information for the container.
  * </p>
  */
+//用程序主控（ApplicationMaster）与节点管理器（NodeManager）之间的通信协议，用于启动、停止、增加容器资源，并获取正在运行的容器的状态
 @Public
 @Stable
 public interface ContainerManagementProtocol {
@@ -107,6 +108,8 @@ public interface ContainerManagementProtocol {
    */
   @Public
   @Stable
+  //此方法会向 NodeManager 发送一个启动请求。
+  // NodeManager 根据容器的详细信息启动容器，并返回一个 StartContainersResponse，其中包含成功启动的容器 ID 列表和每个启动失败的容器的异常信息
   StartContainersResponse startContainers(StartContainersRequest request)
       throws YarnException, IOException;
 
@@ -143,6 +146,8 @@ public interface ContainerManagementProtocol {
    */
   @Public
   @Stable
+  //此方法向 NodeManager 发送请求，要求停止指定容器。
+  // NodeManager 会返回一个 StopContainersResponse，其中包含成功停止的容器 ID 和停止失败的容器的异常信息
   StopContainersResponse stopContainers(StopContainersRequest request)
       throws YarnException, IOException;
 
@@ -179,6 +184,8 @@ public interface ContainerManagementProtocol {
    */
   @Public
   @Stable
+  //此方法向 NodeManager 发送请求，获取指定容器的状态信息。
+  // NodeManager 会返回 GetContainerStatusesResponse，其中包含容器的状态和相应的异常信息
   GetContainerStatusesResponse getContainerStatuses(
       GetContainerStatusesRequest request) throws YarnException,
       IOException;
@@ -201,6 +208,8 @@ public interface ContainerManagementProtocol {
   @Public
   @Unstable
   @Deprecated
+  //此方法请求 NodeManager 增加指定容器的资源（如内存、CPU）。
+  // NodeManager 会返回一个 IncreaseContainersResourceResponse，包括成功增加资源的容器 ID 和失败的异常信息
   IncreaseContainersResourceResponse increaseContainersResource(
       IncreaseContainersResourceRequest request) throws YarnException,
       IOException;
@@ -222,9 +231,11 @@ public interface ContainerManagementProtocol {
    */
   @Public
   @Unstable
+  //此方法允许 ApplicationMaster 请求更新容器的资源。
+  // NodeManager 会根据请求更新容器的资源，并返回 ContainerUpdateResponse，包括成功更新的容器 ID 和失败的异常信息
   ContainerUpdateResponse updateContainer(ContainerUpdateRequest request)
       throws YarnException, IOException;
-
+  //此方法向 NodeManager 发送请求，发送一个信号到指定容器，通常用于请求容器执行特定操作
   SignalContainerResponse signalToContainer(SignalContainerRequest request)
       throws YarnException, IOException;
 
@@ -239,6 +250,7 @@ public interface ContainerManagementProtocol {
    */
   @Public
   @Unstable
+  //此方法用于本地化资源，确保容器能够访问到需要的资源文件。NodeManager 会返回一个 ResourceLocalizationResponse，表示请求已被接受
   ResourceLocalizationResponse localize(ResourceLocalizationRequest request)
     throws YarnException, IOException;
 
@@ -251,6 +263,7 @@ public interface ContainerManagementProtocol {
    */
   @Public
   @Unstable
+  //此方法重新初始化容器并提供新的启动上下文。NodeManager 会返回一个 ReInitializeContainerResponse，表示请求已被接受
   ReInitializeContainerResponse reInitializeContainer(
       ReInitializeContainerRequest request) throws YarnException, IOException;
 
@@ -263,6 +276,7 @@ public interface ContainerManagementProtocol {
    */
   @Public
   @Unstable
+  //此方法请求 NodeManager 重启指定容器。NodeManager 会返回一个 RestartContainerResponse，表示请求已被接受
   RestartContainerResponse restartContainer(ContainerId containerId)
       throws YarnException, IOException;
 
@@ -275,6 +289,7 @@ public interface ContainerManagementProtocol {
    */
   @Public
   @Unstable
+  //此方法请求回滚上一次的容器初始化操作。如果容器支持回滚，NodeManager 会返回一个 RollbackResponse，表示回滚已被接受
   RollbackResponse rollbackLastReInitialization(ContainerId containerId)
       throws YarnException, IOException;
 

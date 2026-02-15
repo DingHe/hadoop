@@ -21,20 +21,24 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.service.Service;
 
-/**
+/** 主要用于 领导者选举（Leader Election），通常结合 Zookeeper 进行管理
  * Interface that all embedded leader electors must implement.
  */
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
 public interface EmbeddedElector extends Service{
-  /**
+  /** 该方法用于 退出并重新加入领导者选举
    * Leave and rejoin leader election.
    */
   void rejoinElection();
 
   /**
    * Get information about the elector's connection to Zookeeper.
-   *
+   * 该方法返回 Zookeeper 连接状态 可能的状态包括：
+   * CONNECTED
+   * DISCONNECTED
+   * RECONNECTING
+   * SUSPENDED
    * @return zookeeper connection state
    */
   String getZookeeperConnectionState();

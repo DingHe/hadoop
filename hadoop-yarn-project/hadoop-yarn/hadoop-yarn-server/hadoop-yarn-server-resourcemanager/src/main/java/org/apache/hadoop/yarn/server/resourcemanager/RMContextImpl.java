@@ -90,14 +90,16 @@ public class RMContextImpl implements RMContext {
    * RM service contexts which runs through out RM life span. These are created
    * once during start of RM.
    */
+  //维护始终在线的服务
   private RMServiceContext serviceContext;
 
   /**
    * RM Active service context. This will be recreated for every transition from
    * ACTIVE->STANDBY.
    */
+  //只有active的资源管理才运行的服务
   private RMActiveServiceContext activeServiceContext;
-
+  //代理主机和端口
   private String proxyHostAndPort = null;
 
   /**

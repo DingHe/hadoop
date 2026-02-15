@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  * 
  * <p>
  * This class must be synchronized externally.
- * 
+ * 频繁使用的name,会缓存起来
  * @param <K> name to be added to the cache
  */
 class NameCache<K> {
@@ -68,15 +68,19 @@ class NameCache<K> {
   private boolean initialized = false;
 
   /** names used more than {@code useThreshold} is added to the cache */
+  //如果name使用超过这个阀值就会缓存
   private final int useThreshold;
 
   /** of times a cache look up was successful */
+  //缓存查找成功的次数
   private int lookups = 0;
 
   /** Cached names */
+  //缓存name的Map
   final HashMap<K, K> cache = new HashMap<K, K>();
 
   /** Names and with number of occurrences tracked during initialization */
+  //跟踪Name和使用name次数的map
   Map<K, UseCount> transientMap = new HashMap<K, UseCount>();
 
   /**
@@ -147,6 +151,7 @@ class NameCache<K> {
   }
   
   /** Promote a frequently used name to the cache */
+  //频繁使用的name放入缓存中
   private void promote(final K name) {
     transientMap.remove(name);
     cache.put(name, name);

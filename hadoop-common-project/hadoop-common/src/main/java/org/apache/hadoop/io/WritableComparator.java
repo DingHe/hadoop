@@ -32,7 +32,7 @@ import org.apache.hadoop.util.ReflectionUtils;
  *
  * <p>This base implementation uses the natural ordering.  To define alternate
  * orderings, override {@link #compare(WritableComparable,WritableComparable)}.
- *
+ * 用于比较 WritableComparable 类型的对象。它实现了 RawComparator 接口，并提供了一些优化方法来加速比较操作
  * <p>One may optimize compare-intensive operations by overriding
  * {@link #compare(byte[],int,int,byte[],int,int)}.  Static utility methods are
  * provided to assist in optimized implementations of this method.
@@ -40,16 +40,16 @@ import org.apache.hadoop.util.ReflectionUtils;
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public class WritableComparator implements RawComparator, Configurable {
-
+  //提供一个缓存机制，避免重复创建 WritableComparator 实例，提高效率
   private static final ConcurrentHashMap<Class, WritableComparator> comparators 
           = new ConcurrentHashMap<Class, WritableComparator>(); // registry
-
+  //存储 Configuration 配置对象
   private Configuration conf;
 
   /**
    * For backwards compatibility.
-   *
-   * @param c WritableComparable Type.
+   * 获取 WritableComparator 实例
+   * @param c WritableComparable Type.  要获取比较器的 WritableComparable 类型。
    * @return WritableComparator.
    */
   public static WritableComparator get(Class<? extends WritableComparable> c) {
@@ -64,14 +64,14 @@ public class WritableComparator implements RawComparator, Configurable {
    */
   public static WritableComparator get(
       Class<? extends WritableComparable> c, Configuration conf) {
-    WritableComparator comparator = comparators.get(c);
-    if (comparator == null) {
+    WritableComparator comparator = comparators.get(c); //从 comparators 缓存查找已有的 WritableComparator
+    if (comparator == null) { //若找不到，调用 forceInit(c) 强制初始化类的静态成员
       // force the static initializers to run
       forceInit(c);
       // look to see if it is defined now
       comparator = comparators.get(c);
       // if not, use the generic one
-      if (comparator == null) {
+      if (comparator == null) { //仍然找不到，则创建一个新的 WritableComparator 并存入缓存
         comparator = new WritableComparator(c, conf, true);
       }
     }
@@ -90,7 +90,7 @@ public class WritableComparator implements RawComparator, Configurable {
     return conf;
   }
 
-  /**
+  /** 触发类的静态代码块执行，确保 WritableComparator 被正确注册
    * Force initialization of the static members.
    * As of Java 5, referencing a class doesn't force it to initialize. Since
    * this class requires that the classes be initialized to declare their
@@ -105,7 +105,7 @@ public class WritableComparator implements RawComparator, Configurable {
     }
   } 
 
-  /**
+  /** 注册比较器
    * Register an optimized comparator for a {@link WritableComparable}
    * implementation. Comparators registered with this method must be
    * thread-safe.
@@ -115,11 +115,11 @@ public class WritableComparator implements RawComparator, Configurable {
   public static void define(Class c, WritableComparator comparator) {
     comparators.put(c, comparator);
   }
-
+  //存储被比较对象的 Class 类型
   private final Class<? extends WritableComparable> keyClass;
-  private final WritableComparable key1;
+  private final WritableComparable key1;//key1 和 key2 用于存储反序列化后的 WritableComparable 对象，供比较方法使用
   private final WritableComparable key2;
-  private final DataInputBuffer buffer;
+  private final DataInputBuffer buffer;  //用于读取字节数据并转换为 WritableComparable 实例
 
   protected WritableComparator() {
     this(null);
@@ -141,8 +141,8 @@ public class WritableComparator implements RawComparator, Configurable {
   protected WritableComparator(Class<? extends WritableComparable> keyClass,
                                Configuration conf,
                                boolean createInstances) {
-    this.keyClass = keyClass;
-    this.conf = (conf != null) ? conf : new Configuration();
+    this.keyClass = keyClass; //keyClass：要比较的 WritableComparable 类型
+    this.conf = (conf != null) ? conf : new Configuration(); //Hadoop 配置对象
     if (createInstances) {
       key1 = newKey();
       key2 = newKey();
@@ -159,7 +159,7 @@ public class WritableComparator implements RawComparator, Configurable {
    */
   public Class<? extends WritableComparable> getKeyClass() { return keyClass; }
 
-  /**
+  /** 提供对象复用，避免反复创建
    * Construct a new {@link WritableComparable} instance.
    * @return WritableComparable.
    */
@@ -168,7 +168,7 @@ public class WritableComparator implements RawComparator, Configurable {
   }
 
   /** Optimization hook.  Override this to make SequenceFile.Sorter's scream.
-   *
+   * 核心比较逻辑
    * <p>The default implementation reads the data into two {@link
    * WritableComparable}s (using {@link
    * Writable#readFields(DataInput)}, then calls {@link
@@ -178,10 +178,10 @@ public class WritableComparator implements RawComparator, Configurable {
   public int compare(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2) {
     try {
       buffer.reset(b1, s1, l1);                   // parse key1
-      key1.readFields(buffer);
+      key1.readFields(buffer); //反序列化数据到 key1
       
       buffer.reset(b2, s2, l2);                   // parse key2
-      key2.readFields(buffer);
+      key2.readFields(buffer);//反序列化数据到 key2
       
       buffer.reset(null, 0, 0);                   // clean up reference
     } catch (IOException e) {

@@ -166,6 +166,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * "I am the ResourceManager. All your resources belong to us..."
  *
  */
+//负责管理集群资源并协调应用程序的执行。它与 NodeManager 和 ApplicationMaster 共同协作，实现资源的分配和任务调度
 @SuppressWarnings("unchecked")
 public class ResourceManager extends CompositeService
         implements Recoverable, ResourceManagerMXBean {
@@ -196,7 +197,9 @@ public class ResourceManager extends CompositeService
    */
   @VisibleForTesting
   protected RMContextImpl rmContext;
+  //事件派发器，负责不同组件间的事件通信，例如 NodeManager 状态变化、任务提交等
   private Dispatcher rmDispatcher;
+  //提供 ResourceManager 的管理 API，允许外部工具或管理员进行配置和管理
   @VisibleForTesting
   protected AdminService adminService;
 
@@ -208,20 +211,26 @@ public class ResourceManager extends CompositeService
    * RM is active when (1) HA is disabled, or (2) HA is enabled and the RM is
    * in Active state.
    */
+  // 管理 ResourceManager 处于 Active 状态时运行的服务，例如 ApplicationMaster 管理、调度器等
   protected RMActiveServices activeServices;
+  // 管理安全令牌（如 DelegationTokens），确保安全通信
   protected RMSecretManagerService rmSecretManagerService;
-
+  //调度器组件，负责根据调度策略（如 CapacityScheduler 或 FairScheduler）分配资源
   protected ResourceScheduler scheduler;
+  //资源预留系统，允许用户提前预留计算资源
   protected ReservationSystem reservationSystem;
   private ClientRMService clientRM;
   protected ApplicationMasterService masterService;
   protected NMLivelinessMonitor nmLivelinessMonitor;
+  //管理 NodeManager 列表，维护可用计算节点的信息
   protected NodesListManager nodesListManager;
+  //管理 ApplicationMaster 的生命周期，包括应用提交、运行、失败恢复等
   protected RMAppManager rmAppManager;
   protected ApplicationACLsManager applicationACLsManager;
   protected QueueACLsManager queueACLsManager;
   private FederationStateStoreService federationStateStoreService;
   private ProxyCAManager proxyCAManager;
+  //ResourceManager 的 Web UI，提供可视化的资源管理和应用状态信息
   private WebApp webApp;
   private AppReportFetcher fetcher = null;
   protected ResourceTrackerService resourceTracker;
@@ -238,7 +247,7 @@ public class ResourceManager extends CompositeService
   /** End of Active services */
 
   private Configuration conf;
-
+  //存储 ResourceManager 的登录用户信息，确保认证安全
   private UserGroupInformation rmLoginUGI;
 
   public ResourceManager() {
@@ -463,14 +472,16 @@ public class ResourceManager extends CompositeService
     rmStore.setResourceManager(this);
     rmContext.setStateStore(rmStore);
   }
-
+  //创建并返回一个 事件处理器（EventHandler），用于调度 SchedulerEvent 事件
   protected EventHandler<SchedulerEvent> createSchedulerEventDispatcher() {
     String dispatcherName = "SchedulerEventDispatcher";
     EventDispatcher dispatcher;
+    //获取调度器事件分发器的 CPU 监控参数
+    //表示 每分钟采样的 CPU 监控次数
     int threadMonitorRate = conf.getInt(
         YarnConfiguration.YARN_DISPATCHER_CPU_MONITOR_SAMPLES_PER_MIN,
         YarnConfiguration.DEFAULT_YARN_DISPATCHER_CPU_MONITOR_SAMPLES_PER_MIN);
-
+     //创建 SchedulerEventDispatcher 或 EventDispatcher
     if (threadMonitorRate > 0) {
       dispatcher = new SchedulerEventDispatcher(dispatcherName,
           threadMonitorRate);
@@ -483,7 +494,9 @@ public class ResourceManager extends CompositeService
             create(dispatcher.getName(), SchedulerEventType.class));
     return dispatcher;
   }
-
+  // 用于创建并初始化 Dispatcher（事件调度器）。
+  // 在 YARN 资源管理器 (ResourceManager) 中，事件驱动机制是系统运作的关键，
+  // 该调度器用于分发和处理不同类型的事件，以便协调 ResourceManager 内部的各种组件
   protected Dispatcher createDispatcher() {
     AsyncDispatcher dispatcher = new AsyncDispatcher("RM Event dispatcher");
 
@@ -522,7 +535,7 @@ public class ResourceManager extends CompositeService
 
     return dispatcher;
   }
-
+  //默认是容量调度
   protected ResourceScheduler createScheduler() {
     String schedulerClassName = conf.get(YarnConfiguration.RM_SCHEDULER,
         YarnConfiguration.DEFAULT_RM_SCHEDULER);
@@ -741,18 +754,25 @@ public class ResourceManager extends CompositeService
   /**
    * RMActiveServices handles all the Active services in the RM.
    */
+  //资源管理器（ResourceManager，RM）中负责管理所有激活服务的核心组件。
+  // 它继承自 CompositeService，用于初始化、启动和停止 RM 运行时所需的各项服务。其主要功能包括：
+  //资源管理：管理调度器、节点管理、标签管理、调度策略等。
+  //应用管理：维护应用生命周期，支持 AM（ApplicationMaster）调度、监控和恢复。
+  //安全机制：管理委托令牌（Delegation Token），确保安全环境下的身份验证。
+  //状态管理与恢复：支持 RM 高可用（HA）模式，并提供应用恢复能力。
+  //事件处理：注册和分发调度、应用、节点相关的事件
   @Private
   public class RMActiveServices extends CompositeService {
 
-    private DelegationTokenRenewer delegationTokenRenewer;
-    private EventHandler<SchedulerEvent> schedulerDispatcher;
-    private ApplicationMasterLauncher applicationMasterLauncher;
-    private ContainerAllocationExpirer containerAllocationExpirer;
+    private DelegationTokenRenewer delegationTokenRenewer;//管理 YARN 安全模式下的委托令牌续订。
+    private EventHandler<SchedulerEvent> schedulerDispatcher;//事件分发器，处理调度器的事件
+    private ApplicationMasterLauncher applicationMasterLauncher;//负责启动 ApplicationMaster（AM）
+    private ContainerAllocationExpirer containerAllocationExpirer;//负责管理容器的超时和回收。
     private ResourceManager rm;
-    private boolean fromActive = false;
-    private StandByTransitionRunnable standByTransitionRunnable;
-    private RMNMInfo rmnmInfo;
-    private ScheduledThreadPoolExecutor eventQueueMetricExecutor;
+    private boolean fromActive = false;//标识 RM 是否处于活动状态
+    private StandByTransitionRunnable standByTransitionRunnable;//处理 RM 由 standby 转换到 active 状态的任务
+    private RMNMInfo rmnmInfo;//资源管理器和节点管理信息
+    private ScheduledThreadPoolExecutor eventQueueMetricExecutor;//线程池，用于定期更新调度器和 RM 事件队列的大小
 
     RMActiveServices(ResourceManager rm) {
       super("RMActiveServices");
@@ -761,70 +781,73 @@ public class ResourceManager extends CompositeService
 
     @Override
     protected void serviceInit(Configuration configuration) throws Exception {
+      //处理 RM 从 Standby 到 Active 的状态转换
       standByTransitionRunnable = new StandByTransitionRunnable();
-
+      //负责 管理 YARN 的安全凭证（如 DelegationToken），确保在启用安全模式时，所有应用能够正确验证身份
       rmSecretManagerService = createRMSecretManagerService();
       addService(rmSecretManagerService);
-
+      //负责回收 长期未使用的 Container，防止资源泄漏
       containerAllocationExpirer = new ContainerAllocationExpirer(rmDispatcher);
       addService(containerAllocationExpirer);
       rmContext.setContainerAllocationExpirer(containerAllocationExpirer);
-
+      //监控 ApplicationMaster（AM） 是否存活，防止 AM 进程崩溃导致任务卡死
       AMLivelinessMonitor amLivelinessMonitor = createAMLivelinessMonitor();
       addService(amLivelinessMonitor);
       rmContext.setAMLivelinessMonitor(amLivelinessMonitor);
-
+      //监控 AM 关闭状态，确保 任务在 AM 关闭后被正确清理
       AMLivelinessMonitor amFinishingMonitor = createAMLivelinessMonitor();
       addService(amFinishingMonitor);
       rmContext.setAMFinishingMonitor(amFinishingMonitor);
-      
+      //监控 Application 的生命周期，确保 超过时限的任务被回收
       RMAppLifetimeMonitor rmAppLifetimeMonitor = createRMAppLifetimeMonitor();
       addService(rmAppLifetimeMonitor);
       rmContext.setRMAppLifetimeMonitor(rmAppLifetimeMonitor);
-
+      //负责 管理节点标签（Node Labels），支持 标签调度
       RMNodeLabelsManager nlm = createNodeLabelManager();
       nlm.setRMContext(rmContext);
       addService(nlm);
       rmContext.setNodeLabelManager(nlm);
-
+      //负责管理节点的 属性（Attributes），增强调度的灵活性
       NodeAttributesManager nam = createNodeAttributesManager();
       addService(nam);
       rmContext.setNodeAttributesManager(nam);
-
+      //用于管理分配标签，在调度任务时，提供更灵活的资源管理策略
       AllocationTagsManager allocationTagsManager =
           createAllocationTagsManager();
       rmContext.setAllocationTagsManager(allocationTagsManager);
-
+      //用于管理 调度约束，确保任务调度时满足特定的资源和位置限制
       PlacementConstraintManagerService placementConstraintManager =
           createPlacementConstraintManager();
       addService(placementConstraintManager);
       rmContext.setPlacementConstraintManager(placementConstraintManager);
 
       // add resource profiles here because it's used by AbstractYarnScheduler
+      //管理资源配置文件，支持在调度时使用 预定义的资源模板，以便优化集群资源分配
       ResourceProfilesManager resourceProfilesManager =
           createResourceProfileManager();
       resourceProfilesManager.init(conf);
       rmContext.setResourceProfilesManager(resourceProfilesManager);
-
+      //在资源调度时，对多个计算节点进行 排序，从而提高调度决策的效率
       MultiNodeSortingManager<SchedulerNode> multiNodeSortingManager =
           createMultiNodeSortingManager();
       multiNodeSortingManager.setRMContext(rmContext);
       addService(multiNodeSortingManager);
       rmContext.setMultiNodeSortingManager(multiNodeSortingManager);
-
+      //如果启用了 节点标签功能，该组件会 定期更新 集群节点的标签信息，从而影响调度决策
       RMDelegatedNodeLabelsUpdater delegatedNodeLabelsUpdater =
           createRMDelegatedNodeLabelsUpdater();
       if (delegatedNodeLabelsUpdater != null) {
         addService(delegatedNodeLabelsUpdater);
         rmContext.setRMDelegatedNodeLabelsUpdater(delegatedNodeLabelsUpdater);
       }
-
+      //如果 YarnConfiguration.RECOVERY_ENABLED 设为 true，则 RM 会尝试 恢复先前的状态，否则使用 NullRMStateStore，即 不进行恢复
       recoveryEnabled = conf.getBoolean(YarnConfiguration.RECOVERY_ENABLED,
           YarnConfiguration.DEFAULT_RM_RECOVERY_ENABLED);
 
       RMStateStore rmStore = null;
       if (recoveryEnabled) {
         rmStore = RMStateStoreFactory.getStore(conf);
+        //在 RM 失效重启后，可以 尽可能恢复 之前运行的任务，而不是重新调度所有任务
         boolean isWorkPreservingRecoveryEnabled =
             conf.getBoolean(
               YarnConfiguration.RM_WORK_PRESERVING_RECOVERY_ENABLED,
@@ -859,34 +882,39 @@ public class ResourceManager extends CompositeService
       rmContext.setNodesListManager(nodesListManager);
 
       // Initialize the scheduler
+      //默认为容量调度
       scheduler = createScheduler();
       scheduler.setRMContext(rmContext);
       addIfService(scheduler);
       rmContext.setScheduler(scheduler);
-
+      //创建并注册调度器事件处理器
       schedulerDispatcher = createSchedulerEventDispatcher();
       addIfService(schedulerDispatcher);
+      //处理 SchedulerEvent 事件
       rmDispatcher.register(SchedulerEventType.class, schedulerDispatcher);
 
       // Register event handler for RmAppEvents
+      // 处理 RM 应用程序事件
       rmDispatcher.register(RMAppEventType.class,
           new ApplicationEventDispatcher(rmContext));
 
       // Register event handler for RmAppAttemptEvents
+      // 处理 RM 应用尝试事件
       rmDispatcher.register(RMAppAttemptEventType.class,
           new ApplicationAttemptEventDispatcher(rmContext));
 
       // Register event handler for RmNodes
+      // 处理 RM 节点事件
       rmDispatcher.register(
           RMNodeEventType.class, new NodeEventDispatcher(rmContext));
-
+      //创建并添加节点存活监视器
       nmLivelinessMonitor = createNMLivelinessMonitor();
       addService(nmLivelinessMonitor);
-
+      //创建并添加资源跟踪服务
       resourceTracker = createResourceTrackerService();
       addService(resourceTracker);
       rmContext.setResourceTrackerService(resourceTracker);
-
+      //初始化度量系统
       MetricsSystem ms = DefaultMetricsSystem.initialize("ResourceManager");
       if (fromActive) {
         JvmMetrics.reattach(ms, jvmMetrics);
@@ -894,11 +922,11 @@ public class ResourceManager extends CompositeService
       } else {
         jvmMetrics = JvmMetrics.initSingleton("ResourceManager", null);
       }
-
+      //添加 JVM 暂停监视器
       JvmPauseMonitor pauseMonitor = new JvmPauseMonitor();
       addService(pauseMonitor);
       jvmMetrics.setPauseMonitor(pauseMonitor);
-
+      //初始化 YARN 预留系统
       // Initialize the Reservation system
       if (conf.getBoolean(YarnConfiguration.RM_RESERVATION_SYSTEM_ENABLE,
           YarnConfiguration.DEFAULT_RM_RESERVATION_SYSTEM_ENABLE)) {
@@ -910,35 +938,36 @@ public class ResourceManager extends CompositeService
           LOG.info("Initialized Reservation system");
         }
       }
-
+      //创建并添加应用程序 Master 服务
       masterService = createApplicationMasterService();
       createAndRegisterOpportunisticDispatcher(masterService);
       addService(masterService) ;
       rmContext.setApplicationMasterService(masterService);
 
-
+      //创建并初始化访问控制列表（ACLs）管理器
       applicationACLsManager = new ApplicationACLsManager(conf);
-
+      //创建 队列 ACL 管理器，用于控制 用户对队列的访问权限
       queueACLsManager = createQueueACLsManager(scheduler, conf);
-
+      //创建并注册 RM 应用程序管理器
       rmAppManager = createRMAppManager();
       // Register event handler for RMAppManagerEvents
       rmDispatcher.register(RMAppManagerEventType.class, rmAppManager);
-
+      //创建 客户端服务，客户端服务负责与 ResourceManager 交互，如提交作业、获取资源等
       clientRM = createClientRMService();
       addService(clientRM);
       rmContext.setClientRMService(clientRM);
-
+      //创建 Application Master 启动器，负责 启动应用程序的 ApplicationMaster
       applicationMasterLauncher = createAMLauncher();
       rmDispatcher.register(AMLauncherEventType.class,
           applicationMasterLauncher);
 
       addService(applicationMasterLauncher);
+      //创建并添加 Delegation Token Renew 服务
       if (UserGroupInformation.isSecurityEnabled()) {
         addService(delegationTokenRenewer);
         delegationTokenRenewer.setRMContext(rmContext);
       }
-
+      //处理 Federation 配置
       if(HAUtil.isFederationEnabled(conf)) {
         String cId = YarnConfiguration.getClusterId(conf);
         if (cId.isEmpty()) {
@@ -953,13 +982,13 @@ public class ResourceManager extends CompositeService
         rmAppManager.setFederationStateStoreService(federationStateStoreService);
         LOG.info("Initialized Federation membership.");
       }
-
+      //创建并添加代理证书管理服务
       proxyCAManager = new ProxyCAManager(new ProxyCA(), rmContext);
       addService(proxyCAManager);
       rmContext.setProxyCAManager(proxyCAManager);
 
       rmnmInfo = new RMNMInfo(rmContext, scheduler);
-
+      //如果 YarnConfiguration.YARN_API_SERVICES_ENABLE 配置为 true，则 启用系统服务管理器，处理 一些额外的服务，如 REST API 服务
       if (conf.getBoolean(YarnConfiguration.YARN_API_SERVICES_ENABLE,
           false)) {
         SystemServiceManager systemServiceManager = createServiceManager();
@@ -967,6 +996,7 @@ public class ResourceManager extends CompositeService
       }
 
       // Add volume manager to RM context when it is necessary
+      //添加 Volume Manager 到 RM 上下文
       String[] amsProcessorList = conf.getStrings(
           YarnConfiguration.RM_APPLICATION_MASTER_SERVICE_PROCESSORS);
       if (amsProcessorList != null&& Arrays.stream(amsProcessorList)
@@ -975,11 +1005,12 @@ public class ResourceManager extends CompositeService
         rmContext.setVolumeManager(volumeManager);
         addIfService(volumeManager);
       }
-
+      //创建 单线程调度线程池，用于 定期监控 YARN 事件队列的大小
       eventQueueMetricExecutor = new ScheduledThreadPoolExecutor(1,
               new ThreadFactoryBuilder().
               setDaemon(true).setNameFormat("EventQueueSizeMetricThread").
               build());
+      //定期统计 YARN 事件队列大小
       eventQueueMetricExecutor.scheduleAtFixedRate(new Runnable() {
         @Override
         public void run() {
@@ -1081,13 +1112,13 @@ public class ResourceManager extends CompositeService
 
     }
   }
-
+  //主要用于 处理 RM 发生的严重错误，决定是 进入 Standby 模式 还是 直接关闭 RM
   @Private
   private class RMFatalEventDispatcher implements EventHandler<RMFatalEvent> {
     @Override
     public void handle(RMFatalEvent event) {
       LOG.error("Received " + event);
-
+      //如果启用了 HA（高可用），则进入 Standby
       if (HAUtil.isHAEnabled(getConfig())) {
         // If we're in an HA config, the right answer is always to go into
         // standby.
@@ -1097,6 +1128,7 @@ public class ResourceManager extends CompositeService
         // If we're stand-alone, we probably want to shut down, but the if and
         // how depends on the event.
         switch(event.getType()) {
+          //STATE_STORE_FENCED：状态存储被 Fencing（锁定）
         case STATE_STORE_FENCED:
           LOG.error(FATAL, "State store fenced even though the resource " +
               "manager is not configured for high availability. Shutting " +
@@ -1104,6 +1136,7 @@ public class ResourceManager extends CompositeService
               "state store.");
           ExitUtil.terminate(1, event.getExplanation());
           break;
+          //STATE_STORE_OP_FAILED：状态存储操作失败
         case STATE_STORE_OP_FAILED:
           if (YarnConfiguration.shouldRMFailFast(getConfig())) {
             LOG.error(FATAL, "Shutting down the resource manager because a " +
@@ -1125,13 +1158,15 @@ public class ResourceManager extends CompositeService
       }
     }
   }
-
+  // 与 EventDispatcher 相比，它新增了事件处理器的 CPU 监控功能，
+  // 通过 EventProcessorMonitor 线程周期性地采样 EventProcessor 线程的 CPU 使用情况，
+  // 并将统计结果上报到 ClusterMetrics 进行监控
   @Private
   private class SchedulerEventDispatcher extends
       EventDispatcher<SchedulerEvent> {
-
+    //事件处理器监控线程，用于周期性检测 EventProcessor 线程的 CPU 使用情况，并更新 ClusterMetrics
     private final Thread eventProcessorMonitor;
-
+    //samplesPerMin：每分钟采样次数（用于 CPU 监控）
     SchedulerEventDispatcher(String name, int samplesPerMin) {
       super(scheduler, name);
       this.eventProcessorMonitor =
@@ -1146,11 +1181,11 @@ public class ResourceManager extends CompositeService
     // metrics. Units are usecs per second of CPU used.
     // Avg is not accurate until one minute of samples have been received.
     private final class EventProcessorMonitor implements Runnable {
-      private final long tid;
-      private final boolean run;
-      private final ThreadMXBean tmxb;
+      private final long tid; //被监控的 EventProcessor 线程 ID
+      private final boolean run;//是否启用监控（ThreadMXBean 是否支持 ThreadCpuTime）
+      private final ThreadMXBean tmxb;//Java ThreadMXBean，用于获取线程的 CPU 使用情况
       private final ClusterMetrics clusterMetrics = ClusterMetrics.getMetrics();
-      private final int samples;
+      private final int samples;//每分钟采样的次数
       EventProcessorMonitor(long id, int samplesPerMin) {
         assert samplesPerMin > 0;
         this.tid = id;
@@ -1233,15 +1268,21 @@ public class ResourceManager extends CompositeService
    * transition RM to standby state again. A new runnable is created every time
    * RM transitions to active state.
    */
+  //用于将 YARN 资源管理器（ResourceManager，RM）切换到 Standby 模式。
+  //在 高可用（HA）模式 下，RM 可能因为错误或外部事件（如领导者选举）需要 从 Active 切换到 Standby，
+  // 这个类确保 切换操作只执行一次，即使多个线程同时触发
+    //安全地将 RM 切换到 Standby 模式
   private class StandByTransitionRunnable implements Runnable {
     // The atomic variable to make sure multiple threads with the same runnable
     // run only once.
+    //用于保证 run() 只能执行一次
     private final AtomicBoolean hasAlreadyRun = new AtomicBoolean(false);
 
     @Override
     public void run() {
       // Run this only once, even if multiple threads end up triggering
       // this simultaneously.
+      //如果 hasAlreadyRun 是 false，则设为 true 并返回原值 false，表示当前线程是第一个执行的
       if (hasAlreadyRun.getAndSet(true)) {
         return;
       }
@@ -1250,6 +1291,7 @@ public class ResourceManager extends CompositeService
         try {
           // Transition to standby and reinit active services
           LOG.info("Transitioning RM to Standby mode");
+          //切换 RM 到 Standby 模式，并重新初始化相关服务
           transitionToStandby(true);
           EmbeddedElector elector = rmContext.getLeaderElectorService();
           if (elector != null) {
@@ -1262,7 +1304,7 @@ public class ResourceManager extends CompositeService
       }
     }
   }
-
+  //事件分发器，用于处理 应用（Application） 相关的事件
   @Private
   public static final class ApplicationEventDispatcher implements
       EventHandler<RMAppEvent> {
@@ -1287,7 +1329,7 @@ public class ResourceManager extends CompositeService
       }
     }
   }
-
+  //事件分发器，用于处理 应用尝试（Application Attempt） 相关的事件
   @Private
   public static final class ApplicationAttemptEventDispatcher implements
       EventHandler<RMAppAttemptEvent> {
@@ -1300,19 +1342,25 @@ public class ResourceManager extends CompositeService
 
     @Override
     public void handle(RMAppAttemptEvent event) {
+      //解析事件对应的 ApplicationAttemptId 和 ApplicationId
       ApplicationAttemptId appAttemptId = event.getApplicationAttemptId();
       ApplicationId appId = appAttemptId.getApplicationId();
+      //通过 ApplicationId 获取 RMApp，代表 该应用的整体信息
       RMApp rmApp = this.rmContext.getRMApps().get(appId);
       if (rmApp != null) {
         RMAppAttempt rmAppAttempt = rmApp.getRMAppAttempt(appAttemptId);
         if (rmAppAttempt != null) {
           try {
+            // 处理事件
             rmAppAttempt.handle(event);
           } catch (Throwable t) {
             LOG.error("Error in handling event type " + event.getType()
                 + " for applicationAttempt " + appAttemptId, t);
           }
+          //处理 AM 重启的情况
         } else if (rmApp.getApplicationSubmissionContext() != null
+            //是否启用了 AM 容器保持（即 Work-Preserving AM Restart）
+            //在 AM 容器保持模式 下，即使 当前 RMAppAttempt 已删除，仍然可能会有 CONTAINER_FINISHED 事件到达
             && rmApp.getApplicationSubmissionContext()
             .getKeepContainersAcrossApplicationAttempts()
             && event.getType() == RMAppAttemptEventType.CONTAINER_FINISHED) {
@@ -1343,7 +1391,7 @@ public class ResourceManager extends CompositeService
       }
     }
   }
-
+  //节点事件处理器
   @Private
   public static final class NodeEventDispatcher implements
       EventHandler<RMNodeEvent> {
@@ -1357,6 +1405,7 @@ public class ResourceManager extends CompositeService
     @Override
     public void handle(RMNodeEvent event) {
       NodeId nodeId = event.getNodeId();
+      //转发给对应的RMNode处理
       RMNode node = this.rmContext.getRMNodes().get(nodeId);
       if (node != null) {
         try {
@@ -1571,9 +1620,11 @@ public class ResourceManager extends CompositeService
     rmContext.setHAServiceState(HAServiceProtocol.HAServiceState.ACTIVE);
     LOG.info("Transitioned to active state");
   }
-
+  //实现了 ResourceManager (RM) 的 Standby 状态切换逻辑，在 高可用 (HA) 模式 下，RM 需要从 Active 切换到 Standby 时调用
+  //initialize 控制是否需要 重新初始化 RM 相关服务
   synchronized void transitionToStandby(boolean initialize)
       throws Exception {
+    //如果已经是 Standby，则直接返回
     if (rmContext.getHAServiceState() ==
         HAServiceProtocol.HAServiceState.STANDBY) {
       LOG.info("Already in standby state");
@@ -1581,9 +1632,13 @@ public class ResourceManager extends CompositeService
     }
 
     LOG.info("Transitioning to standby state");
+    //记录当前 RM 状态（可能是 ACTIVE）
     HAServiceState state = rmContext.getHAServiceState();
+    //将 RM 状态切换为 STANDBY，表示不再负责调度和管理应用程序
     rmContext.setHAServiceState(HAServiceProtocol.HAServiceState.STANDBY);
     if (state == HAServiceProtocol.HAServiceState.ACTIVE) {
+      //如果 RM 之前是 Active
+      //停止所有 Active 状态下运行的服务 (stopActiveServices())
       stopActiveServices();
       reinitialize(initialize);
     }
@@ -1674,11 +1729,11 @@ public class ResourceManager extends CompositeService
     }
     return new ApplicationMasterService(this.rmContext, scheduler);
   }
-
+  //创建管理服务
   protected AdminService createAdminService() {
     return new AdminService(this);
   }
-
+  //创建委托令牌管理服务
   protected RMSecretManagerService createRMSecretManagerService() {
     return new RMSecretManagerService(conf, rmContext);
   }

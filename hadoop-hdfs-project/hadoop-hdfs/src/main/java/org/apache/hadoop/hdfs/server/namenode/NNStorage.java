@@ -68,21 +68,23 @@ import org.apache.hadoop.util.Preconditions;
 @InterfaceAudience.Private
 public class NNStorage extends Storage implements Closeable,
     StorageErrorReporter {
+  //存储 fsimage 文件的 MD5 校验值，主要用于验证镜像文件的完整性
   static final String DEPRECATED_MESSAGE_DIGEST_PROPERTY = "imageMD5Digest";
+  //定义了本地文件 URI 使用的协议头，值为 "file"
   static final String LOCAL_URI_SCHEME = "file";
 
   /**
    * The filenames used for storing the images.
    */
   public enum NameNodeFile {
-    IMAGE     ("fsimage"),
+    IMAGE     ("fsimage"),//元数据快照文件，生成于特定的检查点（Checkpoint）时，提供数据恢复能力
     TIME      ("fstime"), // from "old" pre-HDFS-1073 format
-    SEEN_TXID ("seen_txid"),
-    EDITS     ("edits"),
-    IMAGE_NEW ("fsimage.ckpt"),
-    IMAGE_ROLLBACK("fsimage_rollback"),
+    SEEN_TXID ("seen_txid"), //记录 NameNode 已处理的最后一个事务 ID
+    EDITS     ("edits"), //NameNode 的编辑日志文件（edits）
+    IMAGE_NEW ("fsimage.ckpt"), //Secondary NameNode 在执行检查点时生成的临时 fsimage 文件，完成后会重命名为正式的 fsimage
+    IMAGE_ROLLBACK("fsimage_rollback"), //回滚时使用的 fsimage 文件
     EDITS_NEW ("edits.new"), // from "old" pre-HDFS-1073 format
-    EDITS_INPROGRESS ("edits_inprogress"),
+    EDITS_INPROGRESS ("edits_inprogress"),//正在使用的编辑日志文件
     EDITS_TMP ("edits_tmp"),
     IMAGE_LEGACY_OIV ("fsimage_legacy_oiv");  // For pre-PB format
 
@@ -103,12 +105,13 @@ public class NNStorage extends Storage implements Closeable,
    * or of type EDITS which stores edits or of type IMAGE_AND_EDITS which
    * stores both fsimage and edits.
    */
+  //专门用于描述 HDFS NameNode 的 存储目录类型。在 HDFS 中，NameNode 负责维护整个文件系统的元数据（包括文件目录、块信息、权限等）
   @VisibleForTesting
   public enum NameNodeDirType implements StorageDirType {
-    UNDEFINED,
-    IMAGE,
-    EDITS,
-    IMAGE_AND_EDITS;
+    UNDEFINED,//未定义的存储类型，表示当前存储目录的类型未知或未指定
+    IMAGE,//只存储 fsimage 文件，用于保存 HDFS 文件系统的快照（元数据的完整持久化映像）
+    EDITS,//只存储 edits 文件，用于记录 HDFS 文件系统的增量操作日志（元数据的变化
+    IMAGE_AND_EDITS;//同时存储 fsimage 和 edits，即混合存储目录
 
     @Override
     public StorageDirType getStorageDirType() {
@@ -121,7 +124,7 @@ public class NNStorage extends Storage implements Closeable,
           this == type;
     }
   }
-
+  //块池的ID
   protected String blockpoolID = ""; // id of the block pool
 
   /**
@@ -382,6 +385,7 @@ public class NNStorage extends Storage implements Closeable,
    * @return Collection of URI representing image directories
    * @throws IOException in case of URI processing error
    */
+  //获取镜像存储的目录
   Collection<URI> getImageDirectories() throws IOException {
     return getDirectories(NameNodeDirType.IMAGE);
   }
@@ -457,6 +461,7 @@ public class NNStorage extends Storage implements Closeable,
    * @param sd storage directory
    * @throws IOException
    */
+  //记录已经处理的事务ID
   void writeTransactionIdFile(StorageDirectory sd, long txid)
       throws IOException {
     Preconditions.checkArgument(txid >= 0, "bad txid: " + txid);
@@ -587,23 +592,24 @@ public class NNStorage extends Storage implements Closeable,
 
   /** Create new dfs name directory.  Caution: this destroys all files
    * in this filesystem. */
+  //格式化存储目录
   private void format(StorageDirectory sd) throws IOException {
-    sd.clearDirectory(); // create currrent dir
-    writeProperties(sd);
-    writeTransactionIdFile(sd, 0);
+    sd.clearDirectory(); // 清理目录， create currrent dir
+    writeProperties(sd); //写版本文件
+    writeTransactionIdFile(sd, 0);//记录事务ID，从0开始
 
     LOG.info("Storage directory {} has been successfully formatted.",
         sd.getRoot());
   }
 
-  /**
+  /**重新格式化存储空间
    * Format all available storage directories.
    */
   public void format(NamespaceInfo nsInfo) throws IOException {
     format(nsInfo, false);
   }
 
-  /**
+  /**格式化所有有效的存储目录
    * Format all available storage directories.
    */
   public void format(NamespaceInfo nsInfo, boolean isRollingUpgrade)
@@ -614,13 +620,15 @@ public class NNStorage extends Storage implements Closeable,
     
     this.setStorageInfo(nsInfo);
     this.blockpoolID = nsInfo.getBlockPoolID();
+    //迭代存储目录
     for (Iterator<StorageDirectory> it =
                            dirIterator(); it.hasNext();) {
       StorageDirectory sd = it.next();
-      format(sd);
+      format(sd);//逐个处理
     }
   }
-  
+
+  //生成新的空间命名信息
   public static NamespaceInfo newNamespaceInfo()
       throws UnknownHostException {
     return new NamespaceInfo(newNamespaceID(), newClusterID(),
@@ -648,6 +656,7 @@ public class NNStorage extends Storage implements Closeable,
    *
    * @return new namespaceID
    */
+  //产生一个新的空间ID
   private static int newNamespaceID() {
     int newID = 0;
     while(newID == 0) {
@@ -781,7 +790,7 @@ public class NNStorage extends Storage implements Closeable,
   public static String getInProgressEditsFileName(long startTxId) {
     return getNameNodeFileName(NameNodeFile.EDITS_INPROGRESS, startTxId);
   }
-  
+  //根据提供的存储目录和起始事务 ID，生成 HDFS 正在写入的编辑日志文件 对象
   static File getInProgressEditsFile(StorageDirectory sd, long startTxId) {
     return new File(sd.getCurrentDir(), getInProgressEditsFileName(startTxId));
   }
@@ -913,13 +922,15 @@ public class NNStorage extends Storage implements Closeable,
    * @param layoutVersion Layout version for the upgrade 
    * @throws IOException
    */
+  //处理更新操作的culsterid和blockpoolid
   void processStartupOptionsForUpgrade(StartupOption startOpt,
       int layoutVersion) throws IOException {
     if (startOpt == StartupOption.UPGRADE ||
         startOpt == StartupOption.UPGRADEONLY) {
       // If upgrade from a release that does not support federation,
       // if clusterId is provided in the startupOptions use it.
-      // Else generate a new cluster ID      
+      // Else generate a new cluster ID
+      //如果更新不支持联邦，如果启动选项提供clusterId则用这id,否则生成新的id
       if (!NameNodeLayoutVersion.supports(
           LayoutVersion.Feature.FEDERATION, layoutVersion)) {
         if (startOpt.getClusterId() == null) {
@@ -981,11 +992,12 @@ public class NNStorage extends Storage implements Closeable,
    * will be rejected.
    * 
    * @return new clusterID
-   */ 
+   */
+  //产生一个新集群ID
   public static String newClusterID() {
     return "CID-" + UUID.randomUUID().toString();
   }
-
+  //设置集群ID
   void setClusterID(String cid) {
     clusterID = cid;
   }
@@ -996,6 +1008,7 @@ public class NNStorage extends Storage implements Closeable,
    * null in case none found
    * @return clusterId or null in case no cluster id found
    */
+  //尝试从NameNode的版本文件中读取集群ID（clusterID）
   public String determineClusterId() {
     String cid;
     Iterator<StorageDirectory> sdit = dirIterator(NameNodeDirType.IMAGE);
@@ -1024,7 +1037,7 @@ public class NNStorage extends Storage implements Closeable,
 
   /**
    * Generate new blockpoolID.
-   * 
+   * 获取默认的IP作为块池的ID
    * @return new blockpoolID
    */ 
   static String newBlockPoolID() throws UnknownHostException{
@@ -1041,6 +1054,7 @@ public class NNStorage extends Storage implements Closeable,
   }
 
   /** Validate and set block pool ID. */
+  //设置块池ID
   public void setBlockPoolID(String bpid) {
     blockpoolID = bpid;
   }

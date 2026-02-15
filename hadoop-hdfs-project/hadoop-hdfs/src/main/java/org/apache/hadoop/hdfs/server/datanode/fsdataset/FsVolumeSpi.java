@@ -42,6 +42,10 @@ import org.apache.hadoop.hdfs.server.datanode.checker.VolumeCheckResult;
 /**
  * This is an interface for the underlying volume.
  */
+//表示和操作磁盘存储卷的接口。它为底层存储卷提供了一系列的操作，包括获取存储的基本信息、管理存储空间、扫描存储块等。
+// FsVolumeSpi 是 HDFS 数据节点中存储设备交互的重要接口，负责管理存储的生命周期、块的存取及状态维护
+//磁盘的 Volume（卷）指的是磁盘或存储设备上划分出的一个逻辑存储单元。它可以包含一个或多个物理磁盘（或者磁盘分区），
+// 并作为一个单独的单元进行管理和操作。卷可以用来存储数据、文件系统等
 public interface FsVolumeSpi
     extends Checkable<FsVolumeSpi.VolumeCheckContext, VolumeCheckResult> {
 
@@ -52,41 +56,49 @@ public interface FsVolumeSpi
    * It is caller's responsibility to close {@link FsVolumeReference} to decrease
    * the reference count on the volume.
    */
+  //获取存储卷的引用计数器，调用者需要手动关闭引用来减少引用计数，避免内存泄漏
   FsVolumeReference obtainReference() throws ClosedChannelException;
 
   /** @return the StorageUuid of the volume */
+  //返回存储卷的唯一标识符（Storage ID）
   String getStorageID();
 
   /** @return a list of block pools. */
+  //返回此存储卷上的所有块池（Block Pools）的名称
   String[] getBlockPoolList();
 
   /** @return the available storage space in bytes. */
+  //返回存储卷可用的空间大小（字节）
   long getAvailable() throws IOException;
 
   /** @return the base path to the volume */
+  //返回存储卷的基本 URI（统一资源标识符）
   URI getBaseURI();
-
+  //返回存储卷的使用统计信息
   DF getUsageStats(Configuration conf);
 
   /** @return the {@link StorageLocation} to the volume */
+  //返回存储卷的存储位置，通常包含磁盘路径等信息
   StorageLocation getStorageLocation();
 
   /** @return the {@link StorageType} of the volume */
+  //返回存储卷的类型（如磁盘、RAM 等）
   StorageType getStorageType();
 
   /** Returns true if the volume is NOT backed by persistent storage. */
+  //判断存储卷是否是临时存储（例如 RAM 存储，不持久化）
   boolean isTransientStorage();
 
   /** Returns true if the volume is backed by RAM storage. */
   boolean isRAMStorage();
 
-  /**
+  /**为待写入的块预留磁盘空间，以防在块未写满之前存储空间不足
    * Reserve disk space for a block (RBW or Re-replicating)
    * so a writer does not run out of space before the block is full.
    */
   void reserveSpaceForReplica(long bytesToReserve);
 
-  /**
+  /**释放之前预留的磁盘空间
    * Release disk space previously reserved for block opened for write.
    */
   void releaseReservedSpace(long bytesToRelease);
@@ -97,6 +109,7 @@ public interface FsVolumeSpi
    * bytesToRelease will be rounded down to the OS page size since locked
    * memory reservation must always be a multiple of the page size.
    */
+  //释放临时存储（如 RAM 存储）中为写入块预留的内存，确保已释放的内存满足操作系统页面大小的要求
   void releaseLockedMemory(long bytesToRelease);
 
   /**

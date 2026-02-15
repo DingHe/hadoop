@@ -120,31 +120,35 @@ import org.apache.hadoop.yarn.server.resourcemanager.security.authorize.RMPolicy
 
 import org.apache.hadoop.classification.VisibleForTesting;
 import org.apache.hadoop.thirdparty.protobuf.BlockingService;
-
+//YARN ResourceManager 中管理管理员操作的服务
+//主要用于处理对 YARN ResourceManager 的管理请求，提供了一个 RPC 服务接口，允许管理员对 ResourceManager 进行操作，包括节点资源更新、队列刷新、ACL 刷新等
 public class AdminService extends CompositeService implements
     HAServiceProtocol, ResourceManagerAdministrationProtocol {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(AdminService.class);
-
+  //ResourceManager 实例，用于访问 YARN 的核心功能
   private final ResourceManager rm;
+  //ResourceManager 的唯一标识符，用于区分多个 ResourceManager 实例（尤其在 HA 模式下）
   private String rmId;
-
+  //标识是否启用了自动故障转移功能
   private boolean autoFailoverEnabled;
-
+  //该服务的 RPC 服务器实例，负责接收并处理客户端请求
   private Server server;
 
   // Address to use for binding. May be a wildcard address.
+  //绑定的服务地址，用于客户端连接
   private InetSocketAddress masterServiceBindAddress;
-
+  //负责资源管理器访问控制的授权提供者
   private YarnAuthorizationProvider authorizer;
-
+  //用于创建 YARN 记录的工厂，通常用于生成不同的协议记录对象
   private final RecordFactory recordFactory =
     RecordFactoryProvider.getRecordFactory(null);
-
+  //当前运行的 Daemon 用户信息
   private UserGroupInformation daemonUser;
 
   @VisibleForTesting
+      //指示是否采用集中式节点标签配置
   boolean isCentralizedNodeLabelConfiguration = true;
 
   public AdminService(ResourceManager rm) {
@@ -154,15 +158,17 @@ public class AdminService extends CompositeService implements
 
   @Override
   public void serviceInit(Configuration conf) throws Exception {
+    //自动故障转移设置 (autoFailoverEnabled)
     autoFailoverEnabled =
         rm.getRMContext().isHAEnabled()
             && HAUtil.isAutomaticFailoverEnabled(conf);
-
+    //获取并设置服务绑定的地址
     masterServiceBindAddress = conf.getSocketAddr(
         YarnConfiguration.RM_BIND_HOST,
         YarnConfiguration.RM_ADMIN_ADDRESS,
         YarnConfiguration.DEFAULT_RM_ADMIN_ADDRESS,
         YarnConfiguration.DEFAULT_RM_ADMIN_PORT);
+    //获取当前用户 (daemonUser) 和 YARN 授权提供者 (authorizer)，并设置管理员权限
     daemonUser = UserGroupInformation.getCurrentUser();
     authorizer = YarnAuthorizationProvider.getInstance(conf);
     authorizer.setAdmins(getAdminAclList(conf), daemonUser);

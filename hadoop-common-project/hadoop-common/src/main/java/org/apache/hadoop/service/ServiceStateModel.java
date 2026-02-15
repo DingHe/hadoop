@@ -24,6 +24,10 @@ import org.apache.hadoop.classification.InterfaceStability.Evolving;
 /**
  * Implements the service state model.
  */
+// Hadoop Common 服务框架中用于实现服务生命周期状态机的核心组件
+// 定义和管理服务状态：它跟踪一个服务（实现了 Service 接口的组件）当前所处的生命周期状态（如 NOTINITED, INITED, STARTED, STOPPED）
+// 强制执行状态转移规则：它内置了一个状态转移矩阵 (statemap)，严格定义了服务状态之间合法的转换路径。任何尝试进行不合法状态转移的操作都将被阻止并抛出异常，确保了服务的生命周期管理是健壮和可预测的
+// 提供线程安全的状态转换：通过使用 synchronized 关键字，确保在多线程环境下，服务状态的改变是原子性的
 @Public
 @Evolving
 public class ServiceStateModel {
@@ -32,6 +36,11 @@ public class ServiceStateModel {
    * Map of all valid state transitions
    * [current] [proposed1, proposed2, ...]
    */
+  //状态转移
+  //定义了所有允许（true）和禁止（false）的服务状态转换。矩阵的行索引代表当前状态，列索引代表提议的新状态
+  //uninited 可以进入 inited stopped状态
+  //inited 可以进进入started stopped状态
+  //started 可以进入 stopped状态
   private static final boolean[][] statemap =
     {
       //                uninited inited started stopped
@@ -44,11 +53,13 @@ public class ServiceStateModel {
   /**
    * The state of the service
    */
+  // 存储服务当前的生命周期状态
   private volatile Service.STATE state;
 
   /**
    * The name of the service: used in exceptions
    */
+  //存储拥有此状态模型的服务的名称
   private String name;
 
   /**
@@ -84,6 +95,7 @@ public class ServiceStateModel {
    * @param proposed proposed new state
    * @return the state
    */
+  //检查当前状态是否与传入的 proposed 状态相等
   public boolean isInState(Service.STATE proposed) {
     return state.equals(proposed);
   }
@@ -94,6 +106,7 @@ public class ServiceStateModel {
    * @throws ServiceStateException if the service state is different from
    * the desired state
    */
+  //验证服务当前状态是否与期望的 expectedState 一致
   public void ensureCurrentState(Service.STATE expectedState) {
     if (state != expectedState) {
       throw new ServiceStateException(name+ ": for this operation, the " +
@@ -110,6 +123,7 @@ public class ServiceStateModel {
    * @return the original state
    * @throws ServiceStateException if the transition is not permitted
    */
+  //线程安全地尝试将服务状态从当前状态切换到 proposed 状态
   public synchronized Service.STATE enterState(Service.STATE proposed) {
     checkStateTransition(name, state, proposed);
     Service.STATE oldState = state;
@@ -125,6 +139,7 @@ public class ServiceStateModel {
    * @param state current state
    * @param proposed proposed new state
    */
+  //检查从 state 到 proposed 的转换是否合法
   public static void checkStateTransition(String name,
                                           Service.STATE state,
                                           Service.STATE proposed) {
@@ -146,6 +161,7 @@ public class ServiceStateModel {
    * @param proposed proposed new state
    * @return true if the transition to a new state is valid
    */
+  //检查从 current 状态到 proposed 状态的转换是否在 statemap 矩阵中被允许
   public static boolean isValidStateTransition(Service.STATE current,
                                                Service.STATE proposed) {
     boolean[] row = statemap[current.getValue()];

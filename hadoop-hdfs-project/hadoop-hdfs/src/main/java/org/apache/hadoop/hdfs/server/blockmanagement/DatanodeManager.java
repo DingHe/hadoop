@@ -106,13 +106,16 @@ public class DatanodeManager {
    * <p>
    * Mapping: StorageID -> DatanodeDescriptor
    */
+  //维护: StorageID -> DatanodeDescriptor
   private final Map<String, DatanodeDescriptor> datanodeMap
       = new HashMap<>();
 
   /** Cluster network topology. */
+  //维护整个网络的拓扑结构
   private final NetworkTopology networktopology;
 
   /** Host names to datanode descriptors mapping. */
+  //HashMap<String, DatanodeDescriptor[]>，维护Host->DatanodeDescriptor的关系
   private final Host2NodesMap host2DatanodeMap = new Host2NodesMap();
 
   private final DNSToSwitchMapping dnsToSwitchMapping;

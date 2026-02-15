@@ -48,12 +48,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * <i>schedulingPolicy</i> in the fair scheduler configuration file.
  * The default policy is {@link FairSharePolicy} if not specified.
  */
+//SchedulingPolicy 类是 Apache Hadoop YARN 中公平调度器（Fair Scheduler）的核心类之一，
+// 主要用于决定队列的公平资源分配、计算可用资源以及为调度决策提供依据。
+// 它定义了资源调度的策略，每个队列都有一个与之关联的调度策略，包括父队列和子队列。
+// 如果子队列未指定策略，则继承父队列的策略。
+// 该类通过方法计算队列的资源配额、调度排序、头部资源等，确保多个应用程序能够公平共享集群资源
 @Public
 @Evolving
 public abstract class SchedulingPolicy {
+  //用于存储不同类型调度策略的实例。通过这个缓存，可以确保每种调度策略类只有一个实例，避免重复创建
   private static final ConcurrentHashMap<Class<? extends SchedulingPolicy>, SchedulingPolicy> instances =
       new ConcurrentHashMap<Class<? extends SchedulingPolicy>, SchedulingPolicy>();
-
+  //默认的调度策略，默认为 FairSharePolicy 类的实例。如果没有在配置文件中指定其他调度策略，将使用此策略
   public static final SchedulingPolicy DEFAULT_POLICY =
       getInstance(FairSharePolicy.class);
 
@@ -87,6 +93,7 @@ public abstract class SchedulingPolicy {
    * @throws AllocationConfigurationException for any errors.
    *
    */
+  //policy 是一个字符串，表示要解析的调度策略。它可以是 "fair"、"fifo"、"drf" 等，或者是自定义调度策略的全类名
   @SuppressWarnings("unchecked")
   public static SchedulingPolicy parse(String policy)
       throws AllocationConfigurationException {
@@ -121,6 +128,7 @@ public abstract class SchedulingPolicy {
    *
    * @param clusterCapacity cluster resources
    */
+  //clusterCapacity 是集群的资源容量（如 CPU、内存等
   @Deprecated
   public void initialize(Resource clusterCapacity) {}
 
@@ -163,6 +171,9 @@ public abstract class SchedulingPolicy {
    * @param schedulables {@link Schedulable}s whose shares are to be updated
    * @param totalResources Total {@link Resource}s in the cluster
    */
+  //schedulables 是一个包含多个 Schedulable 对象的集合，表示需要计算资源配额的对象；
+  // totalResources 是集群中的总资源
+  //该方法计算并更新每个可调度对象（如队列、任务）的资源配额。配额是瞬时的，仅考虑当前正在运行的应用程序
   public abstract void computeShares(
       Collection<? extends Schedulable> schedulables, Resource totalResources);
 
@@ -176,6 +187,10 @@ public abstract class SchedulingPolicy {
    * @param queues {@link FSQueue}s whose shares are to be updated
    * @param totalResources Total {@link Resource}s in the cluster
    */
+  //queues 是一个包含多个 FSQueue 对象的集合，表示需要计算的队列；
+  // totalResources 是集群中的总资源
+  // 该方法计算并更新每个队列的稳定资源配额。
+  // 稳定配额不区分队列下是否有正在运行的应用程序，它主要用于显示在 Web UI 上，以便查看资源分配情况
   public abstract void computeSteadyShares(
       Collection<? extends FSQueue> queues, Resource totalResources);
 
@@ -186,6 +201,9 @@ public abstract class SchedulingPolicy {
    * @param fairShare {@link Resource} the fair share
    * @return true if check passes (is over) or false otherwise
    */
+  //usage 是队列使用的资源量；
+  // fairShare 是队列的公平配额
+  //检查队列的资源使用量是否超出了其公平配额。如果超出，返回 true，否则返回 false
   public abstract boolean checkIfUsageOverFairShare(
       Resource usage, Resource fairShare);
 
@@ -200,6 +218,11 @@ public abstract class SchedulingPolicy {
    * @param maxAvailable available resource in cluster for this queue
    * @return calculated headroom
    */
+  //queueFairShare 是队列的公平配额；
+  // queueUsage 是队列当前使用的资源量；
+  // maxAvailable 是集群中该队列可用的最大资源
+  //该方法计算队列的头部资源（即可以分配的资源）。
+  // 计算方式是取 queueFairShare - queueUsage 和 maxAvailable 的最小值，表示队列还可以使用多少资源
   public abstract Resource getHeadroom(Resource queueFairShare,
       Resource queueUsage, Resource maxAvailable);
 
@@ -209,6 +232,8 @@ public abstract class SchedulingPolicy {
    * @param childPolicy the policy of child queue
    * @return true if the child policy is allowed; false otherwise
    */
+  //childPolicy 是子队列的调度策略
+  //检查子队列的策略是否被允许。默认情况下，子队列的策略总是允许（返回 true）。但某些策略组合可能不被允许，具体实现可以在子类中覆盖此方法
   public boolean isChildPolicyAllowed(SchedulingPolicy childPolicy) {
     return true;
   }

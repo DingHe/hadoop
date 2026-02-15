@@ -78,6 +78,8 @@ import org.apache.hadoop.security.AccessControlException;
  * Note 3: {@link INodeReference#getId()} returns the id the referred inode,
  *         e.g. all WithName, DstReference and WithCount above return id=1000.
  */
+//当文件/目录处于某个快照中，并且这个文件/目录被重命名或者移动到其他路径时，该文件/目录就存在多条访问路径。
+//该类就是为了解决这个问题而产生的
 public abstract class INodeReference extends INode {
   /** Assert the relationship this node and the references. */
   abstract void assertReferences();
@@ -142,14 +144,14 @@ public abstract class INodeReference extends INode {
     }
     return Snapshot.NO_SNAPSHOT_ID;
   }
-  
+  //保存当前InodeReference类指向的真实的Inode节点
   private INode referred;
   
   public INodeReference(INode parent, INode referred) {
     super(parent);
     this.referred = referred;
   }
-
+  //获取InodeReference指定的真实的Inode节点
   public final INode getReferredINode() {
     return referred;
   }
@@ -397,7 +399,7 @@ public abstract class INodeReference extends INode {
   
   /** An anonymous reference with reference count. */
   public static class WithCount extends INodeReference {
-
+    //保存所有指向WithCount对象的WithName对象的集合
     private final List<WithName> withNameList = new ArrayList<>();
 
     /**
@@ -479,6 +481,7 @@ public abstract class INodeReference extends INode {
     }
 
     /** Increment and then return the reference count. */
+    //添加指向WithCount对象的WithName和DstReference对象
     public void addReference(INodeReference ref) {
       if (ref instanceof WithName) {
         WithName refWithName = (WithName) ref;
@@ -559,7 +562,7 @@ public abstract class INodeReference extends INode {
   
   /** A reference with a fixed name. */
   public static class WithName extends INodeReference {
-
+    //保存重命名前文件的名称
     private final byte[] name;
 
     /**
@@ -570,6 +573,7 @@ public abstract class INodeReference extends INode {
      * the files/dirs existing when this snapshot was taken will be counted for 
      * this WithName node and propagated along its ancestor path.
      */
+    //保存WithName对象构造时源路径的快照版本号
     private final int lastSnapshotId;
     
     public WithName(INodeDirectory parent, WithCount referred, byte[] name,
@@ -760,6 +764,7 @@ public abstract class INodeReference extends INode {
      * {@link Snapshot#NO_SNAPSHOT_ID} means no dstSnapshot (e.g., src of the
      * first-time rename).
      */
+    //保存重命名操作前目标路径的最新快照版本号
     private final int dstSnapshotId;
     
     @Override

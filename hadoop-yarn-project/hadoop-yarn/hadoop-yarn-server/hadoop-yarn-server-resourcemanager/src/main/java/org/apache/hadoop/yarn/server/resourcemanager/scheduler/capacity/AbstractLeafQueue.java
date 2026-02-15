@@ -92,54 +92,62 @@ import static org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.C
 
 import static org.apache.hadoop.yarn.nodelabels.CommonNodeLabelsManager.NO_LABEL;
 import static org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.QueueCapacityVector.ResourceUnitCapacityType.PERCENTAGE;
-
+//表示叶子队列 (Leaf Queue)，即不能再包含子队列的调度队列
+//叶子队列 直接处理应用 (Application) 提交的资源请求，管理应用的调度、资源分配和限制
 public class AbstractLeafQueue extends AbstractCSQueue {
   private static final Logger LOG =
       LoggerFactory.getLogger(AbstractLeafQueue.class);
-
+  //记录队列当前使用的绝对容量（相对于集群总资源的百分比）
   private float absoluteUsedCapacity = 0.0f;
 
   // TODO the max applications should consider label
+  //队列允许的最大应用数。
   protected int maxApplications;
+  //每个用户允许提交的最大应用数。
   protected volatile int maxApplicationsPerUser;
-
+  //队列中应用管理器 (AM) 使用的最大资源比例。
   private float maxAMResourcePerQueuePercent;
-
+  //控制任务在本地节点 (Node Locality) 上等待资源的延迟。
   private volatile int nodeLocalityDelay;
+  //控制任务在机架级别 (Rack Locality) 上等待资源的额外延迟。
   private volatile int rackLocalityAdditionalDelay;
+  //是否完全重置机架本地性计算。
   private volatile boolean rackLocalityFullReset;
-
+  //存储所有正在调度的 FiCaSchedulerApp（应用尝试实例）。
   Map<ApplicationAttemptId, FiCaSchedulerApp> applicationAttemptMap =
       new ConcurrentHashMap<>();
-
+  //队列内应用的默认优先级。
   private Priority defaultAppPriorityPerQueue;
-
+  //队列中等待调度 (Pending) 的应用排序策略，默认是 FIFO (先来先服务)。
   private final OrderingPolicy<FiCaSchedulerApp> pendingOrderingPolicy;
-
+  //最小资源分配因子，影响调度决策。
   private volatile float minimumAllocationFactor;
 
   private final RecordFactory recordFactory =
       RecordFactoryProvider.getRecordFactory(null);
-
+  //管理队列中的用户及其资源配额。
   private final UsersManager usersManager;
 
   // cache last cluster resource to compute actual capacity
+  //缓存上一次的集群资源信息，用于计算队列容量。
   private Resource lastClusterResource = Resources.none();
-
+  //存储队列资源限制信息。
   private final QueueResourceLimitsInfo queueResourceLimitsInfo =
       new QueueResourceLimitsInfo();
-
+  //缓存剩余资源 (Headroom) 限制信息。
   private volatile ResourceLimits cachedResourceLimitsForHeadroom = null;
 
   private volatile OrderingPolicy<FiCaSchedulerApp> orderingPolicy = null;
 
   // Map<Partition, Map<SchedulingMode, Map<User, CachedUserLimit>>>
   // Not thread safe: only the last level is a ConcurrentMap
+  //三级映射：{分区 -> {调度模式 -> {用户 -> 缓存的用户限制}}}，加速用户资源计算。
   @VisibleForTesting
   Map<String, Map<SchedulingMode, ConcurrentMap<String, CachedUserLimit>>>
       userLimitsCache = new HashMap<>();
 
   // Not thread safe
+  //记录用户限制缓存的版本号，用于控制缓存更新逻辑。
   @VisibleForTesting
   long currentUserLimitCacheVersion = 0;
 
@@ -150,8 +158,9 @@ public class AbstractLeafQueue extends AbstractCSQueue {
 
   List<AppPriorityACLGroup> priorityAcls =
       new ArrayList<AppPriorityACLGroup>();
-
+  //存储可运行的应用列表。
   private final List<FiCaSchedulerApp> runnableApps = new ArrayList<>();
+  //存储不可运行的应用列表（资源不足、用户受限等情况）。
   private final List<FiCaSchedulerApp> nonRunnableApps = new ArrayList<>();
 
   public AbstractLeafQueue(CapacitySchedulerQueueContext queueContext,
@@ -576,13 +585,13 @@ public class AbstractLeafQueue extends AbstractCSQueue {
       writeLock.unlock();
     }
   }
-
+  //提交应用尝试
   @Override
   public void submitApplicationAttempt(FiCaSchedulerApp application,
       String userName) {
     submitApplicationAttempt(application, userName, false);
   }
-
+  //提交应用尝试
   @Override
   public void submitApplicationAttempt(FiCaSchedulerApp application,
       String userName, boolean isMoveApp) {
@@ -610,14 +619,16 @@ public class AbstractLeafQueue extends AbstractCSQueue {
 
     parent.submitApplicationAttempt(application, userName);
   }
-
+  //提交应用
   @Override
   public void submitApplication(ApplicationId applicationId, String userName,
       String queue)  throws AccessControlException {
     // Careful! Locking order is important!
+    //检查是否满足队列的限制
     validateSubmitApplication(applicationId, userName, queue);
 
     // Signal for expired auto deletion.
+    //更新最近提交应用的时间
     updateLastSubmittedTimeStamp();
 
     // Inform the parent queue
@@ -630,12 +641,13 @@ public class AbstractLeafQueue extends AbstractCSQueue {
     }
 
   }
-
+  //负责在应用程序提交到该队列之前进行一些验证，确保符合队列的限制和访问控制规则
   public void validateSubmitApplication(ApplicationId applicationId,
       String userName, String queue) throws AccessControlException {
     writeLock.lock();
     try {
       // Check if the queue is accepting jobs
+      //首先检查队列的状态。如果队列不处于“运行中”状态（即队列已停止），则生成错误信息并抛出 AccessControlException 异常，拒绝应用程序提交
       if (getState() != QueueState.RUNNING) {
         String msg = "Queue " + getQueuePath()
             + " is STOPPED. Cannot accept submission of application: "
@@ -646,6 +658,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
 
       // Check submission limits for queues
       //TODO recalculate max applications because they can depend on capacity
+      //检查队列的应用程序数目是否超出最大限制
       if (getNumApplications() >= getMaxApplications() &&
           !(this instanceof AutoCreatedLeafQueue)) {
         String msg =
@@ -657,6 +670,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
       }
 
       // Check submission limits for the user on this queue
+      //检查用户提交的应用程序数目是否超出最大限制
       User user = usersManager.getUserAndAddIfAbsent(userName);
       //TODO recalculate max applications because they can depend on capacity
       if (user.getTotalApplications() >= getMaxApplicationsPerUser() &&
@@ -670,7 +684,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
     } finally {
       writeLock.unlock();
     }
-
+    //如果当前队列通过了所有的检查，则还要看父队列是否有问题
     try {
       parent.validateSubmitApplication(applicationId, userName, queue);
     } catch (AccessControlException ace) {
@@ -683,7 +697,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
   public Resource getAMResourceLimit() {
     return usageTracker.getQueueUsage().getAMLimit();
   }
-
+  //返回每个分区AM资源的限制
   public Resource getAMResourceLimitPerPartition(String nodePartition) {
     return usageTracker.getQueueUsage().getAMLimit(nodePartition);
   }
@@ -771,7 +785,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
     }
 
   }
-
+  //用于 计算某个资源分区（partition）的 Application Master（AM）资源限制，确保队列不会超额使用 AM 资源
   public Resource calculateAndGetAMResourceLimitPerPartition(
       String nodePartition) {
     writeLock.lock();
@@ -784,8 +798,9 @@ public class AbstractLeafQueue extends AbstractCSQueue {
        * non-labeled), * with per-partition am-resource-percent to get the max am
        * resource limit for this queue and partition.
        */
+      //获取队列在该分区的有效容量
       Resource queuePartitionResource = getEffectiveCapacity(nodePartition);
-
+      //当前可用资源上限
       Resource queueCurrentLimit = Resources.none();
       // For non-labeled partition, we need to consider the current queue
       // usage limit.
@@ -794,7 +809,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
           queueCurrentLimit = queueResourceLimitsInfo.getQueueCurrentLimit();
         }
       }
-
+      //获取队列在该 partition 的最大 AM 资源比例
       float amResourcePercent = queueCapacities.getMaxAMResourcePercentage(
           nodePartition);
 
@@ -804,10 +819,11 @@ public class AbstractLeafQueue extends AbstractCSQueue {
       // guarantee, use the guarantee as the queuePartitionUsableResource
       // because nothing less than the queue's guarantee should be used when
       // calculating the AM limit.
+      //队列在该分区可用于 AM 计算的资源
       Resource queuePartitionUsableResource = (Resources.fitsIn(
           resourceCalculator, queuePartitionResource, queueCurrentLimit)) ?
           queueCurrentLimit : queuePartitionResource;
-
+      //计算 AM 资源限制  AM_LIMIT=queuePartitionUsableResource×amResourcePercent
       Resource amResouceLimit = Resources.multiplyAndNormalizeUp(
           resourceCalculator, queuePartitionUsableResource, amResourcePercent,
           queueAllocationSettings.getMinimumAllocation());
@@ -824,7 +840,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
       writeLock.unlock();
     }
   }
-
+  // 激活 在该队列（Leaf Queue）中等待的应用（Application），确保应用尝试（Application Attempt）能够在资源允许的情况下启动
   protected void activateApplications() {
     writeLock.lock();
     try {
@@ -835,18 +851,21 @@ public class AbstractLeafQueue extends AbstractCSQueue {
       // AM Resource Limit for accessible labels can be pre-calculated.
       // This will help in updating AMResourceLimit for all labels when queue
       // is initialized for the first time (when no applications are present).
+      //遍历 该队列可访问的所有资源分区（Node Labels），计算其 AM 资源限制
       for (String nodePartition : getNodeLabelsForQueue()) {
         calculateAndGetAMResourceLimitPerPartition(nodePartition);
       }
-
+      //遍历挂起应用尝试（Pending Applications）
       for (Iterator<FiCaSchedulerApp> fsApp = getPendingAppsOrderingPolicy()
                .getAssignmentIterator(IteratorSelector.EMPTY_ITERATOR_SELECTOR);
            fsApp.hasNext();) {
         FiCaSchedulerApp application = fsApp.next();
+
         ApplicationId applicationId = application.getApplicationId();
 
         // Get the am-node-partition associated with each application
         // and calculate max-am resource limit for this partition.
+        //获取 该应用尝试 申请 AM 资源 所在的资源分区
         String partitionName = application.getAppAMNodePartitionName();
 
         Resource amLimit = getAMResourceLimitPerPartition(partitionName);
@@ -855,6 +874,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
           amLimit = calculateAndGetAMResourceLimitPerPartition(partitionName);
         }
         // Check am resource limit.
+        //计算如果启动该 AM，队列的 AM 资源使用情况
         Resource amIfStarted = Resources.add(
             application.getAMResource(partitionName),
             usageTracker.getQueueUsage().getAMUsed(partitionName));
@@ -867,7 +887,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
               + lastClusterResource + " amIfStarted " + amIfStarted
               + " AM node-partition name " + partitionName);
         }
-
+        //检查是否超过队列 AM 资源限制
         if (!resourceCalculator.fitsIn(amIfStarted, amLimit)) {
           if (getNumActiveApplications() < 1 || (Resources.lessThanOrEqual(
               resourceCalculator, lastClusterResource,
@@ -887,6 +907,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
         }
 
         // Check user am resource limit
+        //检查是否超过用户 AM 资源限制
         User user = usersManager.getUserAndAddIfAbsent(application.getUser());
         Resource userAMLimit = userAmPartitionLimit.get(partitionName);
 
@@ -918,6 +939,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
             continue;
           }
         }
+        //激活应用
         user.activateApplication();
         orderingPolicy.addSchedulableEntity(application);
         application.updateAMContainerDiagnostics(AMState.ACTIVATED, null);
@@ -939,11 +961,13 @@ public class AbstractLeafQueue extends AbstractCSQueue {
       writeLock.unlock();
     }
   }
-
+  // 用于将新的应用尝试（Application Attempt）添加到队列，并根据其是否可运行来决定如何处理。
+  // 它还涉及到应用程序的状态更新、资源调度策略的调整以及应用程序激活等核心逻辑
   private void addApplicationAttempt(FiCaSchedulerApp application,
       User user) {
     writeLock.lock();
     try {
+      //存储了当前队列中所有的应用尝试
       applicationAttemptMap.put(application.getApplicationAttemptId(),
           application);
 
@@ -960,9 +984,11 @@ public class AbstractLeafQueue extends AbstractCSQueue {
 
       // Accept
       user.submitApplication();
+      //按照队列的挂起应用排序策略进行管理
       getPendingAppsOrderingPolicy().addSchedulableEntity(application);
 
       // Activate applications
+      //检查 lastClusterResource 是否大于零（即当前集群是否有可用资源）
       if (Resources.greaterThan(resourceCalculator, lastClusterResource,
           lastClusterResource, Resources.none())) {
         activateApplications();
@@ -2315,7 +2341,7 @@ public class AbstractLeafQueue extends AbstractCSQueue {
     configuredCapacityVectors.put(NO_LABEL, QueueCapacityVector.of(capacity * 100, PERCENTAGE));
     queueCapacities.setCapacity(capacity);
   }
-
+  //设置队列容量
   public void setCapacity(String nodeLabel, float capacity) {
     configuredCapacityVectors.put(nodeLabel, QueueCapacityVector.of(capacity * 100, PERCENTAGE));
     queueCapacities.setCapacity(nodeLabel, capacity);

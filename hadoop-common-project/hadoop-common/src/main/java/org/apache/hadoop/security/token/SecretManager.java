@@ -37,6 +37,9 @@ import org.apache.hadoop.ipc.StandbyException;
  * The server-side secret manager for each token type.
  * @param <T> The type of the token identifier
  */
+//生成和管理令牌密码的服务器端秘密管理器。它为每种令牌类型提供一个秘密管理功能，包括生成和检索密码。
+// 这个类主要用于令牌的认证和验证过程中，保证令牌的安全性。
+// 它是一个抽象类，需要由具体的实现类来定义如何创建和管理不同类型令牌的密码
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public abstract class SecretManager<T extends TokenIdentifier> {
@@ -57,6 +60,7 @@ public abstract class SecretManager<T extends TokenIdentifier> {
    * @param identifier the identifier to use
    * @return the new password
    */
+  //给定的令牌标识符 (identifier) 创建一个新的密码。密码的生成与具体的令牌类型密切相关
   protected abstract byte[] createPassword(T identifier);
   
   /**
@@ -67,6 +71,7 @@ public abstract class SecretManager<T extends TokenIdentifier> {
    * @return the password to use
    * @throws InvalidToken the token was invalid
    */
+  //检索给定令牌标识符的密码。此方法需要验证令牌是否有效，并确保其没有过期或被撤销
   public abstract byte[] retrievePassword(T identifier)
       throws InvalidToken;
   
@@ -86,6 +91,7 @@ public abstract class SecretManager<T extends TokenIdentifier> {
    * @throws IOException to allow future exceptions to be added without breaking
    *         compatibility        
    */
+  //与 retrievePassword 方法类似，但是可以抛出 RetriableException 或 StandbyException 异常，以指示客户端可以重试或故障转移该操作
   public byte[] retriableRetrievePassword(T identifier)
       throws InvalidToken, StandbyException, RetriableException, IOException {
     return retrievePassword(identifier);
@@ -95,6 +101,7 @@ public abstract class SecretManager<T extends TokenIdentifier> {
    * Create an empty token identifier.
    * @return the newly created empty token identifier
    */
+  //创建一个新的空令牌标识符
   public abstract T createIdentifier();
 
   /**
@@ -104,6 +111,7 @@ public abstract class SecretManager<T extends TokenIdentifier> {
    * @throws StandbyException if the secret manager is not available to read
    *         tokens
    */
+  //检查 SecretManager 是否可以读取令牌。如果不可读取（例如，服务器处于备用状态），则抛出 StandbyException
   public void checkAvailableForRead() throws StandbyException {
     // Default to being available for read.
   }
@@ -152,6 +160,7 @@ public abstract class SecretManager<T extends TokenIdentifier> {
    * Generate a new random secret key.
    * @return the new key
    */
+  //生成一个新的随机密钥
   protected SecretKey generateSecret() {
     SecretKey key;
     synchronized (keyGen) {
@@ -167,6 +176,7 @@ public abstract class SecretManager<T extends TokenIdentifier> {
    * @param key the secret key
    * @return the bytes of the generated password
    */
+  //使用提供的密钥计算令牌标识符的 HMAC（哈希消息认证码），并返回结果作为密码
   public static byte[] createPassword(byte[] identifier,
                                          SecretKey key) {
     Mac mac = threadLocalMac.get();
@@ -184,6 +194,7 @@ public abstract class SecretManager<T extends TokenIdentifier> {
    * @param key the byte[] to create a secret key from
    * @return the secret key
    */
+  //将字节数组转换为一个 SecretKey 对象
   protected static SecretKey createSecretKey(byte[] key) {
     return new SecretKeySpec(key, DEFAULT_HMAC_ALGORITHM);
   }

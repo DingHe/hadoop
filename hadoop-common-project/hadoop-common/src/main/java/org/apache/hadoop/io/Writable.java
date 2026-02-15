@@ -63,13 +63,13 @@ import org.apache.hadoop.classification.InterfaceStability;
  *       }
  *     }
  * </pre></blockquote>
- */
+ */// 对象序列化和反序列化 的接口。实现此接口的类可以将对象转换为字节流（序列化），也可以从字节流恢复为对象（反序列化）
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public interface Writable {
   /** 
    * Serialize the fields of this object to <code>out</code>.
-   * 
+   *  将当前对象的属性序列化为二进制数据，写入 DataOutput 输出流
    * @param out <code>DataOuput</code> to serialize this object into.
    * @throws IOException any other problem for write.
    */
@@ -80,7 +80,7 @@ public interface Writable {
    * 
    * <p>For efficiency, implementations should attempt to re-use storage in the 
    * existing object where possible.</p>
-   * 
+   *  从输入流 DataInput 中反序列化对象数据，恢复为当前对象的属性值
    * @param in <code>DataInput</code> to deseriablize this object from.
    * @throws IOException any other problem for readFields.
    */

@@ -71,20 +71,27 @@ import java.util.stream.Collectors;
  * directory with the addition of facilities to participate
  * in the quorum protocol.
  */
+//JournalNode 是 HDFS 高可用性 (HA) 机制中的一个核心组件，主要用于 Quorum Journal Manager (QJM)。
+// 在 HDFS 的 HA 配置中，JournalNode 充当 EditLog 事务的分布式存储节点，使多个 NameNode 之间能够共享和同步元数据变更。它的主要作用如下：
+//存储 NameNode 事务日志 (EditLogs)：当 Active NameNode 执行文件系统操作时，它会写入 EditLogs，这些日志会被同步到多个 JournalNode。
+//支持 Standby NameNode 进行日志同步：Standby NameNode 通过 JournalNode 读取 EditLogs，以保持与 Active NameNode 的状态一致。
+//提供日志仲裁 (Quorum-based Logging)：JournalNode 采用 过半写入 (quorum-based writing) 机制，确保即使部分 JournalNode 故障，NameNode 仍能正确执行操作。
+//支持滚动升级：JournalNode 提供 doPreUpgrade()、doUpgrade()、doRollback() 等方法，支持 NameNode 进行版本升级或回滚
 @InterfaceAudience.Private
 public class JournalNode implements Tool, Configurable, JournalNodeMXBean {
   public static final Logger LOG = LoggerFactory.getLogger(JournalNode.class);
-  private Configuration conf;
-  private JournalNodeRpcServer rpcServer;
-  private JournalNodeHttpServer httpServer;
-  private final Map<String, Journal> journalsById = Maps.newHashMap();
+  private Configuration conf;//通过 setConf 方法传入 HdfsConfiguration 对象
+  private JournalNodeRpcServer rpcServer;//管理与 NameNode 的 RPC 通信，处理 JournalNode 相关的 RPC 请求
+  private JournalNodeHttpServer httpServer;//用于提供 HTTP 服务，供外部监控、管理和访问 JournalNode 状态信息
+  private final Map<String, Journal> journalsById = Maps.newHashMap();//存储当前 JournalNode 管理的所有 Journal 对象，键是 journalId
   private final Map<String, JournalNodeSyncer> journalSyncersById = Maps
-      .newHashMap();
-  private ObjectName journalNodeInfoBeanName;
-  private String httpServerURI;
-  private final ArrayList<File> localDir = Lists.newArrayList();
-  Tracer tracer;
-  private long startTime = 0;
+      .newHashMap();//存储 JournalNodeSyncer 对象，处理 JournalNode 数据的同步任务
+  private ObjectName journalNodeInfoBeanName;//注册 JournalNode 的 MBean，便于通过 JMX 监控 JournalNode 的状态信息
+  private String httpServerURI;//存储 HTTP 服务的 URI，提供对外访问的 URL
+  private final ArrayList<File> localDir = Lists.newArrayList();//本地存储路径列表，存放 JournalNode 的日志数据
+  Tracer tracer;//Hadoop HTrace 追踪器，用于跟踪分布式系统中的 RPC 调用
+  private long startTime = 0;//JournalNode 的启动时间，单位为毫秒。
+
 
   static {
     HdfsConfiguration.init();
@@ -93,21 +100,30 @@ public class JournalNode implements Tool, Configurable, JournalNodeMXBean {
   /**
    * When stopped, the daemon will exit with this code. 
    */
-  private int resultCode = 0;
+  private int resultCode = 0;//进程退出码，非 0 表示异常退出。
 
+  //jid Journal ID，唯一标识一个日志流。
+  //nameServiceId NameService ID，代表当前命名服务的 ID。对于分布式文件系统，nameServiceId 确保在多命名服务情况下，能够正确区分各个日志实例
+  //startOpt 指定 JournalNode 启动时的选项，通常为 REGULAR。
+  //主要用于根据给定的 journal ID（jid）获取现有的日志（Journal）对象，或者在没有找到时，创建一个新的日志对象。
+  // 该方法确保只有一个 Journal 实例对应一个特定的 journal ID。如果需要且配置启用了日志同步，还会启动同步线程来处理日志同步
   synchronized Journal getOrCreateJournal(String jid,
                                           String nameServiceId,
                                           StartupOption startOpt)
       throws IOException {
     QuorumJournalManager.checkJournalId(jid);
-    
+    //通过 jid 在 journalsById 中查找是否已经存在该日志实例。如果已经存在，直接返回该日志实例
     Journal journal = journalsById.get(jid);
     if (journal == null) {
+      //如果 journalsById 中没有找到对应的 Journal，则新建一个 Journal 实例
       File logDir = getLogDir(jid, nameServiceId);
       LOG.info("Initializing journal in directory " + logDir);
       journal = new Journal(conf, logDir, jid, startOpt, new ErrorReporter());
       journalsById.put(jid, journal);
       // Start SyncJouranl thread, if JournalNode Sync is enabled
+      //启动日志同步器（如果配置启用同步）
+      //如果系统配置启用了日志同步（通过 DFS_JOURNALNODE_ENABLE_SYNC_KEY 配置项），
+      // 则调用 startSyncer 启动日志同步线程。同步线程负责在多个 JournalNode 之间同步日志
       if (conf.getBoolean(
           DFSConfigKeys.DFS_JOURNALNODE_ENABLE_SYNC_KEY,
           DFSConfigKeys.DFS_JOURNALNODE_ENABLE_SYNC_DEFAULT)) {
@@ -210,7 +226,7 @@ public class JournalNode implements Tool, Configurable, JournalNodeMXBean {
   public Configuration getConf() {
     return conf;
   }
-
+  //开始运行日志节点
   @Override
   public int run(String[] args) throws Exception {
     start();
@@ -220,7 +236,10 @@ public class JournalNode implements Tool, Configurable, JournalNodeMXBean {
   /**
    * Start listening for edits via RPC.
    */
+  // 用于启动 JournalNode 实例。它执行了多个初始化和配置步骤，确保 JournalNode 能够开始通过 RPC 监听编辑请求。
+  // 主要功能包括验证和创建日志目录、初始化指标系统、启动 HTTP 和 RPC 服务器，以及进行安全认证
   public void start() throws IOException {
+    //首先检查 JournalNode 是否已经启动，如果已经启动，则抛出异常，防止重复启动
     Preconditions.checkState(!isStarted(), "JN already running");
 
     try {
@@ -232,20 +251,20 @@ public class JournalNode implements Tool, Configurable, JournalNodeMXBean {
       JvmMetrics.create("JournalNode",
           conf.get(DFSConfigKeys.DFS_METRICS_SESSION_ID_KEY),
           DefaultMetricsSystem.instance());
-
+      //获取 RPC 服务器的地址，getAddress 方法会根据配置信息返回一个 InetSocketAddress，表示服务器的监听地址
       InetSocketAddress socAddr = JournalNodeRpcServer.getAddress(conf);
       SecurityUtil.login(conf, DFSConfigKeys.DFS_JOURNALNODE_KEYTAB_FILE_KEY,
           DFSConfigKeys.DFS_JOURNALNODE_KERBEROS_PRINCIPAL_KEY,
           socAddr.getHostName());
 
       registerJNMXBean();
-
+      //创建并启动 HTTP 服务器，JournalNodeHttpServer 用于处理 HTTP 请求，提供 JournalNode 的管理接口
       httpServer = new JournalNodeHttpServer(conf, this,
           getHttpServerBindAddress(conf));
       httpServer.start();
-
+      //获取并保存 HTTP 服务器的 URI 地址，供外部访问
       httpServerURI = httpServer.getServerURI().toString();
-
+      //创建并启动 RPC 服务器，JournalNodeRpcServer 用于监听客户端请求，提供 JournalNode 的远程过程调用接口
       rpcServer = new JournalNodeRpcServer(conf, this);
       rpcServer.start();
       startTime = now();
@@ -264,6 +283,7 @@ public class JournalNode implements Tool, Configurable, JournalNodeMXBean {
   /**
    * @return the address the IPC server is bound to
    */
+  //当前JournalNode绑定的地址
   public InetSocketAddress getBoundIpcAddress() {
     return rpcServer.getAddress();
   }
@@ -337,6 +357,7 @@ public class JournalNode implements Tool, Configurable, JournalNodeMXBean {
   private File getLogDir(String jid, String nameServiceId) throws IOException{
     String dir = null;
     if (nameServiceId != null) {
+      //dfs.journalnode.edits.dir
       dir = conf.get(DFSConfigKeys.DFS_JOURNALNODE_EDITS_DIR_KEY + "." +
           nameServiceId);
     }

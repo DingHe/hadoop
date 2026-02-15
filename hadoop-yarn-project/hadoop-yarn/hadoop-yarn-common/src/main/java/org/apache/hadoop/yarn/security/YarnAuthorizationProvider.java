@@ -37,6 +37,8 @@ import java.util.List;
  * methods defined in this interface should be non-blocking call and should not
  * involve expensive computation as these method could be invoked in RPC.
  */
+//负责提供与授权相关的信息并执行权限检查。它的主要作用是控制对 YARN 系统中的资源和对象的访问权限。
+// 该类提供了初始化、权限检查和权限设置等方法，使得 YARN 系统能够基于配置和用户身份进行访问控制
 @Private
 @Unstable
 public abstract class YarnAuthorizationProvider {
@@ -45,7 +47,7 @@ public abstract class YarnAuthorizationProvider {
       LoggerFactory.getLogger(YarnAuthorizationProvider.class);
 
   private static YarnAuthorizationProvider authorizer = null;
-
+  //单例模式，通过配置文件读取授权对象，然后通过反射获取该类的实例
   public static YarnAuthorizationProvider getInstance(Configuration conf) {
     synchronized (YarnAuthorizationProvider.class) {
       if (authorizer == null) {

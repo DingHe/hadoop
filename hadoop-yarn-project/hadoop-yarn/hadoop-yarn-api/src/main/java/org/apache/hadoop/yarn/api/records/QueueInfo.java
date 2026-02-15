@@ -48,6 +48,8 @@ import org.apache.hadoop.yarn.util.Records;
  * @see QueueConfigurations
  * @see ApplicationClientProtocol#getQueueInfo(org.apache.hadoop.yarn.api.protocolrecords.GetQueueInfoRequest)
  */
+//用于表示队列运行时信息的一个抽象类。它提供了关于 YARN 资源调度器（如 CapacityScheduler 或 FairScheduler）中某个队列的详细信息
+//
 @Public
 @Stable
 public abstract class QueueInfo {
@@ -63,20 +65,20 @@ public abstract class QueueInfo {
       boolean preemptionDisabled, float weight,
       int maxParallelApps) {
     QueueInfo queueInfo = Records.newRecord(QueueInfo.class);
-    queueInfo.setQueueName(queueName);
-    queueInfo.setQueuePath(queuePath);
-    queueInfo.setCapacity(capacity);
-    queueInfo.setMaximumCapacity(maximumCapacity);
-    queueInfo.setCurrentCapacity(currentCapacity);
-    queueInfo.setChildQueues(childQueues);
-    queueInfo.setApplications(applications);
-    queueInfo.setQueueState(queueState);
-    queueInfo.setAccessibleNodeLabels(accessibleNodeLabels);
-    queueInfo.setDefaultNodeLabelExpression(defaultNodeLabelExpression);
-    queueInfo.setQueueStatistics(queueStatistics);
-    queueInfo.setPreemptionDisabled(preemptionDisabled);
-    queueInfo.setWeight(weight);
-    queueInfo.setMaxParallelApps(maxParallelApps);
+    queueInfo.setQueueName(queueName); //队列名称，唯一标识队列。
+    queueInfo.setQueuePath(queuePath); //队列的层级路径，如 root.default。
+    queueInfo.setCapacity(capacity); //队列的配置容量（占比），表示该队列在整个资源池中可用的资源比例（0.0~1.0）
+    queueInfo.setMaximumCapacity(maximumCapacity);//队列的最大容量（占比），表示队列在特殊情况下最多可以使用的资源比例
+    queueInfo.setCurrentCapacity(currentCapacity);//队列当前的实际使用容量，动态变化，反映了当前占用的资源比例
+    queueInfo.setChildQueues(childQueues);//该队列的子队列列表，支持层级结构
+    queueInfo.setApplications(applications);//当前在该队列中运行的应用列表。
+    queueInfo.setQueueState(queueState);//队列的状态，例如 RUNNING、STOPPED 等
+    queueInfo.setAccessibleNodeLabels(accessibleNodeLabels);//队列可访问的节点标签集合，决定该队列可以运行在哪些节点上
+    queueInfo.setDefaultNodeLabelExpression(defaultNodeLabelExpression);//队列的默认节点标签表达式，表示该队列默认分配到哪些节点
+    queueInfo.setQueueStatistics(queueStatistics);//统计信息对象，包含队列的资源使用情况、等待任务等数据
+    queueInfo.setPreemptionDisabled(preemptionDisabled);//是否禁用抢占，true 表示该队列中的任务不会被其他任务抢占资源
+    queueInfo.setWeight(weight);//队列的权重，影响调度策略
+    queueInfo.setMaxParallelApps(maxParallelApps);//队列允许并行运行的最大应用数量，限制并发度
     return queueInfo;
   }
 

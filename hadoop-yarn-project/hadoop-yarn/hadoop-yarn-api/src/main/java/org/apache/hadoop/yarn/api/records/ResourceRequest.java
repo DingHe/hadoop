@@ -56,6 +56,8 @@ import org.apache.hadoop.yarn.util.Records;
  * @see Resource
  * @see ApplicationMasterProtocol#allocate(org.apache.hadoop.yarn.api.protocolrecords.AllocateRequest)
  */
+//示应用程序向 ResourceManager 发出的请求，旨在获取特定的容器资源。这些资源请求可以指定容器所需的资源数量、资源类型、优先级、主机/机架要求等。
+// ResourceRequest 类用于在 YARN 集群中管理容器资源分配，它向 ResourceManager 提供了应用程序所需的资源信息
 @Public
 @Stable
 public abstract class ResourceRequest implements Comparable<ResourceRequest> {
@@ -94,11 +96,13 @@ public abstract class ResourceRequest implements Comparable<ResourceRequest> {
   public static ResourceRequest newInstance(Priority priority, String hostName,
       Resource capability, int numContainers, boolean relaxLocality, String
       labelExpression, ExecutionTypeRequest executionTypeRequest) {
-    return ResourceRequest.newBuilder().priority(priority)
-        .resourceName(hostName).capability(capability)
-        .numContainers(numContainers).relaxLocality(relaxLocality)
-        .nodeLabelExpression(labelExpression)
-        .executionTypeRequest(executionTypeRequest)
+    return ResourceRequest.newBuilder().priority(priority)//表示请求的优先级等级，用于调度时决定资源分配的优先顺序
+        .resourceName(hostName)//请求的主机或机架的名称。可以是具体的主机或机架名，也可以是特殊字符 *，表示可以接受任何主机或机架的资源
+        .capability(capability) //请求的资源能力（Resource）。它指定了请求的容器所需的资源，例如内存、CPU 等
+        .numContainers(numContainers) //请求的容器数量。表示应用程序需要多少个符合要求的容器
+        .relaxLocality(relaxLocality)//是否放宽本地性约束（布尔值）。如果为 true，表示可以接受资源在不同的机架或任何可用节点上分配（即资源本地性要求较低）
+        .nodeLabelExpression(labelExpression) //节点标签表达式。通过该表达式，可以指定容器需要分配到具有特定标签的节点上
+        .executionTypeRequest(executionTypeRequest) //用于指定执行类型请求的详细信息（例如是否为特定的执行类型，如高优先级或低优先级的执行请求等）
         .build();
   }
 

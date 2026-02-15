@@ -41,18 +41,25 @@ import org.apache.hadoop.yarn.util.resource.ResourceUtils;
  * A schedulable's dominant resource usage is the largest ratio of resource
  * usage to capacity among the resource types it is using.
  */
+// 核心思想是通过平衡主导资源（Dominant Resource）来实现公平调度。
+// 主导资源指的是任务使用的所有资源中，资源使用与容量的比例最大的资源类型。
+// 它通过尽可能平衡各个任务在不同资源上的使用，来保证调度的公平性
+// 主导资源：每个任务的主导资源是指任务使用的资源中，资源使用与容量的比例最大的那个资源类型
 @Private
 @Unstable
 public class DominantResourceFairnessPolicy extends SchedulingPolicy {
 
   public static final String NAME = "DRF";
-
+  //获取系统中可计算的资源类型数量
   private static final int NUM_RESOURCES =
       ResourceUtils.getNumberOfCountableResourceTypes();
+  //比较多个资源类型的情况
   private static final DominantResourceFairnessComparator COMPARATORN =
       new DominantResourceFairnessComparatorN();
+  //用于优化当只有 CPU 和内存两种资源时的比较性能
   private static final DominantResourceFairnessComparator COMPARATOR2 =
       new DominantResourceFairnessComparator2();
+  //责计算任务在不同资源上的使用比例，用于确定主导资源
   private static final DominantResourceCalculator CALCULATOR =
       new DominantResourceCalculator();
 
@@ -129,8 +136,12 @@ public class DominantResourceFairnessPolicy extends SchedulingPolicy {
    * ratios are compared. Subclasses of this class will do the actual work of
    * the comparison, specialized for the number of configured resource types.
    */
+  //抽象类，用于根据 主导资源公平性 (Dominant Resource Fairness, DRF) 策略 对 Schedulable 实例进行排序
+  //根据任务的 主导资源使用比例 进行排序，以确保公平资源分配
+  //在任务主导资源比例相同的情况下，使用 提交时间 和 任务名称 作为 决胜规则，确保任务调度的 确定性（deterministic ordering）
   public abstract static class DominantResourceFairnessComparator
       implements Comparator<Schedulable> {
+    //存储 调度上下文，用于访问队列、资源等调度信息
     protected FSContext fsContext;
 
     public void setFSContext(FSContext fsContext) {
@@ -147,6 +158,7 @@ public class DominantResourceFairnessPolicy extends SchedulingPolicy {
      * @return &lt; 0, 0, or &gt; 0 if the first item is less than, equal to,
      * or greater than the second item, respectively
      */
+    //当两个 Schedulable 任务 主导资源使用比例相同 时，使用 提交时间 和 任务名称 作为决胜规则，以确保调度的 确定性
     protected int compareAttributes(Schedulable s1, Schedulable s2) {
       int res = (int) Math.signum(s1.getStartTime() - s2.getStartTime());
 
@@ -364,22 +376,32 @@ public class DominantResourceFairnessPolicy extends SchedulingPolicy {
    * If neither instance is below min share, approximate fair share
    * ratios are compared.
    */
+  //专门用于 只考虑 CPU 和内存 的情况
+    //其作用是：
+  //按 主导资源公平性 (Dominant Resource Fairness, DRF) 策略 对 Schedulable 任务进行排序。
+  //计算每个任务的 主导资源使用比例，如果比例相同，则使用 次要资源比例 进行排序。
+  //处理 任务是否低于最小份额 (min share) 的特殊情况。
+  //在资源使用比例和 min share 都相同时，使用 提交时间 和 任务名称 进行排序，确保调度的 确定性。
   @VisibleForTesting
   static class DominantResourceFairnessComparator2
       extends DominantResourceFairnessComparator {
     @Override
     public int compare(Schedulable s1, Schedulable s2) {
+      //获取 当前任务 使用的资源（CPU、内存）
       ResourceInformation[] resourceInfo1 =
           s1.getResourceUsage().getResources();
       ResourceInformation[] resourceInfo2 =
           s2.getResourceUsage().getResources();
+      //获取 任务的最小资源份额 (min share)
       ResourceInformation[] minShareInfo1 = s1.getMinShare().getResources();
       ResourceInformation[] minShareInfo2 = s2.getMinShare().getResources();
+      //获取 整个集群的资源情况
       ResourceInformation[] clusterInfo =
           fsContext.getClusterResource().getResources();
+      //shares1 / shares2：存储任务 s1 和 s2 的 资源公平性比例（内存、CPU）
       double[] shares1 = new double[2];
       double[] shares2 = new double[2];
-
+      //返回 主导资源的索引（0=内存，1=CPU）
       int dominant1 = calculateClusterAndFairRatios(resourceInfo1,
           s1.getWeight(), clusterInfo, shares1);
       int dominant2 = calculateClusterAndFairRatios(resourceInfo2,
@@ -388,6 +410,7 @@ public class DominantResourceFairnessPolicy extends SchedulingPolicy {
       // A queue is needy for its min share if its dominant resource
       // (with respect to the cluster capacity) is below its configured min
       // share for that resource
+      //s1Needy / s2Needy：判断任务 s1 / s2 是否 低于最小份额
       boolean s1Needy = resourceInfo1[dominant1].getValue() <
           minShareInfo1[dominant1].getValue();
       boolean s2Needy = resourceInfo2[dominant2].getValue() <
@@ -396,32 +419,39 @@ public class DominantResourceFairnessPolicy extends SchedulingPolicy {
       int res;
 
       if (!s2Needy && !s1Needy) {
+        //如果两个任务都不低于 min share
+        //按主导资源比例排序
         res = (int) Math.signum(shares1[dominant1] - shares2[dominant2]);
 
         if (res == 0) {
+          //如果主导资源相同，按次要资源比例排序
           // Because memory and CPU are indices 0 and 1, we can find the
           // non-dominant index by subtracting the dominant index from 1.
           res = (int) Math.signum(shares1[1 - dominant1] -
               shares2[1 - dominant2]);
         }
       } else if (s1Needy && !s2Needy) {
+        //如果 s1 低于 min share，而 s2 不低于，s1 优先 (res = -1)
         res = -1;
       } else if (s2Needy && !s1Needy) {
+        //如果 s2 低于 min share，而 s1 不低于，s2 优先 (res = 1)
         res = 1;
       } else {
+        //如果两个任务都低于 min share
         double[] minShares1 =
             calculateMinShareRatios(resourceInfo1, minShareInfo1);
         double[] minShares2 =
             calculateMinShareRatios(resourceInfo2, minShareInfo2);
-
+        //按 min share 比例排序（使用 calculateMinShareRatios()）
         res = (int) Math.signum(minShares1[dominant1] - minShares2[dominant2]);
 
         if (res == 0) {
+          //如果 min share 比例相同，按次要资源 min share 比例排序
           res = (int) Math.signum(minShares1[1 - dominant1] -
               minShares2[1 - dominant2]);
         }
       }
-
+      //如果前面的排序都 无法区分任务优先级，使用 提交时间和任务名称 作为 决胜规则
       if (res == 0) {
         res = compareAttributes(s1, s2);
       }
@@ -457,21 +487,24 @@ public class DominantResourceFairnessPolicy extends SchedulingPolicy {
      * @param shares the share ratios array to populate
      * @return the index of the resource type with the largest cluster share
      */
+    //用于 计算任务资源使用比例，并确定主导资源类型
     @VisibleForTesting
     int calculateClusterAndFairRatios(ResourceInformation[] resourceInfo,
         float weight, ResourceInformation[] clusterInfo, double[] shares) {
       int dominant;
-
+      //计算任务 占用的内存 / 集群总内存
       shares[Resource.MEMORY_INDEX] =
           ((double) resourceInfo[Resource.MEMORY_INDEX].getValue()) /
           clusterInfo[Resource.MEMORY_INDEX].getValue();
+      //计算任务 占用的 CPU / 集群总 CPU
       shares[Resource.VCORES_INDEX] =
           ((double) resourceInfo[Resource.VCORES_INDEX].getValue()) /
           clusterInfo[Resource.VCORES_INDEX].getValue();
+      //选择占比最高的资源 作为主导资源
       dominant =
           shares[Resource.VCORES_INDEX] > shares[Resource.MEMORY_INDEX] ?
           Resource.VCORES_INDEX : Resource.MEMORY_INDEX;
-
+      //计算 基于权重的公平份额，以确保公平资源分配
       shares[Resource.MEMORY_INDEX] /= weight;
       shares[Resource.VCORES_INDEX] /= weight;
 

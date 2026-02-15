@@ -34,14 +34,20 @@ import org.slf4j.LoggerFactory;
  * reservations, but functionality wise is a sub-class of ParentQueue
  *
  */
+//主要作用是管理动态创建的预留队列，为集群中的资源分配提供预留支持，使得 YARN 资源管理器可以根据特定需求（如计划任务）动态调整资源分配
+
 public class PlanQueue extends AbstractManagedParentQueue {
 
   private static final Logger LOG = LoggerFactory.getLogger(PlanQueue.class);
-
+  //该计划队列内允许的最大应用数量
   private int maxAppsForReservation;
+  //每个用户在该计划队列内可提交的最大应用数量
   private int maxAppsPerUserForReservation;
+  //用户占用资源的限制（百分比）
   private float userLimit;
+  //用户资源占用的弹性因子，决定单个用户可超出 userLimit 多少倍
   private float userLimitFactor;
+  //是否显示预留队列
   private boolean showReservationsAsQueues;
 
   public PlanQueue(CapacitySchedulerQueueContext queueContext, String queueName,

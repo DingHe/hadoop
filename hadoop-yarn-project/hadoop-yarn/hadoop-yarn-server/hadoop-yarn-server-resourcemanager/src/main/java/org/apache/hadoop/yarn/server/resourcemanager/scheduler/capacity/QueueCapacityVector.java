@@ -31,16 +31,21 @@ import java.util.Set;
  * Contains capacity values with calculation types associated for each
  * resource.
  */
+//存储和管理 YARN 调度器中的队列容量信息。它维护了多个资源（如 CPU、内存等）的容量值，并支持不同的容量计算类型（例如绝对值或相对值）。
+// 该类提供了一系列方法来操作和查询资源容量，包括设置、获取、迭代和判断是否为混合容量类型等
 public class QueueCapacityVector implements
     Iterable<QueueCapacityVector.QueueCapacityVectorEntry> {
   private static final String START_PARENTHESES = "[";
   private static final String END_PARENTHESES = "]";
   private static final String RESOURCE_DELIMITER = ",";
   private static final String VALUE_DELIMITER = "=";
-
+  //存储队列容量的主要数据结构，内部维护了各个资源（如memory-mb、vcores等）的值
   private final ResourceVector resource;
+  //存储每个资源的容量类型（如绝对值或相对值），键是资源名（String），值是资源的容量类型（ResourceUnitCapacityType）
   private final Map<String, ResourceUnitCapacityType> capacityTypes
       = new HashMap<>();
+  // 反向映射，记录每种容量类型对应的资源集合。
+  // 例如，如果有多个资源使用绝对值类型（ABSOLUTE），它们会被存储在 capacityTypePerResource.get(ABSOLUTE) 这个 Set<String> 里
   private final Map<ResourceUnitCapacityType, Set<String>> capacityTypePerResource
       = new HashMap<>();
 
@@ -257,11 +262,11 @@ public class QueueCapacityVector implements
       return postfix;
     }
   }
-
+  //队列容量向量实体
   public static class QueueCapacityVectorEntry {
     private final ResourceUnitCapacityType vectorResourceType;
-    private final double resourceValue;
-    private final String resourceName;
+    private final double resourceValue;  //资源值
+    private final String resourceName;   //资源名称
 
     public QueueCapacityVectorEntry(ResourceUnitCapacityType vectorResourceType,
                                     String resourceName, double resourceValue) {

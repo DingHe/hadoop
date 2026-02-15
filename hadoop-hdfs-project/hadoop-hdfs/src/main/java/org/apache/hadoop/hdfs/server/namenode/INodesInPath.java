@@ -32,7 +32,9 @@ import org.apache.hadoop.util.Preconditions;
 import static org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot.CURRENT_STATE_ID;
 import static org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot.ID_INTEGER_COMPARATOR;
 
-/**
+/**表示从给定路径解析出的INode信息。它用于存储文件系统路径中每个目录的INode以及相关的路径信息。
+ * 在HDFS中，每个文件或目录都有一个对应的INode，
+ * 路径解析的过程就是通过从根目录开始，递归查找路径组件来获取每个路径部分对应的INode信息
  * Contains INodes information resolved from a given path.
  */
 public class INodesInPath {
@@ -271,26 +273,27 @@ public class INodesInPath {
     return new INodesInPath(inodes, path, iip.isRaw,
         iip.isSnapshot, iip.snapshotId);
   }
-
+  //路径组件数组，表示该INodesInPath对象代表的路径的每一部分。每一部分是一个字节数组，包含路径组件的名称
   private final byte[][] path;
+  //完整的路径字符串，当需要转换成字符串时
   private volatile String pathname;
 
-  /**
+  /**对应路径每个组件的INode数组
    * Array with the specified number of INodes resolved for a given path.
    */
   private final INode[] inodes;
-  /**
+  /**如果路径是指向快照路径，该属性为true，否则为false
    * true if this path corresponds to a snapshot
    */
   private final boolean isSnapshot;
 
-  /**
+  /**如果路径属于/.reserved/raw路径，该属性为true，否则为false
    * true if this is a /.reserved/raw path.  path component resolution strips
    * it from the path so need to track it separately.
    */
   private final boolean isRaw;
 
-  /**
+  /**快照ID。如果是快照路径，它代表快照的ID；如果不是快照路径，则为CURRENT_STATE_ID，表示最新状态
    * For snapshot paths, it is the id of the snapshot; or 
    * {@link Snapshot#CURRENT_STATE_ID} if the snapshot does not exist. For 
    * non-snapshot paths, it is the id of the latest snapshot found in the path;
@@ -385,6 +388,8 @@ public class INodesInPath {
    * @return the INodesInPath instance containing ancestral INodes. Note that
    * this method only handles non-snapshot paths.
    */
+  //用于返回当前路径（INodesInPath）的祖先 INodesInPath 实例
+  //length: 表示返回的 INodesInPath 中祖先 INode 的数量。这个数量必须大于或等于 0，并且小于当前 INodesInPath 中的 INode 数量
   private INodesInPath getAncestorINodesInPath(int length) {
     Preconditions.checkArgument(length >= 0 && length < inodes.length);
     Preconditions.checkState(isDotSnapshotDir() || !isSnapshot());
@@ -415,7 +420,7 @@ public class INodesInPath {
     final INodesInPath dirIIP = fromINode(inodeDirectory);
     return isDescendant(dirIIP);
   }
-
+  //检查当前 INodesInPath 是否是给定祖先 INodesInPath 的后代路径
   private boolean isDescendant(final INodesInPath ancestorDirIIP) {
     int ancestorDirINodesLength = ancestorDirIIP.length();
     int myParentINodesLength = length() - 1;

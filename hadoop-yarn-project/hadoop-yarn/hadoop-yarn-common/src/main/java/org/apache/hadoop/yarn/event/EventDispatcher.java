@@ -41,14 +41,23 @@ import java.util.concurrent.LinkedBlockingDeque;
  * appropriately
  * @param <T> Type of Event
  */
+//事件分发器，用于高效地处理大量事件。它的主要作用是：
+//异步事件处理：调用线程不会被阻塞，事件会被放入一个阻塞队列 (BlockingQueue) 中，由专门的线程 (EventProcessor) 异步消费和处理。
+//提高吞吐量：适用于需要高吞吐量的场景，如资源管理器（ResourceManager）中的事件调度。
+//错误处理：在处理事件时，如果发生严重错误，可以选择退出进程 (System.exit(-1)) 或者仅记录日志以保持系统运行。
+//性能监控：支持事件处理时间统计
 public class EventDispatcher<T extends Event> extends
     AbstractService implements EventHandler<T> {
-
+  //实际的事件处理器，所有事件都会被转发给它处理
   private final EventHandler<T> handler;
+  //事件队列，存储待处理的事件
   private final BlockingQueue<T> eventQueue =
       new LinkedBlockingDeque<>();
+  //事件处理线程，负责不断从 eventQueue 中取出事件并调用 handler.handle(event) 处理
   private final Thread eventProcessor;
+  //标识是否已停止，如果为 true，EventProcessor 线程会终止运行
   private volatile boolean stopped = false;
+  //发生错误时是否退出进程，默认为 true，如果出现严重错误且 YARN 不是处于关闭状态，则进程会退出
   private boolean shouldExitOnError = true;
   private EventTypeMetrics metrics;
 

@@ -49,19 +49,19 @@ import org.apache.hadoop.util.StringUtils;
  * Encapsulates the URI and storage medium that together describe a
  * storage directory.
  * The default storage medium is assumed to be DISK, if none is specified.
- *
+ * 管理 HDFS 数据节点的存储目录信息
  */
 @InterfaceAudience.Private
 public class StorageLocation
     implements Checkable<StorageLocation.CheckContext, VolumeCheckResult>,
                Comparable<StorageLocation> {
-  private final StorageType storageType;
-  private final URI baseURI;
+  private final StorageType storageType;//表示存储类型，例如 DISK、SSD、ARCHIVE 等，默认值为 DISK
+  private final URI baseURI;//表示存储位置的 URI，用于唯一标识该存储目录
   /** Regular expression that describes a storage uri with a storage type.
    *  e.g. [Disk]/storages/storage1/
    */
   private static final Pattern STORAGE_LOCATION_REGEX =
-      Pattern.compile("^\\[(\\w*)\\](.+)$");
+      Pattern.compile("^\\[(\\w*)\\](.+)$");//匹配带有存储类型的存储路径字符串
 
   /** Regular expression for the capacity ratio of a storage volume (uri).
    *  This is useful when configuring multiple
@@ -69,7 +69,7 @@ public class StorageLocation
    *  e.g. [0.3]/disk1/archive/
    */
   private static final Pattern CAPACITY_RATIO_REGEX =
-      Pattern.compile("^\\[([0-9.]*)\\](.+)$");
+      Pattern.compile("^\\[([0-9.]*)\\](.+)$"); //用于匹配带有存储容量比率的存储路径字符串
 
   private StorageLocation(StorageType storageType, URI uri) {
     this.storageType = storageType;
@@ -235,9 +235,14 @@ public class StorageLocation
     }
 
   }
-
+  //bpid（Block Pool ID）：块池的唯一标识符，HDFS 中每个命名空间的存储会对应一个块池 (Block Pool)
+  //currentStorageDir：存储目录名称，通常为 current，指向 HDFS 数据节点中当前使用的存储路径
+  //返回值，根据 bpid 和 currentStorageDir 拼接得到的块池目录的 URI
   public URI getBpURI(String bpid, String currentStorageDir) {
     try {
+      //第一层嵌套：new File(localFile, currentStorageDir)  在基础路径下追加 currentStorageDir 子目录
+      //第二层嵌套：new File(..., bpid)  在 currentStorageDir 下再追加块池 ID（bpid）
+
       File localFile = new File(getUri());
       return new File(new File(localFile, currentStorageDir), bpid).toURI();
     } catch (IllegalArgumentException e) {
@@ -254,12 +259,15 @@ public class StorageLocation
    *          Configuration instance to use.
    * @throws IOException on errors
    */
+  //在数据节点 (DataNode) 上为指定的 块池 (Block Pool) 创建物理存储目录。如果目录不存在或不可用，进行必要的检查和创建
+  //blockPoolID：块池的唯一标识符，HDFS 中每个命名空间对应一个块池 (Block Pool)
   public void makeBlockPoolDir(String blockPoolID,
       Configuration conf) throws IOException {
 
     if (conf == null) {
       conf = new HdfsConfiguration();
     }
+    //如果存储类型是 PROVIDED，表示该存储位置由外部提供（如远程挂载），不需要在本地创建目录，直接记录日志并返回
     if (storageType == StorageType.PROVIDED) {
       // skip creation if the storage type is PROVIDED
       Storage.LOG.info("Skipping creating directory for block pool "

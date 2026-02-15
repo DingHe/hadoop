@@ -66,6 +66,7 @@ public class DirectorySnapshottableFeature extends DirectoryWithSnapshotFeature 
    * Note that snapshots in ascending order of snapshot id are stored in
    * {@link DirectoryWithSnapshotFeature}.diffs (a private field).
    */
+  //保存当前目录所有快照的集合
   private final List<Snapshot> snapshotsByNames = new ArrayList<Snapshot>();
   /** Number of snapshots allowed. */
   private int snapshotQuota = SNAPSHOT_QUOTA_DEFAULT;

@@ -82,6 +82,7 @@ public class DatanodeStorage {
    *
    * @return unique storage ID
    */
+  //生成新的存储ID
   public static String generateUuid() {
     return STORAGE_ID_PREFIX + UUID.randomUUID();
   }

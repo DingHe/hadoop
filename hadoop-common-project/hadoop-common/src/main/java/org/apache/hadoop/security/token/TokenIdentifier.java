@@ -33,16 +33,19 @@ import org.apache.hadoop.security.UserGroupInformation;
  * An identifier that identifies a token, may contain public information 
  * about a token, including its kind (or type).
  */
+//标识一个令牌（Token）。它提供了获取令牌的基本信息、用户身份、以及其他关于令牌的功能。
+// 通常，这类令牌会在安全的上下文中使用，比如 Kerberos 认证等，来标识一个特定的用户、服务或者会话
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public abstract class TokenIdentifier implements Writable {
-
+  //令牌的跟踪标识符，用于在多个客户端会话之间关联令牌的使用情况
   private String trackingId = null;
 
   /**
    * Get the token kind
    * @return the kind of the token
    */
+  //用于返回令牌的类型，每个实现这个类的子类都会提供具体的令牌类型信息（例如，Hadoop中的访问令牌类型）
   public abstract Text getKind();
 
   /**
@@ -51,6 +54,7 @@ public abstract class TokenIdentifier implements Writable {
    * @return the username. null is returned if username in the identifier is
    *         empty or null.
    */
+  //代表了与令牌关联的用户信息
   public abstract UserGroupInformation getUser();
 
   /**

@@ -58,25 +58,26 @@ import org.apache.hadoop.thirdparty.com.google.common.collect.ComparisonChain;
  * Note: this class is not thread-safe and should be externally
  * synchronized.
  */
+//普通文件的JournalManager实现类
 @InterfaceAudience.Private
 public class FileJournalManager implements JournalManager {
   private static final Logger LOG =
       LoggerFactory.getLogger(FileJournalManager.class);
 
-  private final Configuration conf;
-  private final StorageDirectory sd;
-  private final StorageErrorReporter errorReporter;
-  private int outputBufferCapacity = 512*1024;
+  private final Configuration conf;//保存了与HDFS相关的配置
+  private final StorageDirectory sd;//表示存储目录，负责存储编辑日志文件（edit logs），例如edits和edits_inprogress文件
+  private final StorageErrorReporter errorReporter; //用于在出现与存储相关的错误时报告错误
+  private int outputBufferCapacity = 512*1024;//缓冲区大小，定义了编辑日志输出流的缓冲区容量，单位是字节，默认值为512KB
 
   private static final Pattern EDITS_REGEX = Pattern.compile(
-    NameNodeFile.EDITS.getName() + "_(\\d+)-(\\d+)");
+    NameNodeFile.EDITS.getName() + "_(\\d+)-(\\d+)");//匹配符合edits_xxxx-yyyy格式的编辑日志文件名
   private static final Pattern EDITS_INPROGRESS_REGEX = Pattern.compile(
-    NameNodeFile.EDITS_INPROGRESS.getName() + "_(\\d+)");
+    NameNodeFile.EDITS_INPROGRESS.getName() + "_(\\d+)");//匹配符合edits_inprogress_xxxx格式的文件名
   private static final Pattern EDITS_INPROGRESS_STALE_REGEX = Pattern.compile(
-      NameNodeFile.EDITS_INPROGRESS.getName() + "_(\\d+).*(\\S+)");
+      NameNodeFile.EDITS_INPROGRESS.getName() + "_(\\d+).*(\\S+)");//匹配符合edits_inprogress_xxxx_...格式的过时编辑日志文件
 
   @VisibleForTesting
-  File currentInProgress = null;
+  File currentInProgress = null;//当前正在进行中的日志文件。保存一个File对象，表示当前正在写入的edits_inprogress文件
 
   /**
    * A FileJournalManager should maintain the largest Tx ID that has been
@@ -85,12 +86,13 @@ public class FileJournalManager implements JournalManager {
    * with ongoing writers.
    * Initial value indicates that all transactions can be read.
    */
-  private long lastReadableTxId = Long.MAX_VALUE;
+  private long lastReadableTxId = Long.MAX_VALUE; //保存已安全写入的最大事务ID。其初始值是Long.MAX_VALUE，表示可以读取所有事务
 
   @VisibleForTesting
   StoragePurger purger
-    = new NNStorageRetentionManager.DeletionStoragePurger();
+    = new NNStorageRetentionManager.DeletionStoragePurger();//负责清理过时的日志文件。通常是通过删除过期的编辑日志文件来释放空间
 
+  //构造方法
   public FileJournalManager(Configuration conf, StorageDirectory sd,
       StorageErrorReporter errorReporter) {
     this.conf = conf;
@@ -116,11 +118,12 @@ public class FileJournalManager implements JournalManager {
     // checkpoints, etc.
     throw new UnsupportedOperationException();
   }
-
+  //开始一个新的日志段，从给定的事务ID (txid) 开始。它会创建一个输出流，写入日志段。layoutVersion用于指定存储格式的版本
   @Override
   synchronized public EditLogOutputStream startLogSegment(long txid,
       int layoutVersion) throws IOException {
     try {
+      //获取一个edits_inprogress文件
       currentInProgress = NNStorage.getInProgressEditsFile(sd, txid);
       EditLogOutputStream stm = new EditLogFileOutputStream(conf,
           currentInProgress, outputBufferCapacity);
@@ -134,12 +137,13 @@ public class FileJournalManager implements JournalManager {
       throw e;
     }
   }
-
+  //用于完成一个日志段，从firstTxId到lastTxId的日志段。将inprogress文件重命名为已完成的日志文件
   @Override
   synchronized public void finalizeLogSegment(long firstTxId, long lastTxId)
       throws IOException {
+    //获取inprogress文件
     File inprogressFile = NNStorage.getInProgressEditsFile(sd, firstTxId);
-
+    //创建目标已完成日志文件
     File dstFile = NNStorage.getFinalizedEditsFile(
         sd, firstTxId, lastTxId);
     LOG.info("Finalizing edits file " + inprogressFile + " -> " + dstFile);
@@ -149,6 +153,7 @@ public class FileJournalManager implements JournalManager {
         "already exists");
 
     try {
+      //使用NativeIO.renameTo将inprogress文件重命名为已完成的文件
       NativeIO.renameTo(inprogressFile, dstFile);
     } catch (IOException e) {
       errorReporter.reportErrorOnFile(dstFile);
@@ -195,14 +200,17 @@ public class FileJournalManager implements JournalManager {
    * @param minTxIdToKeep the lowest transaction ID that should be retained
    * @throws IOException if listing the storage directory fails.
    */
+  //清理比minTxIdToKeep更老的日志文件。删除不再需要的edits文件和edits_inprogress文件
   @Override
   public void purgeLogsOlderThan(long minTxIdToKeep)
       throws IOException {
     LOG.info("Purging logs older than " + minTxIdToKeep);
+    //列出存储目录中的所有文件
     File[] files = FileUtil.listFiles(sd.getCurrentDir());
+    //匹配编辑日志文件
     List<EditLogFile> editLogs = matchEditLogs(files, true);
     synchronized (this) {
-      for (EditLogFile log : editLogs) {
+      for (EditLogFile log : editLogs) {//根据文件的事务ID，决定是删除文件还是标记为过时
         if (log.getFirstTxId() < minTxIdToKeep &&
             log.getLastTxId() < minTxIdToKeep) {
           purger.purgeLog(log);
@@ -309,13 +317,14 @@ public class FileJournalManager implements JournalManager {
   static List<EditLogFile> matchEditLogs(File[] filesInStorage) {
     return matchEditLogs(filesInStorage, false);
   }
-
+  //匹配符合edits_xxxx-yyyy格式的编辑日志文件名
   private static List<EditLogFile> matchEditLogs(File[] filesInStorage,
       boolean forPurging) {
     List<EditLogFile> ret = Lists.newArrayList();
     for (File f : filesInStorage) {
       String name = f.getName();
       // Check for edits
+      //匹配符合edits_xxxx-yyyy格式的编辑日志文件名
       Matcher editsMatch = EDITS_REGEX.matcher(name);
       if (editsMatch.matches()) {
         try {
@@ -464,7 +473,7 @@ public class FileJournalManager implements JournalManager {
       }
     }
   }
-
+  //匹配符合edits_xxxx-yyyy格式的编辑日志文件名
   public List<EditLogFile> getLogFiles(long fromTxId) throws IOException {
     File currentDir = sd.getCurrentDir();
     List<EditLogFile> allLogFiles = matchEditLogs(currentDir);
@@ -525,16 +534,21 @@ public class FileJournalManager implements JournalManager {
     return String.format("FileJournalManager(root=%s)", sd.getRoot());
   }
 
-  /**
+  /** 表示 HDFS 中的编辑日志文件（Edit Log）。HDFS 使用编辑日志来记录对文件系统的修改操作（如创建文件、删除文件等）。
+   * 这个类封装了单个编辑日志文件的元数据信息，包括文件路径、事务 ID 范围、是否处于写入状态（in-progress）等
    * Record of an edit log that has been located and had its filename parsed.
    */
   @InterfaceAudience.Private
   public static class EditLogFile {
+    //记录编辑日志的文件对象，指向具体的 Edit Log 文件路径
     private File file;
+    //该日志文件包含的第一个事务 ID（Transaction ID），用于标识事务的起始编号
     private final long firstTxId;
+    //该日志文件包含的最后一个事务 ID，标识事务的结束编号。
     private long lastTxId;
-
+    //标志此日志文件的头部是否损坏，默认为 false。
     private boolean hasCorruptHeader = false;
+    //标志此日志文件是否是一个正在写入的日志（in-progress 文件）
     private final boolean isInProgress;
 
     final static Comparator<EditLogFile> COMPARE_BY_START_TXID 
@@ -593,6 +607,7 @@ public class FileJournalManager implements JournalManager {
      *                      updated.
      * @param verifyVersion Whether the scan should verify the layout version
      */
+    //maxTxIdToScan：扫描的最大事务 ID，超过该 ID 便停止扫描
     public void scanLog(long maxTxIdToScan, boolean verifyVersion)
         throws IOException {
       EditLogValidation val = EditLogFileInputStream.scanEditLog(file,

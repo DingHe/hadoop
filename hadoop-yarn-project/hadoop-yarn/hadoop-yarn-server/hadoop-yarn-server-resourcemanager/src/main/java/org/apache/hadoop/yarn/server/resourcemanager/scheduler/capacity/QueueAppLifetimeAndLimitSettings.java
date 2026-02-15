@@ -23,15 +23,20 @@ import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
  * {@link CapacitySchedulerConfiguration} and other queue
  * properties.
  **/
+//管理 YARN 容量调度器（CapacityScheduler）中队列的应用程序生命周期 (Application Lifetime) 和最大并行应用数 (Max Parallel Apps)。
+// 它基于 CapacitySchedulerConfiguration 配置以及队列的继承关系来确定
 public class QueueAppLifetimeAndLimitSettings {
   // -1 indicates lifetime is disabled
+  //	该队列的最大应用生命周期，单位通常是秒，-1 表示未启用生命周期限制
   private final long maxApplicationLifetime;
+  //该队列的默认应用生命周期。如果用户提交应用时未指定生命周期，则使用该值
   private final long defaultApplicationLifetime;
 
   // Indicates if this queue's default lifetime was set by a config property,
   // either at this level or anywhere in the queue's hierarchy.
+  //标识默认应用生命周期是否由配置文件指定，或者是从父队列继承
   private boolean defaultAppLifetimeWasSpecifiedInConfig = false;
-
+  //队列中同时可运行的最大应用数量。
   private int maxParallelApps;
 
   public QueueAppLifetimeAndLimitSettings(CapacitySchedulerConfiguration configuration,

@@ -18,7 +18,7 @@
 package org.apache.hadoop.yarn.server.resourcemanager.recovery;
 
 import org.apache.hadoop.yarn.server.resourcemanager.recovery.RMStateStore.RMState;
-
+//表示 可恢复（Recoverable）的组件需要实现的 恢复机制。它的核心作用是 在 RM 恢复状态时，加载并恢复系统的存储状态
 public interface Recoverable {
   public void recover(RMState state) throws Exception;
 }

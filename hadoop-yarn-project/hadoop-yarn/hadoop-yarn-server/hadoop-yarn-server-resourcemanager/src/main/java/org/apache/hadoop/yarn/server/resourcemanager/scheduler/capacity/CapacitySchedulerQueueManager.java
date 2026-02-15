@@ -60,6 +60,9 @@ import static org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.C
  * Context of the Queues in Capacity Scheduler.
  *
  */
+// 负责管理和操作调度队列。
+// 这个类提供了多个方法来初始化、添加、删除、查询队列，以及管理队列的配额、权限等。
+// 它还处理队列的重新初始化、动态队列的创建等功能，是容量调度器队列管理的核心组件。
 @Private
 @Unstable
 public class CapacitySchedulerQueueManager implements SchedulerQueueManager<
@@ -75,16 +78,24 @@ public class CapacitySchedulerQueueManager implements SchedulerQueueManager<
   }
 
   private static final QueueHook NOOP = new QueueHook();
+  //存储与 CapacityScheduler 相关的上下文信息，例如集群资源和当前资源管理器的状态
   private CapacitySchedulerContext csContext;
+  //提供 YARN 安全授权功能，用于检查用户是否有权限操作队列
   private final YarnAuthorizationProvider authorizer;
+  //存储队列的容器，提供队列管理和操作功能
   private final CSQueueStore queues = new CSQueueStore();
+  //表示队列树的根队列，是所有队列的父级
   private CSQueue root;
+  //管理节点标签，用于节点的标识和资源分配
   private final RMNodeLabelsManager labelManager;
+  //管理应用优先级的访问控制列表（ACL）
   private AppPriorityACLsManager appPriorityACLManager;
+  //负责处理和更新队列的容量相关配置
   private CapacitySchedulerQueueCapacityHandler queueCapacityHandler;
-
+  //管理队列的状态，确保队列状态的一致性
   private QueueStateManager<CSQueue, CapacitySchedulerConfiguration>
       queueStateManager;
+  //存储已配置的节点标签信息
   private ConfiguredNodeLabels configuredNodeLabels;
 
   /**

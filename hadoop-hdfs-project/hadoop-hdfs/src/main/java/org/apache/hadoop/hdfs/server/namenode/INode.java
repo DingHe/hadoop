@@ -51,7 +51,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
+/**用于表示文件和目录的抽象基类。HDFS 文件系统的目录结构在内存中以 INode 树的形式维护，
+ * INode 类及其子类（如 INodeFile 和 INodeDirectory）提供了对文件和目录的元数据管理
  * We keep an in-memory representation of the file/block hierarchy.
  * This is a base INode class containing common fields for file and 
  * directory inodes.
@@ -61,23 +62,23 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
   public static final Logger LOG = LoggerFactory.getLogger(INode.class);
 
   /** parent is either an {@link INodeDirectory} or an {@link INodeReference}.*/
-  private INode parent = null;
+  private INode parent = null;//表示当前 INode 节点的父节点，类型为 INode
 
   INode(INode parent) {
     this.parent = parent;
   }
 
-  /** Get inode id */
+  /** Get inode id 获取当前 INode 对象的唯一标识（ID）*/
   public abstract long getId();
 
-  /**
+  /**通过判断 getLocalNameBytes() 方法返回的本地名称字节长度是否为 0，来确定是否为根节点
    * Check whether this is the root inode.
    */
   final boolean isRoot() {
     return getLocalNameBytes().length == 0;
   }
 
-  /** Get the {@link PermissionStatus} */
+  /** Get the {@link PermissionStatus} 通常根据快照 ID 获取历史或当前的权限状态*/
   public abstract PermissionStatus getPermissionStatus(int snapshotId);
 
   /** The same as getPermissionStatus(null). */
@@ -100,7 +101,7 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
     return getUserName(Snapshot.CURRENT_STATE_ID);
   }
 
-  /** Set user */
+  /** Set user 设置当前 INode 节点的所属用户，并记录此修改*/
   abstract void setUser(String user);
 
   /** Set user */
@@ -226,11 +227,12 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
     return this;
   }
 
-  /** Is this inode in the current state? */
+  /** Is this inode in the current state? 用于检查当前 INode（HDFS 文件或目录的表示形式）是否存在于当前文件系统状态中*/
   public boolean isInCurrentState() {
-    if (isRoot()) {
+    if (isRoot()) {//如果当前 INode 是根节点（即 /），那么它始终视为在当前状态中存在，直接返回 true
       return true;
     }
+    //如果父目录为 null，说明该 INode 仅存在于快照（snapshot）中，而不在当前文件系统状态中，因此返回 false
     final INodeDirectory parentDir = getParent();
     if (parentDir == null) {
       return false; // this inode is only referenced in snapshots
@@ -587,7 +589,7 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
     final byte[] name = getLocalNameBytes();
     return name == null? null: DFSUtil.bytes2String(name);
   }
-
+ //实现了Diff.Element的getKey接口，所以可以直接通过getLocalNameBytes（）的值查找元素
   @Override
   public final byte[] getKey() {
     return getLocalNameBytes();
@@ -1186,8 +1188,7 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
 
   /** Accept a visitor to visit this {@link INode}. */
   public void accept(NamespaceVisitor visitor, int snapshot) {
-    final Class<?> clazz = visitor != null? visitor.getClass()
-        : NamespaceVisitor.class;
+    final Class<?> clazz = visitor != null? visitor.getClass() : NamespaceVisitor.class;
     throw new UnsupportedOperationException(getClass().getSimpleName()
         + " does not support " + clazz.getSimpleName());
   }

@@ -56,38 +56,52 @@ import org.apache.hadoop.thirdparty.com.google.common.collect.ImmutableSet;
 /**
  * Represents a YARN Cluster Node from the viewpoint of the scheduler.
  */
+//YARN 资源管理器中代表集群中节点的调度视角。
+// 它负责在 YARN 调度器中表示一个节点的资源状况，包括已分配和未分配资源、节点的容器信息等。
+// 该类提供了用于更新节点资源、管理容器的分配、跟踪节点状态等功能，供资源管理器和调度器使用。
+// 简而言之，它作为调度器的视图，帮助调度器管理和监控集群中每个节点的资源使用情况
 @Private
 @Unstable
 public abstract class SchedulerNode {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(SchedulerNode.class);
-
+  //表示当前节点上尚未分配的资源，初始为零。每当容器被分配时，这个资源值会减少
   private Resource unallocatedResource = Resource.newInstance(0, 0);
+  //表示已经分配给容器的资源，初始为零。当分配容器时，这个资源值会增加
   private Resource allocatedResource = Resource.newInstance(0, 0);
+  //表示节点的总资源，表示节点可用的所有资源。这个值在节点更新时会变化
   private Resource totalResource;
+  //表示被保留的容器，调度器可能会为某些应用程序保留资源
   private RMContainer reservedContainer;
+  //表示当前节点上已经分配的容器数量。该值是线程安全的，使用 volatile 来确保多线程环境下的数据一致性
   private volatile int numContainers;
+  //表示当前节点上所有容器的资源利用率，包括 CPU、内存等。它会实时更新，表示容器的资源利用情况
   private volatile ResourceUtilization containersUtilization =
       ResourceUtilization.newInstance(0, 0, 0f);
+  //表示整个节点的资源利用率，包括当前节点上所有资源的总体使用情况
   private volatile ResourceUtilization nodeUtilization =
       ResourceUtilization.newInstance(0, 0, 0f);
   /** Time stamp for overcommitted resources to time out. */
+  //表示资源过度承诺的超时值。若资源被过度承诺，调度器会在超时后开始回收容器以恢复资源的正常状态
   private long overcommitTimeout = -1;
 
   /* set of containers that are allocated containers */
+  //存储所有已分配的容器的映射，容器 ID 作为键，ContainerInfo 对象作为值。ContainerInfo 用于存储容器的详细信息
   private final Map<ContainerId, ContainerInfo> launchedContainers =
       new HashMap<>();
-
+  //表示节点本身，它是 YARN 中的一个核心节点对象，包含有关节点的详细信息
   private final RMNode rmNode;
+  //节点的名称，通常是主机名，调度决策时使用。它可以包含端口信息，具体取决于配置
   private final String nodeName;
   private final RMContext rmContext;
-
+  //节点的标签集合，用于节点标签匹配，决定哪些容器可以在该节点上运行
   private volatile Set<String> labels = null;
-
+  //节点的属性集合，存储关于节点的各种属性，例如硬件规格、软件环境等
   private volatile Set<NodeAttribute> nodeAttributes = null;
 
   // Last updated time
+  //节点最后一次心跳的时间戳，用于监控节点的健康状况
   private volatile long lastHeartbeatMonotonicTime;
 
   public SchedulerNode(RMNode node, boolean usePortForNodeName,

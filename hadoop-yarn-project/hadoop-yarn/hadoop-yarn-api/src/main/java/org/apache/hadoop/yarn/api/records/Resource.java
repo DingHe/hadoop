@@ -60,14 +60,20 @@ import org.apache.hadoop.yarn.util.resource.ResourceUtils;
  * @see ResourceRequest
  * @see ApplicationMasterProtocol#allocate(org.apache.hadoop.yarn.api.protocolrecords.AllocateRequest)
  */
+// Resource 类用于在 YARN（Yet Another Resource Negotiator）集群中表示计算资源。
+// 它主要用于建模节点或容器的资源，如内存（memory）和虚拟 CPU 核心数（vCores）。
+// 应用程序可以使用 Resource 来请求合适的计算资源，以运行其任务
+  //内存的单位是MB
+  //CPU 采用**虚拟核心（vCores）**来表示并行度
 @Public
 @Stable
 public abstract class Resource implements Comparable<Resource> {
-
+  //存储不同类型的资源信息，如内存、CPU 以及其他自定义资源
   protected ResourceInformation[] resources = null;
-
+  //内存资源在 resources 数组中的索引，值为 0
   @Private
   public static final int MEMORY_INDEX = 0;
+  //vCores 资源在 resources 数组中的索引，值为 1
   @Private
   public static final int VCORES_INDEX = 1;
 

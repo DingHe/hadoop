@@ -68,6 +68,9 @@ import org.apache.hadoop.yarn.util.Records;
  * @see ContainerLaunchContext
  * @see ApplicationClientProtocol#submitApplication(org.apache.hadoop.yarn.api.protocolrecords.SubmitApplicationRequest)
  */
+// 表示启动应用程序时，ResourceManager 所需的所有信息。
+// 它包含了启动 ApplicationMaster 的必要参数，例如应用程序的标识、用户信息、名称、优先级、容器信息等。
+// 这个类的主要作用是为 ResourceManager 提供启动和管理应用程序所需的上下文信息
 @Public
 @Stable
 public abstract class ApplicationSubmissionContext {
@@ -83,18 +86,18 @@ public abstract class ApplicationSubmissionContext {
       String amContainerLabelExpression) {
     ApplicationSubmissionContext context =
         Records.newRecord(ApplicationSubmissionContext.class);
-    context.setApplicationId(applicationId);
-    context.setApplicationName(applicationName);
-    context.setQueue(queue);
-    context.setPriority(priority);
-    context.setAMContainerSpec(amContainer);
-    context.setUnmanagedAM(isUnmanagedAM);
-    context.setCancelTokensWhenComplete(cancelTokensWhenComplete);
-    context.setMaxAppAttempts(maxAppAttempts);
-    context.setApplicationType(applicationType);
-    context.setKeepContainersAcrossApplicationAttempts(keepContainers);
-    context.setNodeLabelExpression(appLabelExpression);
-    context.setResource(resource);
+    context.setApplicationId(applicationId); //表示应用程序的唯一标识符（ApplicationId）。它用来标识和管理一个应用程序
+    context.setApplicationName(applicationName);//表示应用程序的名称，通常是用户为应用程序指定的标识符
+    context.setQueue(queue);//表示应用程序提交到的队列。队列在 YARN 中用于调度资源，决定了应用程序获取资源的优先级和排队策略
+    context.setPriority(priority);//表示应用程序的优先级（Priority）。优先级用于调度中确定应用程序的执行优先顺序
+    context.setAMContainerSpec(amContainer);//表示 ApplicationMaster 容器的启动上下文。它包含了 ApplicationMaster 启动所需的本地资源、环境变量、命令等信息
+    context.setUnmanagedAM(isUnmanagedAM);//表示是否使用非托管的 ApplicationMaster。如果为 true，则 ApplicationMaster 不会由 YARN 管理，用户需要自行管理
+    context.setCancelTokensWhenComplete(cancelTokensWhenComplete);//表示当应用程序完成时是否取消安全令牌。此选项用于控制是否清理安全令牌
+    context.setMaxAppAttempts(maxAppAttempts);//表示应用程序的最大尝试次数。如果应用程序失败，ResourceManager 会根据该值决定是否重试
+    context.setApplicationType(applicationType);//表示应用程序的类型。不同类型的应用程序可能具有不同的行为或调度策略
+    context.setKeepContainersAcrossApplicationAttempts(keepContainers);//表示是否在应用程序的多个尝试之间保留容器。如果为 true，则即使应用程序尝试次数增加，容器仍会被保留
+    context.setNodeLabelExpression(appLabelExpression);//表示用于调度的节点标签表达式，用于指定容器应当运行的节点类型或位置
+    context.setResource(resource);//表示容器所需的资源（Resource），例如内存、CPU 等。它定义了应用程序启动时需要的资源量
     
     ResourceRequest amReq = Records.newRecord(ResourceRequest.class);
     amReq.setResourceName(ResourceRequest.ANY);
@@ -102,7 +105,7 @@ public abstract class ApplicationSubmissionContext {
     amReq.setNumContainers(1);
     amReq.setRelaxLocality(true);
     amReq.setNodeLabelExpression(amContainerLabelExpression);
-    context.setAMContainerResourceRequests(Collections.singletonList(amReq));
+    context.setAMContainerResourceRequests(Collections.singletonList(amReq));//表示为 ApplicationMaster 容器请求的资源
     return context;
   }
   

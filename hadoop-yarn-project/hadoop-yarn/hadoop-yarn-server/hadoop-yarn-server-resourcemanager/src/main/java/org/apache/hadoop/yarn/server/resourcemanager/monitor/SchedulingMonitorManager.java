@@ -33,6 +33,11 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+//负责管理 YARN 资源管理器（RM）的调度监控器（SchedulingMonitor）。它的主要功能包括：
+//初始化、重新初始化和管理调度监控器，用于控制调度策略的应用
+//根据配置文件动态添加、移除或更新调度监控器，支持热更新调度策略
+//提供启动、停止、查询等管理功能，确保调度监控器的状态符合当前 YARN 运行时的配置
+//调度监控器通常用于监控和调整YARN资源分配策略，比如按比例预占（Preemption），以确保公平性或容量调度策略的执行。
 /**
  * Manages scheduling monitors.
  */

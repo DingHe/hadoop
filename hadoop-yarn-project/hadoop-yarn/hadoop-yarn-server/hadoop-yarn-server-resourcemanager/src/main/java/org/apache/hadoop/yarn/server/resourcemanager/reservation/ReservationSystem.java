@@ -40,6 +40,9 @@ import org.apache.hadoop.yarn.server.resourcemanager.security.ReservationsACLsMa
  * for managing the {@link PlanFollower} to ensure the {@link Plan}s are in sync
  * with the {@link ResourceScheduler}.
  */
+//管理和处理 YARN 资源管理器中的资源预留系统。该系统允许用户为未来的任务或作业进行资源预留。
+// 实现此接口的系统需要与 ResourceScheduler 配合工作，管理资源预留的计划（Plan）和相关的 ReservationAgent、SharingPolicy 等。
+// 它还负责保持预留计划与资源调度器同步，确保资源预留在整个系统中的一致性
 @LimitedPrivate("yarn")
 @Unstable
 public interface ReservationSystem extends Recoverable {
@@ -47,14 +50,14 @@ public interface ReservationSystem extends Recoverable {
   /**
    * Set RMContext for {@link ReservationSystem}. This method should be called
    * immediately after instantiating a reservation system once.
-   * 
+   *  设置 YARN 资源管理器的上下文
    * @param rmContext created by {@code ResourceManager}
    */
   void setRMContext(RMContext rmContext);
 
   /**
    * Re-initialize the {@link ReservationSystem}.
-   * 
+   *  重新初始化预留系统
    * @param conf configuration
    * @param rmContext current context of the {@code ResourceManager}
    * @throws YarnException if initialization of the configured plan fails
@@ -64,7 +67,7 @@ public interface ReservationSystem extends Recoverable {
 
   /**
    * Get an existing {@link Plan} that has been initialized.
-   * 
+   * 获取一个已初始化的预留计划
    * @param planName the name of the {@link Plan}
    * @return the {@link Plan} identified by name
    * 

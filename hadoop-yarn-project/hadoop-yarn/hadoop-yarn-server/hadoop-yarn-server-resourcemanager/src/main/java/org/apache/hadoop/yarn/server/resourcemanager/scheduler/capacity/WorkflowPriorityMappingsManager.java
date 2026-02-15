@@ -38,24 +38,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.hadoop.classification.VisibleForTesting;
-
+//资源管理器中管理工作流（workflow）与队列之间的优先级映射关系。
+// 它的功能是根据配置的工作流优先级映射表，在资源调度过程中动态调整各个应用程序的优先级，特别是在队列资源管理器中。
+// 通过这个类，用户可以根据工作流ID将应用程序的优先级映射到相应的队列中，从而控制资源的分配优先级
 @Private
 @VisibleForTesting
 public class WorkflowPriorityMappingsManager {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(WorkflowPriorityMappingsManager.class);
-
+  //工作流ID、队列和优先级之间的分隔符。用于在映射字符串中区分不同的部分
   private static final String WORKFLOW_PART_SEPARATOR = ":";
-
+  //多个工作流优先级映射之间的分隔符
   private static final String WORKFLOW_SEPARATOR = ",";
 
   private CapacityScheduler scheduler;
 
   private CapacitySchedulerConfiguration conf;
-
+  //示是否允许使用优先级映射来覆盖默认的优先级
   private boolean overrideWithPriorityMappings = false;
   // Map of queue to a map of workflow ID to priority
+  //存储了队列与工作流ID之间的优先级关系。外层映射的键是队列的名称，内层映射的键是工作流ID，值是该工作流ID对应的优先级
   private Map<String, Map<String, Priority>> priorityMappings =
       new HashMap<>();
 

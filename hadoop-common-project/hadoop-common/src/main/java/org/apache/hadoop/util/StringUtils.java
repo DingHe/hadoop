@@ -774,7 +774,7 @@ public class StringUtils {
     return b.toString();
   }
 
-  /**
+  /** 打印启动和关闭的日志信息
    * Print a log message for starting up and shutting down
    * @param clazz the class of the server
    * @param args arguments
@@ -805,7 +805,7 @@ public class StringUtils {
 
   }
 
-  /**
+  /** 启动和关闭的一般信息
    * Generate the text for the startup/shutdown message of processes.
    * @param classname short classname of the class
    * @param hostname hostname

@@ -46,15 +46,24 @@ import org.apache.hadoop.thirdparty.com.google.common.collect.ImmutableList;
  * The JN has a storage directory for each namespace for which it stores
  * metadata. There is only a single directory per JN in the current design.
  */
+//JNStorage 类是 Hadoop HDFS 中 JournalNode（JN）的存储实现类，继承自 Storage 类，主要用于管理 JournalNode 节点上的元数据和事务日志的存储。JournalNode 是 HDFS 高可用 (HA) 架构下实现 Quorum Journal Manager (QJM) 的核心组件，负责在主备 NameNode 之间提供事务日志的共享存储。
+//主要功能包括：
+//管理 JournalNode 节点上的事务日志目录和 Paxos 文件
+//提供日志的写入、读取、清理和恢复操作
+//维护节点的存储状态（如已格式化、未格式化、异常等）
+//支持事务日志的下载与恢复
+//执行日志的清理操作，删除过期的事务日志
 class JNStorage extends Storage {
-
+  //管理事务日志的核心类，负责日志的写入、读取、回滚和清理等操作
   private final FileJournalManager fjm;
+  //封装了 JournalNode 的存储目录信息，提供文件路径管理、目录分析、恢复、格式化等操作
   private final StorageDirectory sd;
+  //记录当前 JournalNode 的存储状态
   private StorageState state;
-
+  //用于匹配 Paxos 文件的正则表达式，主要用于清理过期的 Paxos 文件
   private static final List<Pattern> PAXOS_DIR_PURGE_REGEXES =
       ImmutableList.of(Pattern.compile("(\\d+)"));
-
+  //常量 "edits.sync"，指向用于临时存储通过 JournalNodeSyncer 下载的事务日志的目录名
   private static final String STORAGE_EDITS_SYNC = "edits.sync";
 
   /**
@@ -90,6 +99,7 @@ class JNStorage extends Storage {
    * Find an edits file spanning the given transaction ID range.
    * If no such file exists, an exception is thrown.
    */
+  //查找已完成的事务日志文件
   File findFinalizedEditsFile(long startTxId, long endTxId)
       throws IOException {
     File ret = new File(sd.getCurrentDir(),
@@ -105,6 +115,7 @@ class JNStorage extends Storage {
    * @return the path for an in-progress edits file starting at the given
    * transaction ID. This does not verify existence of the file. 
    */
+  //获取正在进行的事务日志文件
   File getInProgressEditLog(long startTxId) {
     return new File(sd.getCurrentDir(),
         NNStorage.getInProgressEditsFileName(startTxId));
@@ -117,6 +128,8 @@ class JNStorage extends Storage {
    * @return the temporary path in which an edits log should be stored
    * while it is being downloaded from a remote JournalNode
    */
+  //用于获取某个事务日志段在从远程 JournalNode 下载时的临时存储路径。
+  // 这个路径在数据同步过程中使用，确保日志在正式保存到 current 目录之前有一个暂存位置
   File getSyncLogTemporaryFile(long segmentTxId, long epoch) {
     String name = NNStorage.getInProgressEditsFileName(segmentTxId) +
         ".epoch=" + epoch; 
@@ -148,6 +161,8 @@ class JNStorage extends Storage {
    * @return the path for the file which contains persisted data for the
    * paxos-like recovery process for the given log segment.
    */
+  //用于获取与指定事务 ID (segmentTxId) 关联的 Paxos 协议恢复文件路径。
+  // 此文件在 JournalNode 处理事务日志时，辅助 Paxos 协议执行恢复操作，确保多个节点之间的一致性和协调性
   File getPaxosFile(long segmentTxId) {
     return new File(getOrCreatePaxosDir(), String.valueOf(segmentTxId));
   }
@@ -185,6 +200,8 @@ class JNStorage extends Storage {
    * the transaction ID is less than the <code>minTxIdToKeep</code> parameter
    * are removed.
    */
+  //用于删除指定目录下符合给定正则表达式模式且事务 ID 小于 minTxIdToKeep 的文件
+  //主要用于清理过期或无用的事务日志和 Paxos 文件，防止日志文件无限增长占用存储空间
   private static void purgeMatching(File dir, List<Pattern> patterns,
       long minTxIdToKeep) throws IOException {
 

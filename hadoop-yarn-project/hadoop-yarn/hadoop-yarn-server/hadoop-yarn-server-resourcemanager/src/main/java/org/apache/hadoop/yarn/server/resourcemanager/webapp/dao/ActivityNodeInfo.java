@@ -35,22 +35,28 @@ import java.util.stream.Collectors;
  * DAO object to display node information in allocation tree.
  * It corresponds to "ActivityNode" class.
  */
+//ActivityNodeInfo 用于展示调度器中的单个活动节点（ActivityNode）信息，它对应 ActivityNode 类。
+//该类的主要功能：
+//表示YARN资源分配树中的一个节点，用于跟踪资源调度的详细信息。
+//提供节点的名称、优先级、分配状态、诊断信息，帮助 分析调度决策。
+//支持层次结构，可用于 展示调度过程的树形结构。
+//支持按照不同维度（如应用、请求）分组，便于 资源调度分析
 @XmlRootElement
 @XmlAccessorType(XmlAccessType.FIELD)
 public class ActivityNodeInfo {
-  private String name;  // The name for activity node
-  private Integer appPriority;
-  private Integer requestPriority;
-  private Long allocationRequestId;
-  private String allocationState;
-  private String diagnostic;
-  private String nodeId;
+  private String name;  // The name for activity node 该活动节点的名称，通常是 队列、请求 ID、应用 ID
+  private Integer appPriority;  //如果该节点是应用（Application），表示该应用的优先级
+  private Integer requestPriority; //如果该节点是 请求（Request），表示该请求的优先级
+  private Long allocationRequestId; //该资源请求的 唯一 ID，用于区分不同的请求。
+  private String allocationState;   //该节点的 分配状态，取自 ActivityState（如 ALLOCATED, REJECTED）。
+  private String diagnostic;   //调度失败或跳过时的诊断信息，用于分析调度原因
+  private String nodeId; //该请求所在的节点 ID，如果是 null，表示不属于具体节点。
 
   // Used for groups of activities
-  private Integer count;
-  private List<String> nodeIds;
+  private Integer count;  //组内节点的个数，用于 按维度分组（如多个节点共享相同的请求）
+  private List<String> nodeIds; //多个节点的 ID 列表，用于 分组显示。
 
-  protected List<ActivityNodeInfo> children;
+  protected List<ActivityNodeInfo> children;  //该节点的子节点，表示 调度树中的下一层级。
 
   ActivityNodeInfo() {
   }

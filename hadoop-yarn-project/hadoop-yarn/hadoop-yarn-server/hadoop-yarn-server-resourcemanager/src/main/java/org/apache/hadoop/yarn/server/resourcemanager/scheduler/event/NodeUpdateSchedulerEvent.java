@@ -19,7 +19,7 @@
 package org.apache.hadoop.yarn.server.resourcemanager.scheduler.event;
 
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNode;
-
+//节点更新事件
 public class NodeUpdateSchedulerEvent extends SchedulerEvent {
 
   private final RMNode rmNode;

@@ -84,23 +84,25 @@ public abstract class Storage extends StorageInfo {
       .getLogger(Storage.class.getName());
 
   // last layout version that did not support upgrades
+  //这是不支持升级的最后一个布局版本，意味着该版本之前的 HDFS 不能直接升级到更新版本
   public static final int LAST_PRE_UPGRADE_LAYOUT_VERSION = -3;
   
   // this corresponds to Hadoop-0.18
+  //这是支持升级的最后一个布局版本，意味着从该版本及之后的布局可以直接升级到更高版本
   public static final int LAST_UPGRADABLE_LAYOUT_VERSION = -16;
   protected static final String LAST_UPGRADABLE_HADOOP_VERSION = "Hadoop-0.18";
   
   /** Layout versions of 0.20.203 release */
   public static final int[] LAYOUT_VERSIONS_203 = {-19, -31};
 
-  public    static final String STORAGE_FILE_LOCK     = "in_use.lock";
-  public    static final String STORAGE_DIR_CURRENT   = "current";
-  public    static final String STORAGE_DIR_PREVIOUS  = "previous";
-  public    static final String STORAGE_TMP_REMOVED   = "removed.tmp";
-  public    static final String STORAGE_TMP_PREVIOUS  = "previous.tmp";
-  public    static final String STORAGE_TMP_FINALIZED = "finalized.tmp";
-  public    static final String STORAGE_TMP_LAST_CKPT = "lastcheckpoint.tmp";
-  public    static final String STORAGE_PREVIOUS_CKPT = "previous.checkpoint";
+  public    static final String STORAGE_FILE_LOCK     = "in_use.lock";//HDFS 节点在启动时会在存储目录中创建此锁文件，防止其他节点同时使用相同的存储目录
+  public    static final String STORAGE_DIR_CURRENT   = "current";//存储当前文件系统状态的目录，包含元数据文件（如 VERSION 文件、fsimage、edits 等）
+  public    static final String STORAGE_DIR_PREVIOUS  = "previous";//在 HDFS 升级期间用于备份旧版本数据的目录，升级成功后此目录仍然保留，供回滚使用
+  public    static final String STORAGE_TMP_REMOVED   = "removed.tmp";//临时目录，升级或回滚过程中被移除的数据会存放在此目录中
+  public    static final String STORAGE_TMP_PREVIOUS  = "previous.tmp";//临时目录，表示升级过程中将 previous 目录重命名为 previous.tmp，防止升级失败时数据损坏
+  public    static final String STORAGE_TMP_FINALIZED = "finalized.tmp";//临时目录，升级完成后，临时数据会被移动到此目录，最终用于确认升级已完成
+  public    static final String STORAGE_TMP_LAST_CKPT = "lastcheckpoint.tmp";//临时目录，存放最后一次检查点的临时数据，通常用于 NameNode 的 fsimage 保存
+  public    static final String STORAGE_PREVIOUS_CKPT = "previous.checkpoint";//保存上一次检查点数据的目录，主要用于在升级期间进行回滚或恢复
   
   /**
    * The blocksBeingWritten directory which was used in some 1.x and earlier
@@ -109,16 +111,16 @@ public abstract class Storage extends StorageInfo {
   public static final String STORAGE_1_BBW = "blocksBeingWritten";
   
   public enum StorageState {
-    NON_EXISTENT,
-    NOT_FORMATTED,
-    COMPLETE_UPGRADE,
-    RECOVER_UPGRADE,
-    COMPLETE_FINALIZE,
-    COMPLETE_ROLLBACK,
-    RECOVER_ROLLBACK,
-    COMPLETE_CHECKPOINT,
-    RECOVER_CHECKPOINT,
-    NORMAL;
+    NON_EXISTENT, //存储目录不存在
+    NOT_FORMATTED, //存储目录未格式化
+    COMPLETE_UPGRADE, //升级完成状态，表示存储目录已成功完成升级操作
+    RECOVER_UPGRADE, //恢复升级状态，表示升级过程中发生异常，需要恢复到升级前的状态
+    COMPLETE_FINALIZE,//完成升级终结状态，表示 HDFS 升级已最终确认，不再保留回滚数据
+    COMPLETE_ROLLBACK,//回滚完成状态，表示已成功将 HDFS 恢复到升级前的状态
+    RECOVER_ROLLBACK, //恢复回滚状态，表示回滚过程中发生异常，需要进行恢复操作
+    COMPLETE_CHECKPOINT,//检查点完成状态，表示 HDFS 已成功完成 Checkpoint 操作
+    RECOVER_CHECKPOINT,//恢复检查点状态，表示 Checkpoint 操作失败，需要恢复到之前的状态
+    NORMAL;//正常状态，表示存储目录处于正常工作状态，没有异常或正在进行的升级、回滚等操作
   }
   
   /**
@@ -131,15 +133,16 @@ public abstract class Storage extends StorageInfo {
     public StorageDirType getStorageDirType();
     public boolean isOfType(StorageDirType type);
   }
-
+  //存储对应的目录列表
   private final List<StorageDirectory> storageDirs =
       new CopyOnWriteArrayList<>();
 
+  //用于遍历 HDFS 存储目录（StorageDirectory）的内部类，实现了 Java 标准的 Iterator 接口，可以按需过滤特定类型的存储目录
   private class DirIterator implements Iterator<StorageDirectory> {
-    final StorageDirType dirType;
-    final boolean includeShared;
-    int prevIndex; // for remove()
-    int nextIndex; // for next()
+    final StorageDirType dirType;//目标存储目录的类型，类型为 StorageDirType（例如 IMAGE, EDITS, IMAGE_AND_EDITS）
+    final boolean includeShared;//是否包括共享目录，布尔类型
+    int prevIndex; // for remove()  上一个已返回的目录索引，主要用于 remove() 方法删除当前目录时恢复迭代状态
+    int nextIndex; // for next() 下一个即将返回的目录索引，控制遍历的进度
     
     DirIterator(StorageDirType dirType, boolean includeShared) {
       this.dirType = dirType;
@@ -150,6 +153,7 @@ public abstract class Storage extends StorageInfo {
     
     @Override
     public boolean hasNext() {
+      //如果 storageDirs 为空，或 nextIndex 超过列表长度，直接返回 false
       if (storageDirs.isEmpty() || nextIndex >= storageDirs.size())
         return false;
       if (dirType != null || !includeShared) {
@@ -197,6 +201,8 @@ public abstract class Storage extends StorageInfo {
    * @return A list of the given File in every available storage directory,
    * regardless of whether it might exist.
    */
+  //根据给定的目录类型 (dirType) 和文件名 (fileName)，
+  // 在所有匹配的存储目录中生成对应文件路径列表。即使目标文件不存在，方法也会返回路径列表
   public List<File> getFiles(StorageDirType dirType, String fileName) {
     ArrayList<File> list = new ArrayList<File>();
     Iterator<StorageDirectory> it =
@@ -274,17 +280,18 @@ public abstract class Storage extends StorageInfo {
    */
   @InterfaceAudience.Private
   public static class StorageDirectory implements FormatConfirmable {
-    final File root;              // root directory
+    final File root;              // root directory 存储目录的根目录，代表HDFS元数据存储的位置
     // whether or not this dir is shared between two separate NNs for HA, or
     // between multiple block pools in the case of federation.
-    final boolean isShared;
-    final StorageDirType dirType; // storage dir type
-    FileLock lock;                // storage lock
-    private final FsPermission permission;
+    final boolean isShared; //表示该存储目录是否在高可用（HA）模式下被多个NameNode共享，或在联邦（Federation）模式下被多个Block Pool共享
+    final StorageDirType dirType; // storage dir type 存储目录的类型，通常是StorageDirType枚举值，例如CURRENT、PREVIOUS等
+    FileLock lock;                // storage lock 负责对存储目录进行锁定，防止多个进程同时访问
+    private final FsPermission permission; //目录的文件权限，使用FsPermission来管理文件的读写执行权限
 
-    private String storageUuid = null;      // Storage directory identifier.
+    private String storageUuid = null;      // Storage directory identifier. 存储目录的唯一标识符，通常用于区分不同的存储目录
     
-    private final StorageLocation location;
+    private final StorageLocation location; //存储目录的位置信息，可能是本地文件系统路径或远程存储URI
+    //构造函数
     public StorageDirectory(File dir) {
       this(dir, null, false);
     }
@@ -296,7 +303,7 @@ public abstract class Storage extends StorageInfo {
     public StorageDirectory(File dir, StorageDirType dirType) {
       this(dir, dirType, false);
     }
-    
+    //设置存储目录的uuid
     public void setStorageUuid(String storageUuid) {
       this.storageUuid = storageUuid;
     }
@@ -346,13 +353,16 @@ public abstract class Storage extends StorageInfo {
       this(getBlockPoolCurrentDir(bpid, location), dirType,
           isShared, location, null);
     }
-
+    //bpid：String 类型，表示 Block Pool ID，用于唯一标识一个数据块池（Block Pool）。
+    // 在 HDFS 联邦（Federation）模式下，多个 NameNode 共享不同的 Block Pool，每个 Block Pool 都有一个唯一的标识符
+    //获取特定 Block Pool 在存储设备中 current 目录的路径
     private static File getBlockPoolCurrentDir(String bpid,
         StorageLocation location) {
       if (location == null ||
           location.getStorageType() == StorageType.PROVIDED) {
         return null;
       } else {
+        //生成 Block Pool 的 current 目录路径
         return new File(location.getBpURI(bpid, STORAGE_DIR_CURRENT));
       }
     }
@@ -399,7 +409,7 @@ public abstract class Storage extends StorageInfo {
       return dirType;
     }    
 
-    /**
+    /**获取存储目录的大小
      * Get storage directory size.
      */
     public long getDirecorySize() {
@@ -412,7 +422,7 @@ public abstract class Storage extends StorageInfo {
       }
       return 0;
     }
-
+    //从文件读取配置信息，然后设置到storage里面
     public void read(File from, Storage storage) throws IOException {
       Properties props = readPropertiesFile(from);
       storage.setFieldsFromProperties(props, this);
@@ -428,7 +438,7 @@ public abstract class Storage extends StorageInfo {
      * all other storage type dependent files are written.
      * Derived storage is responsible for setting specific storage values and
      * writing the version file to disk.
-     * 
+     * 清理并重新创建当前存储目录
      * @throws IOException
      */
     public void clearDirectory() throws IOException {
@@ -461,7 +471,7 @@ public abstract class Storage extends StorageInfo {
     /**
      * Directory {@code current} contains latest files defining
      * the file system meta-data.
-     * 
+     * 存储系统的当前目录
      * @return the directory path
      */
     public File getCurrentDir() {
@@ -484,7 +494,7 @@ public abstract class Storage extends StorageInfo {
      * The existence of the version file indicates that all other files have
      * been successfully written in the storage directory, the storage is valid
      * and does not need to be recovered.
-     * 
+     * 存储目录的当前版本文件
      * @return the version file path
      */
     public File getVersionFile() {
@@ -496,7 +506,7 @@ public abstract class Storage extends StorageInfo {
 
     /**
      * File {@code VERSION} from the {@code previous} directory.
-     * 
+     * 获取前一个版本文件
      * @return the previous version file path
      */
     public File getPreviousVersionFile() {
@@ -509,7 +519,7 @@ public abstract class Storage extends StorageInfo {
     /**
      * Directory {@code previous} contains the previous file system state,
      * which the system can be rolled back to.
-     * 
+     * 获取前一个目录
      * @return the directory path
      */
     public File getPreviousDir() {
@@ -526,7 +536,7 @@ public abstract class Storage extends StorageInfo {
      * If the saving succeeds {@code previous.tmp} will be moved to
      * {@code previous}, otherwise it will be renamed back to 
      * {@code current} by the recovery procedure during startup.
-     * 
+     * 获取前一个临时文件
      * @return the directory path
      */
     public File getPreviousTmp() {
@@ -543,7 +553,7 @@ public abstract class Storage extends StorageInfo {
      * If the moving succeeds {@code removed.tmp} will be removed,
      * otherwise it will be renamed back to 
      * {@code current} by the recovery procedure during startup.
-     * 
+     * 删除临时文件
      * @return the directory path
      */
     public File getRemovedTmp() {
@@ -644,7 +654,7 @@ public abstract class Storage extends StorageInfo {
 
     /**
      * Check consistency of the storage directory.
-     * 
+     * 主要是检查存储目录的一致性
      * @param startOpt a startup option.
      * @param storage The Storage object that manages this StorageDirectory.
      * @param checkCurrentIsEmpty if true, make sure current/ directory
@@ -658,7 +668,7 @@ public abstract class Storage extends StorageInfo {
     public StorageState analyzeStorage(StartupOption startOpt, Storage storage,
         boolean checkCurrentIsEmpty)
         throws IOException {
-
+      //远程目录，直接返回正常
       if (location != null &&
           location.getStorageType() == StorageType.PROVIDED) {
         // currently we assume that PROVIDED storages are always NORMAL
@@ -669,7 +679,7 @@ public abstract class Storage extends StorageInfo {
       boolean hadMkdirs = false;
       String rootPath = root.getCanonicalPath();
       try { // check that storage exists
-        if (!root.exists()) {
+        if (!root.exists()) {//文件目录不存在
           // storage directory does not exist
           if (startOpt != StartupOption.FORMAT &&
               startOpt != StartupOption.HOTSWAP) {
@@ -683,11 +693,11 @@ public abstract class Storage extends StorageInfo {
           hadMkdirs = true;
         }
         // or is inaccessible
-        if (!root.isDirectory()) {
+        if (!root.isDirectory()) {//root不是目录对象
           LOG.warn("{} is not a directory", rootPath);
           return StorageState.NON_EXISTENT;
         }
-        if (!FileUtil.canWrite(root)) {
+        if (!FileUtil.canWrite(root)) {//没有写的权限
           LOG.warn("Cannot access storage directory {}", rootPath);
           return StorageState.NON_EXISTENT;
         }
@@ -781,7 +791,7 @@ public abstract class Storage extends StorageInfo {
 
     /**
      * Complete or recover storage state from previously failed transition.
-     * 
+     * 从之前失败的状态恢复存储目录
      * @param curState specifies what/how the state should be recovered
      * @throws IOException
      */
@@ -1037,7 +1047,7 @@ public abstract class Storage extends StorageInfo {
   protected Storage(StorageInfo storageInfo) {
     super(storageInfo);
   }
-  
+  //返回存储对应的目录数
   public int getNumStorageDirs() {
     return storageDirs.size();
   }
@@ -1045,12 +1055,12 @@ public abstract class Storage extends StorageInfo {
   public List<StorageDirectory> getStorageDirs() {
     return storageDirs;
   }
-
+  //获取第idx个目录
   public StorageDirectory getStorageDir(int idx) {
     return storageDirs.get(idx);
   }
   
-  /**
+  /** 获取单独的存储目录
    * @return the storage directory, with the precondition that this storage
    * has exactly one storage directory
    */
@@ -1058,7 +1068,7 @@ public abstract class Storage extends StorageInfo {
     Preconditions.checkState(storageDirs.size() == 1);
     return storageDirs.get(0);
   }
-  
+  //添加存储目录
   protected void addStorageDir(StorageDirectory sd) {
     storageDirs.add(sd);
   }
@@ -1069,6 +1079,7 @@ public abstract class Storage extends StorageInfo {
    * @param root the root directory of a {@link StorageDirectory}
    * @throws IOException if failed to get canonical path.
    */
+  //判断该存储是否包含指定的目录root
   protected boolean containsStorageDir(File root) throws IOException {
     for (StorageDirectory sd : storageDirs) {
       if (sd.getRoot().getCanonicalPath().equals(root.getCanonicalPath())) {
@@ -1207,6 +1218,7 @@ public abstract class Storage extends StorageInfo {
    * This is currently a storage directory or journal manager.
    */
   @InterfaceAudience.Private
+  //用于需要在 NameNode 格式化操作等类似操作中进行格式确认的类
   public interface FormatConfirmable {
     /**
      * @return true if the storage seems to have some valid data in it,
@@ -1214,12 +1226,15 @@ public abstract class Storage extends StorageInfo {
      * false.
      * @throws IOException if the storage cannot be accessed at all.
      */
+    //如果存储中存在一些有效数据，返回 true，表示用户在执行格式化时需要确认
     public boolean hasSomeData() throws IOException;
     
     /**
      * @return a string representation of the formattable item, suitable
      * for display to the user inside a prompt
      */
+    //目的是提供一个字符串表示形式，适用于在用户提示中显示。具体来说，该字符串应该描述可格式化的项，以便在进行格式化操作时，
+    // 系统可以通过字符串向用户展示该项的相关信息，帮助用户做出是否继续格式化的决策
     @Override
     public String toString();
   }
@@ -1227,7 +1242,7 @@ public abstract class Storage extends StorageInfo {
   /**
    * Set common storage fields into the given properties object.
    * Should be overloaded if additional fields need to be set.
-   * 
+   * 使用存储目录的属性设置props属性
    * @param props the Properties object to write into
    */
   protected void setPropertiesFromFields(Properties props, 
@@ -1243,20 +1258,20 @@ public abstract class Storage extends StorageInfo {
     props.setProperty("cTime", String.valueOf(cTime));
   }
 
-  /**
+  /**把存储目录相关的属性写入版本文件
    * Write properties to the VERSION file in the given storage directory.
    */
   public void writeProperties(StorageDirectory sd) throws IOException {
     writeProperties(sd.getVersionFile(), sd);
   }
-  
+  //把存储相关的配置写入版本文件
   public void writeProperties(File to, StorageDirectory sd) throws IOException {
     if (to == null) {
       return;
     }
     Properties props = new Properties();
-    setPropertiesFromFields(props, sd);
-    writeProperties(to, props);
+    setPropertiesFromFields(props, sd); //设置属性文件的属性
+    writeProperties(to, props); //写入版本文件
   }
 
   public static void writeProperties(File to, Properties props)
@@ -1383,6 +1398,7 @@ public abstract class Storage extends StorageInfo {
    * @param dir The directory to delete
    * @throws IOException
    */
+  //删除目录
   public static void deleteDir(File dir) throws IOException {
     if (!FileUtil.fullyDelete(dir))
       throw new IOException("Failed to delete " + dir.getCanonicalPath());

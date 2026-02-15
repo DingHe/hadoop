@@ -30,6 +30,7 @@ import java.util.Map;
 /**
  * Service LifeCycle.
  */
+//服务生命周期管理接口，用于定义服务的初始化、启动、停止等操作。它用于 Hadoop 组件（如 YARN、HDFS）中，以标准化服务的管理方式
 @Public
 @Evolving
 public interface Service extends Closeable {
@@ -39,16 +40,16 @@ public interface Service extends Closeable {
    */
   public enum STATE {
     /** Constructed but not initialized */
-    NOTINITED(0, "NOTINITED"),
+    NOTINITED(0, "NOTINITED"),//对象已创建但未初始化
 
     /** Initialized but not started or stopped */
-    INITED(1, "INITED"),
+    INITED(1, "INITED"),//INITED（已初始化）：调用 init() 后进入此状态
 
     /** started and not stopped */
-    STARTED(2, "STARTED"),
+    STARTED(2, "STARTED"), //STARTED（已启动）：调用 start() 后进入此状态
 
     /** stopped. No further state transitions are permitted */
-    STOPPED(3, "STOPPED");
+    STOPPED(3, "STOPPED");//STOPPED（已停止）：调用 stop() 或 close() 后进入此状态，无法再次启动
 
     /**
      * An integer value for use in array lookup and JMX interfaces.
@@ -96,6 +97,7 @@ public interface Service extends Closeable {
    * @throws RuntimeException on any failure during the operation
 
    */
+  //初始化服务
   void init(Configuration config);
 
 
@@ -108,7 +110,7 @@ public interface Service extends Closeable {
    * {@link STATE#STOPPED}.
    * @throws RuntimeException on any failure during the operation
    */
-
+  //启动服务
   void start();
 
   /**
@@ -121,6 +123,7 @@ public interface Service extends Closeable {
    * fields.
    * @throws RuntimeException on any failure during the stop operation
    */
+  //停止服务
   void stop();
 
   /**
@@ -130,6 +133,7 @@ public interface Service extends Closeable {
    * @throws IOException never
    * @throws RuntimeException on any failure during the stop operation
    */
+  //关闭服务（用于 Java 7+ 自动关闭机制）
   void close() throws IOException;
 
   /**
@@ -138,6 +142,7 @@ public interface Service extends Closeable {
    * this method is a no-op.
    * @param listener a new listener
    */
+  //注册监听器，监听服务状态变化
   void registerServiceListener(ServiceStateChangeListener listener);
 
   /**
@@ -145,6 +150,7 @@ public interface Service extends Closeable {
    * change events. No-op if the listener is already unregistered.
    * @param listener the listener to unregister.
    */
+  //取消监听器
   void unregisterServiceListener(ServiceStateChangeListener listener);
 
   /**
@@ -166,6 +172,7 @@ public interface Service extends Closeable {
    * Get the current service state
    * @return the state of the service
    */
+  //获取当前服务状态
   STATE getServiceState();
 
   /**
@@ -181,6 +188,7 @@ public interface Service extends Closeable {
    * @param state the expected state
    * @return true if, at the time of invocation, the service was in that state.
    */
+  //判断当前状态是否符合预期
   boolean isInState(STATE state);
 
   /**

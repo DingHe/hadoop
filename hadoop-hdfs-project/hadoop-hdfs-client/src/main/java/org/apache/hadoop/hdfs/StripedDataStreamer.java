@@ -90,7 +90,7 @@ public class StripedDataStreamer extends DataStreamer {
   }
 
   @Override
-  protected void setupPipelineForCreate() throws IOException {
+  protected LocatedBlock nextBlockOutputStream() throws IOException {
     boolean success;
     LocatedBlock lb = getFollowingBlock();
     block.setCurrentBlock(lb.getBlock());
@@ -101,6 +101,7 @@ public class StripedDataStreamer extends DataStreamer {
     DatanodeInfo[] nodes = lb.getLocations();
     StorageType[] storageTypes = lb.getStorageTypes();
     String[] storageIDs = lb.getStorageIDs();
+
     // Connect to the DataNode. If fail the internal error state will be set.
     success = createBlockOutputStream(nodes, storageTypes, storageIDs, 0L,
         false);
@@ -112,7 +113,7 @@ public class StripedDataStreamer extends DataStreamer {
       excludedNodes.put(badNode, badNode);
       throw new IOException("Unable to create new block." + this);
     }
-    setPipeline(lb);
+    return lb;
   }
 
   @VisibleForTesting
@@ -121,18 +122,18 @@ public class StripedDataStreamer extends DataStreamer {
   }
 
   @Override
-  protected boolean setupPipelineInternal(DatanodeInfo[] nodes,
+  protected void setupPipelineInternal(DatanodeInfo[] nodes,
       StorageType[] nodeStorageTypes, String[] nodeStorageIDs)
       throws IOException {
     boolean success = false;
     while (!success && !streamerClosed() && dfsClient.clientRunning) {
       if (!handleRestartingDatanode()) {
-        return false;
+        return;
       }
       if (!handleBadDatanode()) {
         // for striped streamer if it is datanode error then close the stream
         // and return. no need to replace datanode
-        return false;
+        return;
       }
 
       // get a new generation stamp and an access token
@@ -178,7 +179,6 @@ public class StripedDataStreamer extends DataStreamer {
         setStreamerAsClosed();
       }
     } // while
-    return success;
   }
 
   void setExternalError() {

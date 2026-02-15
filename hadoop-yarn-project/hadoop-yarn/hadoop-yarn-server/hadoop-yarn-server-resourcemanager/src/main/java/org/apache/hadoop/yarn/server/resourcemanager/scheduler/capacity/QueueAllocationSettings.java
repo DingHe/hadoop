@@ -28,18 +28,25 @@ import static org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.C
  * {@link CapacitySchedulerConfiguration} and other queue
  * properties.
  **/
+//负责管理 YARN CapacityScheduler（容量调度器）中队列的最小和最大资源分配
+//存储队列的最小资源分配（minimumAllocation）
+//计算队列的最大资源分配（maximumAllocation），并确保其不会超出集群最大资源限制
 public class QueueAllocationSettings {
+  //存储该队列允许的最小资源分配
   private final Resource minimumAllocation;
+  //存储该队列允许的最大资源分配
   private Resource maximumAllocation;
 
   public QueueAllocationSettings(Resource minimumAllocation) {
     this.minimumAllocation = minimumAllocation;
   }
-
+  //根据 CapacitySchedulerConfiguration（调度器配置）计算该队列的最大资源分配
   void setupMaximumAllocation(CapacitySchedulerConfiguration configuration, String queuePath,
       CSQueue parent) {
+    //获取集群最大资源分配
     Resource clusterMax = ResourceUtils
         .fetchMaximumAllocationFromConfig(configuration);
+    //获取当前队列最大资源限制
     Resource queueMax = configuration.getQueueMaximumAllocation(queuePath);
 
     maximumAllocation = Resources.clone(

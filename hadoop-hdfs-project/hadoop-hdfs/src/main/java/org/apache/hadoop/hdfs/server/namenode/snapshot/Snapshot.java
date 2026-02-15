@@ -51,7 +51,7 @@ import static org.apache.hadoop.hdfs.server.common.HdfsServerConstants.XATTR_SNA
 public class Snapshot implements Comparable<byte[]> {
   /**
    * This id is used to indicate the current state (vs. snapshots)
-   */
+   *///快照默认的当前状态id
   public static final int CURRENT_STATE_ID = Integer.MAX_VALUE - 1;
   public static final int NO_SNAPSHOT_ID = -1;
   

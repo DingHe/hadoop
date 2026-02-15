@@ -65,26 +65,34 @@ import org.apache.hadoop.hdfs.util.LightWeightLinkedSet;
  *   blocks that are not corrupt higher priority.</li>
  * </ol>
  */
+//管理低冗余的块，根据冗余程度将它们分配到不同的优先级队列中，确保优先处理那些最需要复制或修复的块。
+// 通过对块进行优先级排序，系统可以有序地进行数据恢复和修复操作
 class LowRedundancyBlocks implements Iterable<BlockInfo> {
   /** The total number of queues : {@value} */
+  //LEVEL表示队列的总数，即5个优先级队列
   static final int LEVEL = 5;
   /** The queue with the highest priority: {@value} */
+  //优先级最高，表示副本非常低的块（例如只存在一个副本，或副本丢失但有一个副本在退役节点上）
   static final int QUEUE_HIGHEST_PRIORITY = 0;
   /** The queue for blocks that are way below their expected value : {@value} */
+  //表示非常低冗余的块，当前副本数量与期望副本数量的比值小于1:3
   static final int QUEUE_VERY_LOW_REDUNDANCY = 1;
   /**
    * The queue for "normally" without sufficient redundancy blocks : {@value}.
    */
+  //示冗余不足的块，但比QUEUE_VERY_LOW_REDUNDANCY队列的块情况更好
   static final int QUEUE_LOW_REDUNDANCY = 2;
   /** The queue for blocks that have the right number of replicas,
    * but which the block manager felt were badly distributed: {@value}
    */
+  //表示副本数量足够，但副本分布不均，丢失一个机架/交换机会导致副本全部丧失
   static final int QUEUE_REPLICAS_BADLY_DISTRIBUTED = 3;
   /** The queue for corrupt blocks: {@value} */
+  //表示损坏的块，且没有可用的非损坏副本。
   static final int QUEUE_WITH_CORRUPT_BLOCKS = 4;
   /** the queues themselves */
   private final List<LightWeightLinkedSet<BlockInfo>> priorityQueues
-      = new ArrayList<>(LEVEL);
+      = new ArrayList<>(LEVEL); //存储5个优先级队列的列表，每个队列是一个LightWeightLinkedSet<BlockInfo>集合。每个集合存储具有相应冗余级别的块
 
 
   private final LongAdder lowRedundancyBlocks = new LongAdder();
@@ -134,6 +142,7 @@ class LowRedundancyBlocks implements Iterable<BlockInfo> {
    * Return the number of insufficiently redundant blocks excluding corrupt
    * blocks.
    */
+  //返回所有低冗余块的数量，排除损坏块
   synchronized int getLowRedundancyBlockCount() {
     int size = 0;
     for (int i = 0; i < LEVEL; i++) {
@@ -145,6 +154,7 @@ class LowRedundancyBlocks implements Iterable<BlockInfo> {
   }
 
   /** Return the number of corrupt blocks */
+  //返回损坏块的数量
   synchronized int getCorruptBlockSize() {
     return priorityQueues.get(QUEUE_WITH_CORRUPT_BLOCKS).size();
   }
@@ -208,11 +218,12 @@ class LowRedundancyBlocks implements Iterable<BlockInfo> {
    * @param expectedReplicas expected number of replicas of the block
    * @return the priority for the blocks, between 0 and ({@link #LEVEL}-1)
    */
-  private int getPriority(BlockInfo block,
-                          int curReplicas,
-                          int readOnlyReplicas,
-                          int outOfServiceReplicas,
-                          int expectedReplicas) {
+  //根据当前副本数量和期望副本数量，计算并返回该块的优先级
+  private int getPriority(BlockInfo block, //块信息
+                          int curReplicas, //当前副本数量
+                          int readOnlyReplicas,//只读副本数量
+                          int outOfServiceReplicas,//下线副本数量
+                          int expectedReplicas) {//期望副本数量
     assert curReplicas >= 0 : "Negative replicas!";
     if (curReplicas >= expectedReplicas) {
       // Block has enough copies, but not enough racks
@@ -227,7 +238,7 @@ class LowRedundancyBlocks implements Iterable<BlockInfo> {
           outOfServiceReplicas, expectedReplicas);
     }
   }
-
+  //计算连续块的优先级，主要根据副本数量及其分布来决定优先级
   private int getPriorityContiguous(int curReplicas, int readOnlyReplicas,
       int outOfServiceReplicas, int expectedReplicas) {
     if (curReplicas == 0) {
@@ -256,7 +267,7 @@ class LowRedundancyBlocks implements Iterable<BlockInfo> {
       return QUEUE_LOW_REDUNDANCY;
     }
   }
-
+  //计算条带块的优先级，主要根据数据块和奇偶校验块的数量来判断
   private int getPriorityStriped(int curReplicas, int outOfServiceReplicas,
       short dataBlkNum, short parityBlkNum) {
     if (curReplicas < dataBlkNum) {
@@ -514,13 +525,18 @@ class LowRedundancyBlocks implements Iterable<BlockInfo> {
    * @return Return a list of block lists to be replicated. The block list
    *         index represents its redundancy priority.
    */
+  //用于从低冗余队列中选择需要重建的块。它根据冗余优先级对块进行排序，并按优先级依次进行处理。
+  // 每次迭代都使用书签（bookmark）来从上次停止的位置继续扫描，
+  // 确保在多次调用之间不会重复处理同一个块。方法返回一个块列表，每个列表代表一个冗余优先级的块
   synchronized List<List<BlockInfo>> chooseLowRedundancyBlocks(
       int blocksToProcess, boolean resetIterators) {
+    //blocksToProcess：这是方法的输入参数，表示此次处理的块数限制。方法会尝试返回尽可能多的块，直到达到这个限制为止
+    //resetIterators：这是一个布尔值，用于指示是否需要重置所有队列的迭代器
     final List<List<BlockInfo>> blocksToReconstruct = new ArrayList<>(LEVEL);
 
     int count = 0;
     int priority = 0;
-    HashSet<BlockInfo> toRemove = new HashSet<>();
+    HashSet<BlockInfo> toRemove = new HashSet<>();//存储待删除的块
     for (; count < blocksToProcess && priority < LEVEL; priority++) {
       // Go through all blocks that need reconstructions with current priority.
       // Set the iterator to the first unprocessed block at this priority level

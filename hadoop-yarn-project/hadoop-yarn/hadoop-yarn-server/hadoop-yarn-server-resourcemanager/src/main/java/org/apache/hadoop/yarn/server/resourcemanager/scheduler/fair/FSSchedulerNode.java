@@ -48,6 +48,11 @@ import java.util.concurrent.ConcurrentSkipListSet;
 /**
  * Fair Scheduler specific node features.
  */
+// YARN 中 Fair Scheduler（公平调度器）特有的节点管理类
+//FSSchedulerNode 在节点级别引入了针对预留资源、资源抢占等特性的管理。这些特性包括：
+//预留资源的管理（即为特定应用预留的资源）。
+//容器抢占（用于在资源紧张时，为了公平性抢占某些应用的容器资源）。
+//资源预留和抢占的汇总，确保公平调度器能够合理分配节点上的资源。
 @Private
 @Unstable
 public class FSSchedulerNode extends SchedulerNode {

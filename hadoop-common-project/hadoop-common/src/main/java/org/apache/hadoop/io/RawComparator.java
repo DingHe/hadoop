@@ -31,7 +31,7 @@ import org.apache.hadoop.io.serializer.DeserializerComparator;
  * </p>
  * @param <T> generic type.
  * @see DeserializerComparator
- */
+ *///直接比较对象的二进制数据
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public interface RawComparator<T> extends Comparator<T> {

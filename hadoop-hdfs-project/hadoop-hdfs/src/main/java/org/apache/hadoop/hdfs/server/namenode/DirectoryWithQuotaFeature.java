@@ -28,15 +28,19 @@ import org.apache.hadoop.hdfs.util.EnumCounters;
 import org.apache.hadoop.security.AccessControlException;
 
 /**
- * Quota feature for {@link INodeDirectory}. 
+ * Quota feature for {@link INodeDirectory}.
+ * 提供了对 HDFS（Hadoop 分布式文件系统）目录的配额管理功能
+ * 命名空间配额：限制文件和目录的数量
+ * 存储空间配额：限制存储空间的使用量
+ * 存储类型配额：限制不同存储类型（如 SSD、HDD）的使用空间
  */
 public final class DirectoryWithQuotaFeature implements INode.Feature {
-  public static final long DEFAULT_NAMESPACE_QUOTA = Long.MAX_VALUE;
-  public static final long DEFAULT_STORAGE_SPACE_QUOTA = HdfsConstants.QUOTA_RESET;
+  public static final long DEFAULT_NAMESPACE_QUOTA = Long.MAX_VALUE; //命名空间配额默认值
+  public static final long DEFAULT_STORAGE_SPACE_QUOTA = HdfsConstants.QUOTA_RESET; //存储空间配额默认值
 
-  private QuotaCounts quota;
-  private QuotaCounts usage;
-
+  private QuotaCounts quota;//存储配额设置（限制）
+  private QuotaCounts usage;//usage 跟踪当前使用情况
+  //Builder 类允许灵活地创建和配置 DirectoryWithQuotaFeature 对象。它支持设置命名空间配额、存储空间配额和存储类型配额
   public static class Builder {
     private QuotaCounts quota;
     private QuotaCounts usage;

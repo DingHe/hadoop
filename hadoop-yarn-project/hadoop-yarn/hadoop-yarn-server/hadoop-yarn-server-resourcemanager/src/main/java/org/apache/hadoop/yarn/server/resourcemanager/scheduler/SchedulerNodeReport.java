@@ -26,13 +26,15 @@ import org.apache.hadoop.yarn.api.records.ResourceUtilization;
 /**
  * Node usage report.
  */
+//表示 YARN 调度器对某个节点（Node）的资源使用情况的报告。它提供该节点的已用资源、可用资源、资源利用率及容器数量，
+// 帮助资源管理器（ResourceManager）进行调度决策
 @Private
 @Stable
 public class SchedulerNodeReport {
-  private final Resource used;
-  private final Resource avail;
-  private final ResourceUtilization utilization;
-  private final int num;
+  private final Resource used;//已分配的资源，表示当前节点上已被应用使用的 CPU、内存等资源
+  private final Resource avail;//未分配的资源，表示当前节点上仍可用于调度的资源量。
+  private final ResourceUtilization utilization;//资源利用率，用于存储 CPU、内存等资源的使用情况（可能包括自定义资源，如 GPU）
+  private final int num;//当前运行的容器数量，表示该节点上正在运行的任务数
   
   public SchedulerNodeReport(SchedulerNode node) {
     this.used = node.getAllocatedResource();

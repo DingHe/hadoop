@@ -35,6 +35,11 @@ import org.apache.hadoop.yarn.util.resource.Resources;
 
 import org.apache.hadoop.classification.VisibleForTesting;
 
+//按照任务的优先级和提交时间 来决定任务的执行顺序。这种策略类似于 FIFO（First In, First Out）调度，即：
+//优先级高的任务先执行；
+//如果优先级相同，则先提交的任务先执行；
+//如果提交时间相同，则按照作业名称（JobID）排序，保证调度顺序的确定性。
+//该策略适用于 叶子队列（Leaf Queue），即调度器中的最小单元，不适用于包含子队列的 父级队列（Parent Queue）
 @Private
 @Unstable
 public class FifoPolicy extends SchedulingPolicy {
@@ -58,14 +63,17 @@ public class FifoPolicy extends SchedulingPolicy {
    */
   static class FifoComparator implements Comparator<Schedulable>, Serializable {
     private static final long serialVersionUID = -5905036205491177060L;
-
+    //比较两个 Schedulable 对象（s1 和 s2）
     @Override
     public int compare(Schedulable s1, Schedulable s2) {
+      //按任务的 优先级（getPriority()）进行比较。优先级较高的任务会被优先调度
       int res = s1.getPriority().compareTo(s2.getPriority());
       if (res == 0) {
+        //如果优先级相同，则通过 提交时间（getStartTime()）来比较任务
         res = (int) Math.signum(s1.getStartTime() - s2.getStartTime());
       }
       if (res == 0) {
+        //如果任务的优先级和提交时间都相同，则按照 任务名称（JobID） 排序
         // In the rare case where jobs were submitted at the exact same time,
         // compare them by name (which will be the JobID) to get a deterministic
         // ordering, so we don't alternately launch tasks from different jobs.
@@ -84,6 +92,8 @@ public class FifoPolicy extends SchedulingPolicy {
   public ResourceCalculator getResourceCalculator() {
     return CALCULATOR;
   }
+  //schedulables：传入的任务集合，表示一组需要调度的任务（实现了 Schedulable 接口）。这些任务将被分配资源
+  //totalResources：表示总资源的对象，包含可用于分配的资源（如内存、CPU 核心等）
 
   @Override
   public void computeShares(Collection<? extends Schedulable> schedulables,
@@ -91,7 +101,7 @@ public class FifoPolicy extends SchedulingPolicy {
     if (schedulables.isEmpty()) {
       return;
     }
-
+    //遍历所有任务（schedulables），选出提交时间最早的任务（getStartTime() 返回任务的提交时间）
     Schedulable earliest = null;
     for (Schedulable schedulable : schedulables) {
       if (earliest == null ||
@@ -99,7 +109,7 @@ public class FifoPolicy extends SchedulingPolicy {
         earliest = schedulable;
       }
     }
-
+    //如果找到了最早提交的任务（earliest 不为 null），将整个总资源（totalResources）分配给它
     if (earliest != null) {
       earliest.setFairShare(Resources.clone(totalResources));
     }

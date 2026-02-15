@@ -68,46 +68,51 @@ import org.apache.hadoop.thirdparty.protobuf.TextFormat;
  * A JournalManager that writes to a set of remote JournalNodes,
  * requiring a quorum of nodes to ack each write.
  */
+//主要用于管理 JournalNode 集群中的操作日志（EditLog）的写入和读取。
+//在 HDFS 的高可用(HA)架构中，QuorumJournalManager 负责协调多个 JournalNode 之间的操作，
+// 以实现事务日志的分布式存储和故障恢复。它通过 "Quorum"（法定人数）机制，
+// 确保只要大多数（通常为 2/3）节点达成一致，即可保证数据的一致性和持久性
 @InterfaceAudience.Private
 public class QuorumJournalManager implements JournalManager {
   static final Logger LOG = LoggerFactory.getLogger(QuorumJournalManager.class);
 
   // This config is not publicly exposed
   public static final String QJM_RPC_MAX_TXNS_KEY =
-      "dfs.ha.tail-edits.qjm.rpc.max-txns";
-  public static final int QJM_RPC_MAX_TXNS_DEFAULT = 5000;
+      "dfs.ha.tail-edits.qjm.rpc.max-txns";//配置项键名，表示每次通过 RPC 获取的最大事务数
+  public static final int QJM_RPC_MAX_TXNS_DEFAULT = 5000;//默认每次RPC获取的最大事务数，默认为 5000。
 
   // Maximum number of transactions to fetch at a time when using the
   // RPC edit fetch mechanism
-  private final int maxTxnsPerRpc;
+  private final int maxTxnsPerRpc;//实际从配置中读取的每次 RPC 获取的最大事务数，影响事务获取的批量大小
   // Whether or not in-progress tailing is enabled in the configuration
-  private final boolean inProgressTailingEnabled;
+  private final boolean inProgressTailingEnabled;//是否启用未完成日志的跟踪（tailing）。
   // Timeouts for which the QJM will wait for each of the following actions.
-  private final int startSegmentTimeoutMs;
-  private final int prepareRecoveryTimeoutMs;
-  private final int acceptRecoveryTimeoutMs;
-  private final int finalizeSegmentTimeoutMs;
-  private final int selectInputStreamsTimeoutMs;
-  private final int getJournalStateTimeoutMs;
-  private final int newEpochTimeoutMs;
-  private final int writeTxnsTimeoutMs;
+  private final int startSegmentTimeoutMs;//启动日志段（segment）的超时时间（单位：毫秒）。
+  private final int prepareRecoveryTimeoutMs;//准备恢复操作的超时时间（单位：毫秒）。
+  private final int acceptRecoveryTimeoutMs;//接受恢复操作的超时时间（单位：毫秒）。
+  private final int finalizeSegmentTimeoutMs;//完成日志段（segment）的超时时间（单位：毫秒）。
+  private final int selectInputStreamsTimeoutMs;//选择输入流的超时时间（单位：毫秒）。
+  private final int getJournalStateTimeoutMs;//获取日志状态的超时时间（单位：毫秒）。
+  private final int newEpochTimeoutMs;//创建新的 epoch（纪元）的超时时间（单位：毫秒）。
+  private final int writeTxnsTimeoutMs;//写入事务的超时时间（单位：毫秒）。
 
   // This timeout is used for calls that don't occur during normal operation
   // e.g. format, upgrade operations and a few others. So we can use rather
   // lengthy timeouts by default.
-  private final int timeoutMs;
-  
-  private final Configuration conf;
-  private final URI uri;
-  private final NamespaceInfo nsInfo;
-  private final String nameServiceId;
-  private boolean isActiveWriter;
-  
-  private final AsyncLoggerSet loggers;
+  private final int timeoutMs;//默认操作的超时时间，主要用于非正常操作（如格式化、升级等）。
 
-  private static final int OUTPUT_BUFFER_CAPACITY_DEFAULT = 512 * 1024;
+  private final Configuration conf;
+  private final URI uri;//日志服务的 URI 地址，标识要连接的 JournalNode 集群
+  private final NamespaceInfo nsInfo;//当前 HDFS 命名空间的信息，包含命名空间 ID、集群 ID、版本等信息。
+  private final String nameServiceId;//NameService 的唯一标识，用于支持 HDFS 高可用（HA）。
+  private boolean isActiveWriter;//标识当前 JournalManager 是否是活动写入者，控制写操作权限。
+
+
+  private final AsyncLoggerSet loggers;//管理多个异步日志记录器的集合，支持对多个 JournalNode 进行操作。
+
+  private static final int OUTPUT_BUFFER_CAPACITY_DEFAULT = 512 * 1024;//输出缓冲区的容量，默认值为 512 KB，控制写入日志的缓存大小。
   private int outputBufferCapacity;
-  private final URLConnectionFactory connectionFactory;
+  private final URLConnectionFactory connectionFactory;//HTTP 连接工厂，管理与 JournalNode 的 HTTP 连接。
 
   /** Limit logging about input stream selection to every 5 seconds max. */
   private static final long SELECT_INPUT_STREAM_LOG_INTERVAL_MS = 5000;
@@ -144,6 +149,7 @@ public class QuorumJournalManager implements JournalManager {
     this.uri = uri;
     this.nsInfo = nsInfo;
     this.nameServiceId = nameServiceId;
+    //负责与多个 JournalNode 进行通信，管理多个异步日志记录器。
     this.loggers = new AsyncLoggerSet(createLoggers(loggerFactory));
 
     this.maxTxnsPerRpc =
@@ -224,21 +230,25 @@ public class QuorumJournalManager implements JournalManager {
    *
    * @return the new, unique epoch number
    */
+  //获取一个新的、唯一的 epoch 编号，确保当前 QuorumJournalManager 实例拥有对 JournalNode 集群的写入权限
+  //阻止（Fence）其他可能存在的写入者，防止数据竞争，保证事务日志的写入一致性
+  //在 HDFS 高可用(HA)架构中，多个 NameNode 可能会与相同的 JournalNode 集群通信，
+  // epoch 作为一个递增的唯一编号，用于确保同一时间只有一个 NameNode 能够执行写操作
   Map<AsyncLogger, NewEpochResponseProto> createNewUniqueEpoch()
       throws IOException {
     Preconditions.checkState(!loggers.isEpochEstablished(),
         "epoch already created");
-    
+    //获取当前 JournalNode 集群的状态
     Map<AsyncLogger, GetJournalStateResponseProto> lastPromises =
       loggers.waitForWriteQuorum(loggers.getJournalState(),
           getJournalStateTimeoutMs, "getJournalState()");
-    
+    //计算下一个可用的 epoch 编号
     long maxPromised = Long.MIN_VALUE;
     for (GetJournalStateResponseProto resp : lastPromises.values()) {
       maxPromised = Math.max(maxPromised, resp.getLastPromisedEpoch());
     }
     assert maxPromised >= 0;
-    
+    //向 JournalNode 请求设置新 epoch
     long myEpoch = maxPromised + 1;
     Map<AsyncLogger, NewEpochResponseProto> resps =
         loggers.waitForWriteQuorum(loggers.newEpoch(nsInfo, myEpoch),
@@ -247,7 +257,9 @@ public class QuorumJournalManager implements JournalManager {
     loggers.setEpoch(myEpoch);
     return resps;
   }
-  
+  // 主要功能是对 JournalNode 集群执行 格式化操作，即将 JournalNode 的状态初始化或重置。
+  // 这在 HDFS 系统中用于初始化日志存储，使其准备好接收新的事务日志。格式化过程中可以选择是否强制执行（force 参数），
+  // 即使存在一些错误或潜在问题也进行格式化
   @Override
   public void format(NamespaceInfo nsInfo, boolean force) throws IOException {
     QuorumCall<AsyncLogger, Void> call = loggers.format(nsInfo, force);
@@ -264,7 +276,8 @@ public class QuorumJournalManager implements JournalManager {
       call.rethrowException("Could not format one or more JournalNodes");
     }
   }
-
+ // 检查当前的 JournalNode（JN）是否包含数据，即判断是否已经有格式化的数据存储在日志中。
+ // 如果日志中有数据，则返回 true，表示日志节点中存在数据；如果没有数据，则返回 false，表明日志可以进行格式化操作
   @Override
   public boolean hasSomeData() throws IOException {
     QuorumCall<AsyncLogger, Boolean> call =
@@ -308,12 +321,16 @@ public class QuorumJournalManager implements JournalManager {
    * @param segmentTxId the starting txid of the segment
    * @throws IOException
    */
+  //用于恢复一个未关闭的日志段（segment）。
+  // 它的主要目的是确保在多数 JournalNode 上完成该日志段的最终确认，并同步所有 JournalNode 对该段的长度达成一致，确保数据一致性
   private void recoverUnclosedSegment(long segmentTxId) throws IOException {
     Preconditions.checkArgument(segmentTxId > 0);
     LOG.info("Beginning recovery of unclosed segment starting at txid " +
         segmentTxId);
     
     // Step 1. Prepare recovery
+    //准备恢复
+    //为恢复操作准备请求，询问每个 JournalNode 是否已记录该事务 ID 的日志段
     QuorumCall<AsyncLogger,PrepareRecoveryResponseProto> prepare =
         loggers.prepareRecovery(segmentTxId);
     Map<AsyncLogger, PrepareRecoveryResponseProto> prepareResponses=
@@ -332,19 +349,25 @@ public class QuorumJournalManager implements JournalManager {
     
     // TODO: we should collect any "ties" and pass the URL for all of them
     // when syncing, so we can tolerate failure during recovery better.
+    //选择最佳日志
+    //使用 SegmentRecoveryComparator 对返回的日志段进行比较，选择出日志条目中状态最合适的节点
+    //如果有多个节点已经接受了某个恢复方案或日志段，则选择日志最长的节点
     Entry<AsyncLogger, PrepareRecoveryResponseProto> bestEntry = Collections.max(
         prepareResponses.entrySet(), SegmentRecoveryComparator.INSTANCE); 
     AsyncLogger bestLogger = bestEntry.getKey();
     PrepareRecoveryResponseProto bestResponse = bestEntry.getValue();
-    
+    //日志恢复决策与输出
     // Log the above decision, check invariants.
+    //如果某个日志节点已经接受了一个更高版本的日志段，直接采用该日志段
     if (bestResponse.hasAcceptedInEpoch()) {
       LOG.info("Using already-accepted recovery for segment " +
           "starting at txid " + segmentTxId + ": " +
           bestEntry);
+      //如果没有节点已经接受高版本的日志段，选择最长的日志段
     } else if (bestResponse.hasSegmentState()) {
       LOG.info("Using longest log: " + bestEntry);
     } else {
+      //如果所有响应的节点都没有日志段，表示可能发生了节点崩溃的情况，可以跳过当前恢复操作
       // None of the responses to prepareRecovery() had a segment at the given
       // txid. This can happen for example in the following situation:
       // - 3 JNs: JN1, JN2, JN3
@@ -370,7 +393,7 @@ public class QuorumJournalManager implements JournalManager {
           QuorumCall.mapToString(prepareResponses));
       return;
     }
-    
+    //检查并验证日志一致性
     SegmentStateProto logToSync = bestResponse.getSegmentState();
     assert segmentTxId == logToSync.getStartTxId();
     
@@ -388,9 +411,9 @@ public class QuorumJournalManager implements JournalManager {
             resp.getLastCommittedTxId() + " committed");
       }
     }
-    
+    //获取日志同步 URL 并执行恢复
     URL syncFromUrl = bestLogger.buildURLToFetchLogs(segmentTxId);
-    
+    //向所有 JournalNode 发起恢复接受请求，将同步的日志段传递给它们
     QuorumCall<AsyncLogger,Void> accept = loggers.acceptRecovery(logToSync, syncFromUrl);
     loggers.waitForWriteQuorum(accept, acceptRecoveryTimeoutMs,
         "acceptRecovery(" + TextFormat.shortDebugString(logToSync) + ")");
@@ -406,14 +429,20 @@ public class QuorumJournalManager implements JournalManager {
             logToSync.getStartTxId(),
             logToSync.getEndTxId()));
   }
-  
+
+
+  // 根据提供的URI和配置信息，创建与JournalNode通信的AsyncLogger对象列表
+  // 每个AsyncLogger对象代表一个与JournalNode通信的客户端，
+  // QuorumJournalManager通过这些日志记录器与多个JournalNode进行交互，确保事务日志 (EditLog) 的可靠写入和读取
   static List<AsyncLogger> createLoggers(Configuration conf,
-                                         URI uri,
-                                         NamespaceInfo nsInfo,
+                                         URI uri,//JournalNode 集群的 URI，指示事务日志的存储位置
+                                         NamespaceInfo nsInfo, //HDFS 命名空间信息，包含集群的 namespaceID、clusterID
                                          AsyncLogger.Factory factory,
-                                         String nameServiceId)
+                                         String nameServiceId) //服务的唯一标识，区分不同的 HDFS 集群
       throws IOException {
     List<AsyncLogger> ret = Lists.newArrayList();
+    //每个 InetSocketAddress 对象代表一个 JournalNode 的 IP 地址和端口
+    //例如qjournal://host1:8485;host2:8485;host3:8485/myjournal
     List<InetSocketAddress> addrs = Util.getAddressesList(uri, conf);
     if (addrs.size() % 2 == 0) {
       LOG.warn("Quorum journal URI '" + uri + "' has an even number " +
@@ -425,7 +454,8 @@ public class QuorumJournalManager implements JournalManager {
     }
     return ret;
   }
-  
+  // 启动一个新的日志段，用于记录事务（transaction）日志。启动日志段前，会确保系统处于活跃状态，并向 JournalNode 发起请求确认启动该日志段。
+  // 返回一个 EditLogOutputStream 实例，表示可以写入新日志段的输出流
   @Override
   public EditLogOutputStream startLogSegment(long txId, int layoutVersion)
       throws IOException {

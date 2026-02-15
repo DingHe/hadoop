@@ -26,7 +26,7 @@ import org.apache.hadoop.hdfs.util.EnumCounters;
 
 import java.util.function.Consumer;
 
-/**
+/**名称空间、存储空间和存储类型的限额信息
  * Counters for namespace, storage space and storage type space quota and usage.
  */
 public class QuotaCounts {
@@ -38,13 +38,13 @@ public class QuotaCounts {
    * objects with the same value. See HDFS-14547.
    */
   final static EnumCounters<Quota> QUOTA_RESET =
-      new ConstEnumCounters<>(Quota.class, HdfsConstants.QUOTA_RESET);
+      new ConstEnumCounters<>(Quota.class, HdfsConstants.QUOTA_RESET);//表示配额重置的情况
   final static EnumCounters<Quota> QUOTA_DEFAULT =
-      new ConstEnumCounters<>(Quota.class, 0);
+      new ConstEnumCounters<>(Quota.class, 0); //表示配额默认的初始状态
   final static EnumCounters<StorageType> STORAGE_TYPE_RESET =
-      new ConstEnumCounters<>(StorageType.class, HdfsConstants.QUOTA_RESET);
+      new ConstEnumCounters<>(StorageType.class, HdfsConstants.QUOTA_RESET);//表示存储类型配额重置的情况
   final static EnumCounters<StorageType> STORAGE_TYPE_DEFAULT =
-      new ConstEnumCounters<>(StorageType.class, 0);
+      new ConstEnumCounters<>(StorageType.class, 0);//表示存储类型配额默认的初始状态
 
   /**
    * Modify counter with action. If the counter is ConstEnumCounters, copy all
@@ -66,10 +66,10 @@ public class QuotaCounts {
   // Name space and storage space counts (HDFS-7775 refactors the original disk
   // space count to storage space counts)
   @VisibleForTesting
-  EnumCounters<Quota> nsSsCounts;
+  EnumCounters<Quota> nsSsCounts;//存储命名空间和存储空间的配额计数
   // Storage type space counts
   @VisibleForTesting
-  EnumCounters<StorageType> tsCounts;
+  EnumCounters<StorageType> tsCounts;//存储各个存储类型的配额计数
 
   public static class Builder {
     private EnumCounters<Quota> nsSsCounts;

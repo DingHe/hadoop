@@ -37,40 +37,57 @@ import org.apache.hadoop.yarn.util.resource.Resources;
  * Temporary data-structure tracking resource availability, pending resource
  * need, current utilization. This is per-queue-per-partition data structure
  */
+// 临时数据结构，用于跟踪资源的可用性、待处理的资源需求和当前的资源使用情况。
+// 它是按队列和分区进行组织的，主要用于资源管理中的预留和抢占机制。
+// 这个类主要与 YARN 的容量调度器（CapacityScheduler）一起使用，用于表示每个队列在不同分区下的资源分配情况
 public class TempQueuePerPartition extends AbstractPreemptionEntity {
   // Following fields are copied from scheduler
+  //当前队列所属的分区名称
   final String partition;
-
+  //可被抢占的资源量，通常用于标记哪些资源可以在抢占过程中被释放
   private final Resource killable;
+  //队列的绝对容量，即队列可以分配的最大资源比例（0到1之间）
   private final float absCapacity;
+  //队列的最大容量，超过此值则不再分配资源
   private final float absMaxCapacity;
+  //当前分区的总资源量
   final Resource totalPartitionResource;
 
   // Following fields are settled and used by candidate selection policies
+  //队列中不可触及的额外资源量，这些资源不能被抢占
   Resource untouchableExtra;
+  //可被抢占的额外资源量
   Resource preemptableExtra;
-
+  //归一化的保证资源，通常为多个资源类型（例如内存、虚拟核心）的保证值
   double[] normalizedGuarantee;
-
+  //队列的有效最小资源
   private Resource effMinRes;
+  //队列的有效最大资源
   private Resource effMaxRes;
-
+  //当前队列的子队列列表
   final ArrayList<TempQueuePerPartition> children;
+  //当前队列中正在运行的应用集合
   private Collection<TempAppPerPartition> apps;
+  //当前队列对应的叶子队列
   AbstractLeafQueue leafQueue;
+  //当前队列对应的父队列
   AbstractParentQueue parentQueue;
+  //是否禁用抢占资源
   boolean preemptionDisabled;
-
+  //扣除保留资源后的待处理资源
   protected Resource pendingDeductReserved;
 
   // Relative priority of this queue to its parent
   // If parent queue's ordering policy doesn't respect priority,
   // this will be always 0
+  //当前队列相对于父队列的优先级
   int relativePriority = 0;
+  //当前队列的父队列
   TempQueuePerPartition parent = null;
 
   // This will hold a temp user data structure and will hold userlimit,
   // idealAssigned, used etc.
+  //记录每个用户在分区下的资源使用情况
   Map<String, TempUserPerPartition> usersPerPartition = new LinkedHashMap<>();
 
   @SuppressWarnings("checkstyle:parameternumber")

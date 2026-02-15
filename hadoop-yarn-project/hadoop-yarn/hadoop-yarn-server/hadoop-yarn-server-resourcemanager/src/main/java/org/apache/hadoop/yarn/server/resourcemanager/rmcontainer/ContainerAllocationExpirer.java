@@ -24,7 +24,8 @@ import org.apache.hadoop.yarn.event.Dispatcher;
 import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.ContainerExpiredSchedulerEvent;
 import org.apache.hadoop.yarn.util.AbstractLivelinessMonitor;
-
+//活跃性监控器，用于监控分配但未被使用的容器（Container）的超时
+//在 YARN 资源管理调度过程中，一个容器可能会被分配给应用程序，但如果应用程序长时间未使用该容器，则该容器可能会被回收
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class ContainerAllocationExpirer extends
     AbstractLivelinessMonitor<AllocationExpirationInfo> {
@@ -37,10 +38,13 @@ public class ContainerAllocationExpirer extends
   }
 
   public void serviceInit(Configuration conf) throws Exception {
+    //从配置 YarnConfiguration.RM_CONTAINER_ALLOC_EXPIRY_INTERVAL_MS 读取容器分配的超时时间（默认值 DEFAULT_RM_CONTAINER_ALLOC_EXPIRY_INTERVAL_MS）
     int expireIntvl = conf.getInt(
             YarnConfiguration.RM_CONTAINER_ALLOC_EXPIRY_INTERVAL_MS,
             YarnConfiguration.DEFAULT_RM_CONTAINER_ALLOC_EXPIRY_INTERVAL_MS);
+    //设置过期时间间隔 (expireInterval)，即容器最长未被使用的时间
     setExpireInterval(expireIntvl);
+    //设定监控间隔 (monitorInterval)，一般是 expireInterval 的三分之一，用于周期性检查是否有超时的容器
     setMonitorInterval(expireIntvl/3);
     super.serviceInit(conf);
   }

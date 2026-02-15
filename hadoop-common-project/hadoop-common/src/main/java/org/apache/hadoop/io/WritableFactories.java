@@ -24,7 +24,7 @@ import org.apache.hadoop.conf.*;
 import org.apache.hadoop.util.ReflectionUtils;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
+//管理和创建 Hadoop 中的 Writable 对象的工厂类，允许为非公共类定义和使用工厂方法来创建实例
 /** Factories for non-public writables.  Defining a factory permits {@link
  * ObjectWritable} to be able to construct instances of non-public classes. */
 @InterfaceAudience.Public

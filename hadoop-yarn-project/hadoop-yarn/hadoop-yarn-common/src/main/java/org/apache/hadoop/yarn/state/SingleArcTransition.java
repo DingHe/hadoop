@@ -25,6 +25,7 @@ import org.apache.hadoop.classification.InterfaceStability.Evolving;
  * Hook for Transition. This lead to state machine to move to 
  * the post state as registered in the state machine.
  */
+//单一状态转换的回调，它允许 状态转换时执行额外逻辑
 @Public
 @Evolving
 public interface SingleArcTransition<OPERAND, EVENT> {

@@ -207,40 +207,53 @@ import org.apache.hadoop.yarn.util.timeline.TimelineUtils;
  * The client interface to the Resource Manager. This module handles all the rpc
  * interfaces to the resource manager from the client.
  */
+//主要作为ResourceManager（RM）的客户端接口，负责处理来自客户端的RPC请求。
+// 它提供了各种操作，例如获取应用程序信息、提交应用程序、取消申请、获取集群资源等。
+// 它是ResourceManager与客户端之间通信的桥梁，提供了资源管理器的客户端API服务
 public class ClientRMService extends AbstractService implements
     ApplicationClientProtocol {
   private static final ArrayList<ApplicationReport> EMPTY_APPS_REPORT = new ArrayList<ApplicationReport>();
 
   private static final Logger LOG =
       LoggerFactory.getLogger(ClientRMService.class);
-
+  //用于生成新的应用程序ID，每提交一个新的应用程序，计数器会增加，确保应用程序ID的唯一性
   final private AtomicInteger applicationCounter = new AtomicInteger(0);
+  //表示YARN调度器，负责管理集群资源的分配和调度
   final private YarnScheduler scheduler;
+  //表示ResourceManager的上下文，包含了ResourceManager的状态、管理对象和集群信息
   final private RMContext rmContext;
+  //管理应用程序的状态、生命周期等
   private final RMAppManager rmAppManager;
 
   private Server server;
+  //用于管理ResourceManager的委托令牌，用于身份认证和授权
   protected RMDelegationTokenSecretManager rmDTSecretManager;
 
   private final RecordFactory recordFactory = RecordFactoryProvider.getRecordFactory(null);
+  //客户端的绑定地址，决定ResourceManager服务端口和地址
   private InetSocketAddress clientBindAddress;
-
+  //管理应用程序的访问控制列表（ACLs），决定用户是否有权限访问特定应用
   private final ApplicationACLsManager applicationsACLsManager;
+  //管理队列的访问控制列表，确保用户对队列的访问权限
   private final QueueACLsManager queueACLsManager;
 
   // For Reservation APIs
+  //时钟对象，用于获取当前时间，可能用于调度、过期等操作
   private Clock clock;
+  //用于管理集群资源预留的系统，支持对资源的预定和管理
   private ReservationSystem reservationSystem;
+  //资源预定输入验证器，检查预定请求是否合法
   private ReservationInputValidator rValidator;
-
+  //提交上下文预处理器，可能在应用提交前对其进行一些处理和验证
   private SubmissionContextPreProcessor contextPreProcessor;
-
+  //布尔值，指示是否按用户过滤应用程序
   private boolean filterAppsByUser = false;
-
+  //表示应用程序处于“活动”状态的集合，通常包括“已接受”和“正在运行”状态
   private static final EnumSet<RMAppState> ACTIVE_APP_STATES = EnumSet.of(
       RMAppState.ACCEPTED, RMAppState.RUNNING);
-
+  //资源配置文件管理器，用于管理和存储资源配置
   private ResourceProfilesManager resourceProfilesManager;
+  //布尔值，表示是否启用了Timeline服务V2版本
   private boolean timelineServiceV2Enabled;
 
   public ClientRMService(RMContext rmContext, YarnScheduler scheduler,

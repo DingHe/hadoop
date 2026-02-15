@@ -97,27 +97,44 @@ import static org.apache.commons.lang.StringUtils.isNotEmpty;
 /**
  * This class manages the list of applications for the resource manager.
  */
+//主要用于管理YARN应用程序的生命周期。它负责：
+//管理正在运行和已完成的应用，并控制内存中保存的历史应用数量。
+//持久化应用状态，确保在RM故障恢复时能够重新加载应用信息。
+//处理应用提交、恢复和完成事件，确保资源调度的正确性。
+//与 YARN Scheduler（调度器）交互，实现应用队列管理和权限控制。
 public class RMAppManager implements EventHandler<RMAppManagerEvent>,
                                         Recoverable {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(RMAppManager.class);
-
+  //内存中可以存储的最大完成应用数量，超过后最早的应用会被移除
   private int maxCompletedAppsInMemory;
+  //State Store（持久化存储）中可以保存的最大完成应用数量
   private int maxCompletedAppsInStateStore;
+  //当前已经持久化的已完成应用数量
   protected int completedAppsInStateStore = 0;
+  //存储已完成的 ApplicationId，用于快速访问最近完成的应用
   private LinkedList<ApplicationId> completedApps = new LinkedList<>();
 
   private final RMContext rmContext;
+  //与 ApplicationMaster（AM）进行交互的服务，管理 AM 的生命周期
   private final ApplicationMasterService masterService;
+  //调度器（如 CapacityScheduler 或 FairScheduler），负责资源分配
   private final YarnScheduler scheduler;
+  //应用权限管理器，控制用户访问权限
   private final ApplicationACLsManager applicationACLsManager;
   private Configuration conf;
+  //权限管理器，控制应用 ACL（访问控制）
   private YarnAuthorizationProvider authorizer;
+  //是否启用 Timeline Service V2（YARN 的历史数据存储）
   private boolean timelineServiceV2Enabled;
+  //是否启用 Node Labels（节点标签，用于资源调度）
   private boolean nodeLabelsEnabled;
+  //强制独占的 Partition 集合，控制资源隔离
   private Set<String> exclusiveEnforcedPartitions;
+  //ApplicationMaster 的默认 Node Label（节点标签）
   private String amDefaultNodeLabel;
+  //YARN Federation（跨集群资源共享）组件的存储管理器
   private FederationStateStoreService federationStateStoreService;
 
   private static final String USER_ID_PREFIX = "userid=";
@@ -291,22 +308,25 @@ public class RMAppManager implements EventHandler<RMAppManagerEvent>,
   protected synchronized int getCompletedAppsListSize() {
     return this.completedApps.size();
   }
-
+  //用于处理应用完成事件的方法。当一个应用完成时，这个方法会被调用，执行一些必要的清理工作，并记录日志
   protected synchronized void finishApplication(ApplicationId applicationId) {
     if (applicationId == null) {
       LOG.error("RMAppManager received completed appId of null, skipping");
     } else {
+      //如果启用了 Hadoop 安全（UserGroupInformation.isSecurityEnabled()），则通知 DelegationTokenRenewer 该应用已完成。
+      // 这是因为在安全模式下，Hadoop 使用委托令牌来管理应用的身份认证，当应用完成时，需要通知令牌更新器，标记该应用的委托令牌已经不再需要。
       // Inform the DelegationTokenRenewer
       if (UserGroupInformation.isSecurityEnabled()) {
         rmContext.getDelegationTokenRenewer().applicationFinished(applicationId);
       }
-
+      //将应用的 ID 添加到 completedApps 列表中，表示该应用已完成
       completedApps.add(applicationId);
+      //计数器递增，表示已完成应用的数量在状态存储中增加
       completedAppsInStateStore++;
       writeAuditLog(applicationId);
     }
   }
-
+  //应用完成时，写出审计日记
   protected void writeAuditLog(ApplicationId appId) {
     RMApp app = rmContext.getRMApps().get(appId);
     String operation = "UNKNOWN";
@@ -341,6 +361,7 @@ public class RMAppManager implements EventHandler<RMAppManagerEvent>,
   /*
    * check to see if hit the limit for max # completed apps kept
    */
+  //用于检查已完成应用数量是否超出存储和内存限制的同步方法。如果应用的完成数量超过了最大限制，它会删除最旧的已完成应用，释放存储空间
   protected synchronized void checkAppNumCompletedLimit() {
     // check apps kept in state store.
     while (completedAppsInStateStore > this.maxCompletedAppsInStateStore) {
@@ -440,7 +461,12 @@ public class RMAppManager implements EventHandler<RMAppManagerEvent>,
 
     application.handle(new RMAppRecoverEvent(appId, rmState));
   }
-
+  //用于创建并填充新的应用程序实例。它主要涉及从应用提交上下文 (ApplicationSubmissionContext) 中收集应用程序的详细信息，
+  // 并进行一些权限验证、队列管理和资源请求验证等处理
+  //submissionContext：应用提交上下文，包含应用的基本信息，如应用ID、队列、优先级、资源请求等
+  //userUgi：提交应用的用户信息，包含用户的身份和权限信息
+  //isRecovery：布尔值，指示是否是从恢复状态启动应用程序。如果是恢复，应用程序状态会从持久化存储中恢复
+  //recoveredFinalState：恢复时应用的最终状态。如果是恢复应用，它会包含应用的状态
   private RMAppImpl createAndPopulateNewRMApp(
       ApplicationSubmissionContext submissionContext, long submitTime,
       UserGroupInformation userUgi, boolean isRecovery, long startTime,
@@ -586,7 +612,7 @@ public class RMAppManager implements EventHandler<RMAppManagerEvent>,
         submissionContext.getAMContainerSpec().getApplicationACLs());
     return application;
   }
-
+  //获取队列路径
   public String getQueuePath(String queueName) {
     String queuePath = queueName;
     try {
@@ -730,7 +756,7 @@ public class RMAppManager implements EventHandler<RMAppManagerEvent>,
           + appStates.size() + " applications");
     }
   }
-
+  //负责处理传入的 RMAppManagerEvent 事件。根据事件类型（如应用完成或应用队列迁移），handle 方法会调用不同的处理逻辑
   @Override
   public void handle(RMAppManagerEvent event) {
     ApplicationId applicationId = event.getApplicationId();
@@ -738,9 +764,9 @@ public class RMAppManager implements EventHandler<RMAppManagerEvent>,
         applicationId, event.getType());
     switch (event.getType()) {
     case APP_COMPLETED :
-      finishApplication(applicationId);
-      logApplicationSummary(applicationId);
-      checkAppNumCompletedLimit();
+      finishApplication(applicationId);//处理应用完成事件，标记该应用为完成状态
+      logApplicationSummary(applicationId);//记录应用的总结信息
+      checkAppNumCompletedLimit();//检查是否达到了已完成应用的最大限制，如果达到了限制则需要清理已完成的应用
       break;
     case APP_MOVE :
       // moveAllApps from scheduler will fire this event for each of

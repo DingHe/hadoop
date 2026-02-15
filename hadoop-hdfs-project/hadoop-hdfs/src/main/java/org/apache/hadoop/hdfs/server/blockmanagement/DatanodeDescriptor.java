@@ -55,7 +55,8 @@ import org.apache.hadoop.util.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
+/**用于管理 HDFS 中 DataNode 节点的动态信息（如健康状态、容量、关联的块等）
+ * 只能在NameNode使用
  * This class extends the DatanodeInfo class with ephemeral information (eg
  * health, capacity, what blocks are associated with the Datanode) that is
  * private to the Namenode, ie this class is not exposed to clients.
@@ -65,10 +66,10 @@ import org.slf4j.LoggerFactory;
 public class DatanodeDescriptor extends DatanodeInfo {
   public static final Logger LOG =
       LoggerFactory.getLogger(DatanodeDescriptor.class);
-  public static final DatanodeDescriptor[] EMPTY_ARRAY = {};
+  public static final DatanodeDescriptor[] EMPTY_ARRAY = {};  //创建一个空的数组，避免重复多次建设
   private static final int BLOCKS_SCHEDULED_ROLL_INTERVAL = 600*1000; //10min
 
-  /** Block and targets pair */
+  /** Block and targets pair 主要用于封装一个数据块（Block）及其目标存储节点（DatanodeStorageInfo）列表，通常在数据块复制和恢复过程中使用*/
   @InterfaceAudience.Private
   @InterfaceStability.Evolving
   public static class BlockTargetPair {
@@ -81,7 +82,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
     }
   }
 
-  /** A BlockTargetPair queue. */
+  /** A BlockTargetPair queue. BlockTargetPair的队列*/
   private static class BlockQueue<E> {
     private final Queue<E> blockq = new LinkedList<>();
 
@@ -118,19 +119,19 @@ public class DatanodeDescriptor extends DatanodeInfo {
     }
   }
 
-  /**
+  /**用于管理特定 DataNode 上的缓存数据块列表，主要与 HDFS 数据缓存机制相关
    * A list of CachedBlock objects on this datanode.
    */
   public static class CachedBlocksList extends IntrusiveCollection<CachedBlock> {
     public enum Type {
-      PENDING_CACHED,
-      CACHED,
-      PENDING_UNCACHED
+      PENDING_CACHED, //已缓存的数据块列表（DataNode 上已确认缓存的数据块）
+      CACHED, //已缓存的数据块列表（DataNode 上已确认缓存的数据块）
+      PENDING_UNCACHED//等待缓存的数据块列表（还未被缓存的数据块）
     }
 
-    private final DatanodeDescriptor datanode;
+    private final DatanodeDescriptor datanode; //指向与该缓存列表关联的 DataNode 描述符，表示缓存列表所属的 DataNode
 
-    private final Type type;
+    private final Type type;//表示缓存列表的类型，区分数据块的缓存状态（等待缓存、已缓存、等待取消缓存）
 
     CachedBlocksList(DatanodeDescriptor datanode, Type type) {
       this.datanode = datanode;
@@ -191,9 +192,11 @@ public class DatanodeDescriptor extends DatanodeInfo {
   // following 'bandwidth' variable gets updated with the new value for each
   // node. Once the heartbeat command is issued to update the value on the
   // specified datanode, this value will be set back to 0.
+  //均衡器带宽，通过"dfsadmin -setBalanacerBandwidth <newbandwidth>" 设置
   private long bandwidth;
 
   /** A queue of blocks to be replicated by this datanode */
+  //保存要在当前DataNode上复制的副本队列
   private final BlockQueue<BlockTargetPair> replicateBlocks =
       new BlockQueue<>();
   /** A queue of ec blocks to be replicated by this datanode. */
@@ -202,8 +205,10 @@ public class DatanodeDescriptor extends DatanodeInfo {
   private final BlockQueue<BlockECReconstructionInfo> ecBlocksToBeErasureCoded =
       new BlockQueue<>();
   /** A queue of blocks to be recovered by this datanode */
+  //保存要在当前DataNode上进行数据回复操作的副本队列
   private final BlockQueue<BlockInfo> recoverBlocks = new BlockQueue<>();
   /** A set of blocks to be invalidated by this datanode */
+  //要在DataNode上进行删除操作的副本队列
   private final LightWeightHashSet<Block> invalidateBlocks =
       new LightWeightHashSet<>();
 
@@ -592,11 +597,11 @@ public class DatanodeDescriptor extends DatanodeInfo {
       }
     }
   }
-
+  //目的是高效地遍历存储在不同存储介质（DatanodeStorageInfo）中的数据块，并提供一种方法来跳过某些存储介质中的块
   private static class BlockIterator implements Iterator<BlockInfo> {
-    private int index = 0;
-    private final List<Iterator<BlockInfo>> iterators;
-    
+    private int index = 0; //当前遍历的迭代器在 iterators 列表中的索引，指示当前应使用哪个存储的迭代器
+    private final List<Iterator<BlockInfo>> iterators;//存储每个 DatanodeStorageInfo 中的 BlockInfo 迭代器列表。每个 DatanodeStorageInfo 对象对应一个迭代器，允许遍历该存储中的块
+    //startBlock 表示开始遍历的块的索引，跳过前面的块直到到达这个位置
     private BlockIterator(final int startBlock,
                           final DatanodeStorageInfo... storages) {
       if(startBlock < 0) {
@@ -609,7 +614,7 @@ public class DatanodeDescriptor extends DatanodeInfo {
       for (DatanodeStorageInfo e : storages) {
         int numBlocks = e.numBlocks();
         sumBlocks += numBlocks;
-        if(sumBlocks <= startBlock) {
+        if(sumBlocks <= startBlock) { //如果某个存储的块数总和小于等于 startBlock，则跳过该存储中的所有块，并更新 s
           s -= numBlocks;
         } else {
           iterators.add(e.getBlockIterator());
@@ -894,16 +899,16 @@ public class DatanodeDescriptor extends DatanodeInfo {
     // by DatanodeID
     return (this == obj) || super.equals(obj);
   }
-
+  //用于跟踪和管理在 HDFS 中离开服务节点的状态的类，通常用于节点正在进行 去委托（decommission） 或 维护模式 时的状态管理。该类包含了与数据块复制、状态标识和时间跟踪等相关的信息
   /** Leaving service status. */
   public class LeavingServiceStatus {
-    private int underReplicatedBlocks;
-    private int underReplicatedBlocksInOpenFiles;
-    private int outOfServiceOnlyReplicas;
+    private int underReplicatedBlocks;//记录离开服务的节点中 不足复制 的数据块数量
+    private int underReplicatedBlocksInOpenFiles;//记录在打开文件中的 不足复制 的数据块数量
+    private int outOfServiceOnlyReplicas;//记录那些只有 离线副本 的数据块的数量
     private LightWeightHashSet<Long> underReplicatedOpenFiles =
-        new LightWeightLinkedSet<>();
-    private long startTime;
-    
+        new LightWeightLinkedSet<>();//一个集合，包含那些在打开文件中的 不足复制 数据块的文件ID
+    private long startTime;//记录开始去委托或进入维护模式的时间
+    //更新 LeavingServiceStatus 类的多个属性，记录当前离开服务节点的状态
     synchronized void set(int lowRedundancyBlocksInOpenFiles,
         LightWeightHashSet<Long> underRepInOpenFiles,
         int underRepBlocks, int outOfServiceOnlyRep) {

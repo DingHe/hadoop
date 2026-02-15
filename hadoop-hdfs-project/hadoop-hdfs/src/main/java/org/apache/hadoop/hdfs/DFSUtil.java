@@ -1197,15 +1197,15 @@ public class DFSUtil {
    * @throws HadoopIllegalArgumentException on error
    */
   private static String getNameServiceId(Configuration conf, String addressKey) {
-    String nameserviceId = conf.get(DFS_NAMESERVICE_ID);
+    String nameserviceId = conf.get(DFS_NAMESERVICE_ID); //尝试从配置中直接获取 DFS_NAMESERVICE_ID 的值。这个配置项直接指定了 nameservice 的 ID。如果存在，方法会直接返回这个 ID
     if (nameserviceId != null) {
       return nameserviceId;
     }
     Collection<String> nsIds = DFSUtilClient.getNameServiceIds(conf);
-    if (1 == nsIds.size()) {
+    if (1 == nsIds.size()) { //如果配置中只有一个 nameservice ID（即集合大小为 1），则直接返回这个唯一的 ID
       return nsIds.toArray(new String[1])[0];
     }
-    String nnId = conf.get(DFS_HA_NAMENODE_ID_KEY);
+    String nnId = conf.get(DFS_HA_NAMENODE_ID_KEY); //如果存在多个 nameservice ID，方法会获取当前节点的 Namenode ID（通过 DFS_HA_NAMENODE_ID_KEY 配置项）。这是在高可用模式下，每个节点都会有一个唯一的 Namenode ID
     
     return getSuffixIDs(conf, addressKey, null, nnId, LOCAL_ADDRESS_MATCHER)[0];
   }
@@ -1517,25 +1517,25 @@ public class DFSUtil {
 
   /**
    * Parse the arguments for commands
-   * 
-   * @param args the argument to be parsed
-   * @param helpDescription help information to be printed out
-   * @param out Printer
-   * @param printGenericCommandUsage whether to print the 
+   * Hadoop HDFS 命令行工具解析，提供详细的帮助说明和通用选项指引
+   * @param args the argument to be parsed  命令行参数，需要解析的输入参数数组。
+   * @param helpDescription help information to be printed out  帮助信息，当检测到帮助选项时输出的说明。
+   * @param out Printer  输出流，用于打印帮助信息或通用命令用法。
+   * @param printGenericCommandUsage whether to print the  是否打印通用命令用法，指定是否输出 ToolRunner 提供的通用帮助信息。
    *              generic command usage defined in ToolRunner
    * @return true when the argument matches help option, false if not
    */
   public static boolean parseHelpArgument(String[] args,
       String helpDescription, PrintStream out, boolean printGenericCommandUsage) {
-    if (args.length == 1) {
+    if (args.length == 1) { // 如果参数长度为1，才解析帮助选项，避免无效解析
       try {
         CommandLineParser parser = new PosixParser();
         CommandLine cmdLine = parser.parse(helpOptions, args);
         if (cmdLine.hasOption(helpOpt.getOpt())
-            || cmdLine.hasOption(helpOpt.getLongOpt())) {
+            || cmdLine.hasOption(helpOpt.getLongOpt())) { //// 如果检测到帮助选项（-h 或 --help）
           // should print out the help information
           out.println(helpDescription + "\n");
-          if (printGenericCommandUsage) {
+          if (printGenericCommandUsage) { //// 如果 printGenericCommandUsage 为 true，则打印通用命令帮助信息
             ToolRunner.printGenericCommandUsage(out);
           }
           return true;

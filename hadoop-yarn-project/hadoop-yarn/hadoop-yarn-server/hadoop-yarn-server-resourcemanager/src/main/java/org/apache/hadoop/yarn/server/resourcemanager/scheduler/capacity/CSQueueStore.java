@@ -31,18 +31,29 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
+// 用于管理 CapacityScheduler 中的队列（CSQueue）。
+// 它维护了一个数据存储，允许通过队列的全名（完整路径）或短名（名称）进行查询，并提供线程安全的操作，如添加、删除和查找队列。
+//其核心功能包括：
+//存储所有的 CSQueue 队列，并以队列路径（全名）作为唯一键。
+//维护短名到完整路径的映射，支持短名称查询，并解决短名冲突的问题。
+//提供线程安全的方式（读写锁）来修改队列存储，避免并发问题。
+//支持通过全名或短名获取队列，能够检测短名是否存在歧义
+
 public class CSQueueStore {
   //This map is the single source of truth, this will store ALL queues
   //using the queue path as the key
+  //存储所有 CSQueue 队列，以 完整路径（全名） 作为键，队列对象为值
   private final Map<String, CSQueue> fullNameQueues = new HashMap<>();
 
   //this map will contain all short names and the paths they can be derived from
   //this set is required for remove operation to properly set the short name
   //mapping when the ambiguity is resolved.
+  //维护 短名到完整路径的映射关系
   private final Map<String, Set<String>> shortNameToLongNames = new HashMap<>();
 
   //This map will store the result to the get calls to prevent unnecessary
   //checks, this will be updated on queue add / remove
+  //缓存 get 方法的查询结果，减少不必要的查询计算，提高查询效率
   private final Map<String, CSQueue> getMap = new HashMap<>();
 
   //this lock will be used to make sure isAmbiguous can be called parallel
@@ -64,6 +75,7 @@ public class CSQueueStore {
    * as the key.
    * @return Map containing queues and having short name as key
    */
+  //返回值：不可变映射，短名 -> CSQueue（仅包含无二义性的短名
   @VisibleForTesting
   Map<String, CSQueue> getShortNameQueues() {
     //this is not the most efficient way to create a short named list
@@ -99,6 +111,7 @@ public class CSQueueStore {
    * on how many queues are present with the same shortname.
    * @param shortName The short name of the queue to be updated
    */
+  //更新 getMap，确保短名能够正确解析到唯一的 CSQueue
   private void updateGetMapForShortName(String shortName) {
     //we protect the root, since root can be both a full path and a short name
     //we simply deny adding root as a shortname to the getMap.

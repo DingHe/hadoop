@@ -44,23 +44,29 @@ import org.slf4j.Logger;
  * 2)  a coarse grain timer to track age of reconstruction request
  * 3)  a thread that periodically identifies reconstruction-requests
  *     that never made it.
- *
+ *用于管理和监控 Hadoop HDFS 中正在进行重建的块。它负责记录和追踪块的重建请求，确保在块的副本丢失时能够及时重新复制数据块
  ***************************************************/
 class PendingReconstructionBlocks {
   private static final Logger LOG = BlockManager.LOG;
-
+  //存储正在进行重建的块信息，PendingBlockInfo 存储了该块的重建状态、目标 DataNode 信息等
   private final Map<BlockInfo, PendingBlockInfo> pendingReconstructions;
+  //存储已经超时的块，用来跟踪超时的重建请求
   private final ArrayList<BlockInfo> timedOutItems;
+  //用于定期检查块的重建是否超时
   Daemon timerThread = null;
+  //表示文件系统是否正在运行。用于控制定时器线程的运行
   private volatile boolean fsRunning = true;
+  //记录超时的重建请求数量
   private long timedOutCount = 0L;
 
   //
   // It might take anywhere between 5 to 10 minutes before
   // a request is timed out.
   //
+  //超时期限，单位是毫秒，表示一个块的重建请求超时需要多长时间
   private volatile long timeout =
       DFS_NAMENODE_RECONSTRUCTION_PENDING_TIMEOUT_SEC_DEFAULT * 1000;
+  //默认重新检查的时间间隔，设置为5分钟（5 * 60 * 1000毫秒）
   private final static long DEFAULT_RECHECK_INTERVAL = 5 * 60 * 1000;
 
   PendingReconstructionBlocks(long timeoutPeriod) {
@@ -253,7 +259,7 @@ class PendingReconstructionBlocks {
     }
   }
 
-  /*
+  /*用于检查并处理所有未完成的重建请求。其主要功能是定期扫描所有的重建请求，检测哪些请求超时，并进行处理
    * A periodic thread that scans for blocks that never finished
    * their reconstruction request.
    */
@@ -283,7 +289,7 @@ class PendingReconstructionBlocks {
         while (iter.hasNext()) {
           Map.Entry<BlockInfo, PendingBlockInfo> entry = iter.next();
           PendingBlockInfo pendingBlock = entry.getValue();
-          if (now > pendingBlock.getTimeStamp() + timeout) {
+          if (now > pendingBlock.getTimeStamp() + timeout) {  //超时就加入timedOutItems低劣
             BlockInfo block = entry.getKey();
             synchronized (timedOutItems) {
               timedOutItems.add(block);

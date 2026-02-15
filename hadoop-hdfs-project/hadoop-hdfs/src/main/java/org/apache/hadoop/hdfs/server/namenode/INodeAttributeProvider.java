@@ -29,7 +29,8 @@ import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
 
 import java.util.Arrays;
-
+//主要用于自定义 INode（HDFS 文件或目录的元数据节点）的属性获取逻辑，
+// 允许外部实现类覆盖默认的属性检查、访问控制逻辑。此类通过扩展，能够增强 NameNode 对文件系统的权限和属性管理
 @InterfaceAudience.Public
 @InterfaceStability.Unstable
 public abstract class INodeAttributeProvider {
@@ -351,7 +352,11 @@ public abstract class INodeAttributeProvider {
     }
   }
 
-  /**
+  /** 自定义权限校验逻辑的接口，允许开发者根据需求覆盖 HDFS 默认的文件系统权限检查
+   * 适用场景：
+   * 扩展权限控制：适配企业级需求，集成外部认证系统（如 LDAP、Kerberos）
+   * 操作审计：记录被拒绝的访问请求，支持安全合规性要求
+   * 复杂权限模型：实现比 HDFS 默认更精细的访问控制策略
    * The AccessControlEnforcer allows implementations to override the
    * default File System permission checking logic enforced on a file system
    * object
@@ -383,6 +388,7 @@ public abstract class INodeAttributeProvider {
      * instead
      * @throws AccessControlException
      */
+    //对文件系统对象执行权限检查，如果调用用户无权访问该对象，则抛出 AccessControlException 异常
     public abstract void checkPermission(String fsOwner, String supergroup,
         UserGroupInformation callerUgi, INodeAttributes[] inodeAttrs,
         INode[] inodes, byte[][] pathByNameArr, int snapshotId, String path,
@@ -399,6 +405,8 @@ public abstract class INodeAttributeProvider {
      *                     operation.
      * @throws AccessControlException
      */
+    //使用 AuthorizationContext 对象执行权限检查
+    //如果未实现此方法，默认抛出异常，提示未覆盖该方法
     default void checkPermissionWithContext(AuthorizationContext authzContext)
         throws AccessControlException {
       throw new AccessControlException("The authorization provider does not "
@@ -416,6 +424,7 @@ public abstract class INodeAttributeProvider {
      * @throws AccessControlException - if user is not a super user or part
      * of the super user group.
      */
+    //检查调用者是否为超级用户或属于超级用户组，如果不满足条件则抛出异常
     default void checkSuperUserPermissionWithContext(
         AuthorizationContext authzContext)
         throws AccessControlException {
@@ -440,6 +449,7 @@ public abstract class INodeAttributeProvider {
      *                     operation.
      * @throws AccessControlException
      */
+    //用于在拒绝用户访问时通知外部权限系统（如审计系统），并抛出异常
     default void denyUserAccess(AuthorizationContext authzContext,
                                 String errorMessage)
         throws AccessControlException {
@@ -447,25 +457,29 @@ public abstract class INodeAttributeProvider {
     }
   }
 
-  /**
+  /**在 NameNode 启动时调用，初始化 INodeAttributeProvider，用于设置自定义的 INode 属性处理逻辑
    * Initialize the provider. This method is called at NameNode startup
    * time.
    */
   public abstract void start();
 
-  /**
+  /**在 NameNode 关闭时调用，进行资源清理，确保自定义属性提供器的安全退出
    * Shutdown the provider. This method is called at NameNode shutdown time.
    */
   public abstract void stop();
-
+  //将传入的 HDFS 路径字符串解析为路径元素数组
+  //返回值 String[]：路径元素的字符串数组，如 /a/b/c → ["a", "b", "c"]
   @Deprecated
   String[] getPathElements(String path) {
     path = path.trim();
+    //如果路径不是以 / 开头，抛出 IllegalArgumentException 异常，路径必须是绝对路径
     if (path.charAt(0) != Path.SEPARATOR_CHAR) {
       throw new IllegalArgumentException("It must be an absolute path: " +
           path);
     }
+    //统计路径中 / 出现的次数，确定路径元素数量
     int numOfElements = StringUtils.countMatches(path, Path.SEPARATOR);
+    //如果路径以 / 结尾，减少一个元素数量（避免空元素）
     if (path.length() > 1 && path.endsWith(Path.SEPARATOR)) {
       numOfElements--;
     }
@@ -490,10 +504,10 @@ public abstract class INodeAttributeProvider {
   public INodeAttributes getAttributes(String fullPath, INodeAttributes inode) {
     return getAttributes(getPathElements(fullPath), inode);
   }
-
+  //通过路径字符串获取指定 INode 的属性
   public abstract INodeAttributes getAttributes(String[] pathElements,
       INodeAttributes inode);
-
+  //通过路径元素数组解析 INode 属性，提供自定义的属性获取逻辑
   public INodeAttributes getAttributes(byte[][] components,
       INodeAttributes inode) {
     String[] elements = new String[components.length];
@@ -510,6 +524,7 @@ public abstract class INodeAttributeProvider {
    * @param defaultEnforcer The Default AccessControlEnforcer
    * @return The AccessControlEnforcer to use
    */
+  //允许提供自定义的权限检查器，替代 HDFS 默认的权限检查逻辑
   public AccessControlEnforcer getExternalAccessControlEnforcer(
       AccessControlEnforcer defaultEnforcer) {
     return defaultEnforcer;

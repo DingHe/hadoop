@@ -21,7 +21,7 @@ package org.apache.hadoop.io;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 
-/**
+/** 用于比较二进制数据的抽象类，主要用于实现二进制数据的排序、比较和哈希计算。它实现了 Comparable<BinaryComparable> 接口，允许对象按字节序进行比较
  * Interface supported by {@link org.apache.hadoop.io.WritableComparable}
  * types supporting ordering/permutation by a representative set of bytes.
  */
@@ -34,14 +34,14 @@ public abstract class BinaryComparable implements Comparable<BinaryComparable> {
    *
    * @return length.
    */
-  public abstract int getLength();
+  public abstract int getLength(); // 返回有效字节长度
 
   /**
    * Return representative byte array for this instance.
    *
    * @return getBytes.
    */
-  public abstract byte[] getBytes();
+  public abstract byte[] getBytes(); // 返回字节数组
 
   /**
    * Compare bytes from {#getBytes()}.
@@ -49,15 +49,15 @@ public abstract class BinaryComparable implements Comparable<BinaryComparable> {
    */
   @Override
   public int compareTo(BinaryComparable other) {
-    if (this == other)
+    if (this == other)  // 同一个对象，直接返回相等
       return 0;
     return WritableComparator.compareBytes(getBytes(), 0, getLength(),
-             other.getBytes(), 0, other.getLength());
+             other.getBytes(), 0, other.getLength());  //比较当前对象的字节数组和另一个对象的字节数组
   }
 
   /**
    * Compare bytes from {#getBytes()} to those provided.
-   *
+   *  允许与普通的字节数组进行比较，灵活处理不同来源的数据
    * @param other other.
    * @param off off.
    * @param len len.

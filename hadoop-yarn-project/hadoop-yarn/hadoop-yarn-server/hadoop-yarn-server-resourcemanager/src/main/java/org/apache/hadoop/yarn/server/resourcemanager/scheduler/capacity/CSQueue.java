@@ -56,10 +56,12 @@ import org.apache.hadoop.classification.VisibleForTesting;
  * <code>CSQueue</code> represents a node in the tree of 
  * hierarchical queues in the {@link CapacityScheduler}.
  */
+//CSQueue 代表一个层次化队列（Queue Tree）中的一个节点，支持父子队列结构，确保资源公平和高效分配。
+// 它提供了队列的基本信息（名称、容量、状态等），并管理应用程序的提交、资源分配、容器完成等调度行为
 @Stable
 @Private
 public interface CSQueue extends SchedulerQueue<CSQueue> {
-  /**
+  /**获取/设置父队列（支持层次化结构）
    * Get the parent <code>Queue</code>.
    * @return the parent queue
    */
@@ -71,7 +73,7 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
    */
   public void setParent(CSQueue newParentQueue);
 
-  /**
+  /**获取队列的名称（完整名称或短名称）
    * Get the queue's internal reference name.
    * @return the queue name
    */
@@ -83,7 +85,7 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
    */
   String getQueueShortName();
 
-  /**
+  /**获取队列的完整路径（包括层次结构）
    * Get the full name of the queue, including the heirarchy.
    * @return the full name of the queue
    */
@@ -95,15 +97,15 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
    */
   QueuePath getQueuePathObject();
 
-  /**
+  /**判断是否是动态创建的队列
    * Checks whether the queue is a dynamic queue (created dynamically in the fashion of auto queue
    * creation v2).
    * @return true, if it is a dynamic queue, false otherwise
    */
   boolean isDynamicQueue();
-
+  //获取该队列的权限实体信息。
   public PrivilegedEntity getPrivilegedEntity();
-
+  //获取该队列的最大/最小资源分配。
   Resource getMaximumAllocation();
 
   Resource getMinimumAllocation();
@@ -112,6 +114,7 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
    * Get the configured <em>capacity</em> of the queue.
    * @return configured queue capacity
    */
+  //获取队列的相对/绝对容量（即整个集群资源的百分比）。
   public float getCapacity();
 
   /**
@@ -122,7 +125,7 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
    */
   public float getAbsoluteCapacity();
 
-  /**
+  /**获取队列的最大相对/绝对容量。
    * Get the configured maximum-capacity of the queue. 
    * @return the configured maximum-capacity of the queue
    */
@@ -136,14 +139,14 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
    */
   public float getAbsoluteMaximumCapacity();
   
-  /**
+  /**获取队列相对于整个集群的已用资源占比。
    * Get the current absolute used capacity of the queue
    * relative to the entire cluster.
    * @return queue absolute used capacity
    */
   public float getAbsoluteUsedCapacity();
 
-  /**
+  /**获取队列的当前使用容量（不考虑标签）。
    * Get the current used capacity of nodes without label(s) of the queue
    * and it's children (if any).
    * @return queue used capacity
@@ -153,7 +156,7 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
   /**
    * Get the currently utilized resources which allocated at nodes without any
    * labels in the cluster by the queue and children (if any).
-   * 
+   * 获取队列当前已使用的资源（单位：CPU、内存等）。
    * @return used resources by the queue and it's children
    */
   public Resource getUsedResources();
@@ -164,7 +167,7 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
    */
   public QueueState getState();
 
-  /**
+  /**获取队列支持的最大并行应用程序数量。
    * Get the max-parallel-applications property of the queue
    * @return max-parallel-applications
    */
@@ -176,7 +179,7 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
    */
   public List<CSQueue> getChildQueues();
   
-  /**
+  /**检查用户是否有权限访问该队列。
    * Check if the <code>user</code> has permission to perform the operation
    * @param acl ACL
    * @param user user
@@ -185,7 +188,7 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
    */
   public boolean hasAccess(QueueACL acl, UserGroupInformation user);
   
-  /**
+  /**应用程序提交
    * Submit a new application to the queue.
    * @param applicationId the applicationId of the application being submitted
    * @param user user who submitted the application
@@ -213,7 +216,7 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
   public void submitApplicationAttempt(FiCaSchedulerApp application,
       String userName, boolean isMoveApp);
 
-  /**
+  /** 应用程序完成
    * An application submitted to this queue has finished.
    * @param applicationId applicationId.
    * @param user user who submitted the application
@@ -229,14 +232,14 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
   public void finishApplicationAttempt(FiCaSchedulerApp application,
       String queue);
 
-  /**
+  /** 容器（Container）管理
    * Assign containers to applications in the queue or it's children (if any).
-   * @param clusterResource the resource of the cluster.
+   * @param clusterResource the resource of the cluster.  集群总资源
    * @param candidates {@link CandidateNodeSet} the nodes that are considered
-   *                   for the current placement.
-   * @param resourceLimits how much overall resource of this queue can use. 
+   *                   for the current placement. 可选节点集合（即在哪些节点上放置容器）
+   * @param resourceLimits how much overall resource of this queue can use.   队列可使用的最大资源
    * @param schedulingMode Type of exclusive check when assign container on a 
-   * NodeManager, see {@link SchedulingMode}.
+   * NodeManager, see {@link SchedulingMode}.  调度模式（是否启用排他资源检查）
    * @return the assignment
    */
   public CSAssignment assignContainers(Resource clusterResource,
@@ -245,24 +248,25 @@ public interface CSQueue extends SchedulerQueue<CSQueue> {
   
   /**
    * A container assigned to the queue has completed.
-   * @param clusterResource the resource of the cluster
-   * @param application application to which the container was assigned
-   * @param node node on which the container completed
-   * @param container completed container, 
+   * @param clusterResource the resource of the cluster 集群资源
+   * @param application application to which the container was assigned  容器所属的应用
+   * @param node node on which the container completed  容器所在节点
+   * @param container completed container,  已完成的容器
    *                  <code>null</code> if it was just a reservation
    * @param containerStatus <code>ContainerStatus</code> for the completed 
-   *                        container
+   *                        container 容器的完成状态
    * @param childQueue <code>CSQueue</code> to reinsert in childQueues 
-   * @param event event to be sent to the container
+   * @param event event to be sent to the container  容器事件（如失败或成功）
    * @param sortQueues indicates whether it should re-sort the queues
    */
+  //释放容器占用的资源
   public void completedContainer(Resource clusterResource,
       FiCaSchedulerApp application, FiCaSchedulerNode node, 
       RMContainer container, ContainerStatus containerStatus, 
       RMContainerEventType event, CSQueue childQueue,
       boolean sortQueues);
 
-  /**
+  /**返回队列的所有应用的数量
    * Get the number of applications in the queue.
    * @return number of applications
    */

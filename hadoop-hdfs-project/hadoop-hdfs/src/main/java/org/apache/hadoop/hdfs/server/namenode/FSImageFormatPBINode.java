@@ -626,12 +626,13 @@ public final class FSImageFormatPBINode {
   // the saver can directly write out fields referencing serial numbers.
   // the serial number maps will be compacted when loading.
   public final static class Saver {
-    private long numImageErrors;
-
+    private long numImageErrors;//记录在序列化过程中检测到的非致命错误数量的属性
+    //将 INodeAttributes 对象的权限信息转换为一个长整型值
     private static long buildPermissionStatus(INodeAttributes n) {
       return n.getPermissionLong();
     }
-
+    //AclFeature f —— 存储 ACL（访问控制列表）信息的对象
+    //将 AclFeature 对象中的所有 ACL 条目转换为 AclFeatureProto，即 Protobuf 格式的 ACL 条目集合。它通过遍历 f 的所有条目并将其添加到构建器
     private static AclFeatureProto.Builder buildAclEntries(AclFeature f) {
       AclFeatureProto.Builder b = AclFeatureProto.newBuilder();
       for (int pos = 0, e; pos < f.getEntriesSize(); pos++) {
@@ -640,7 +641,8 @@ public final class FSImageFormatPBINode {
       }
       return b;
     }
-
+    //XAttrFeature f —— 存储扩展属性（XAttrs）的对象
+    //将 XAttrFeature 对象中的每个扩展属性转换为 XAttrCompactProto，并将其构建为 XAttrFeatureProto。扩展属性是文件的附加元数据，如用户自定义的属性
     private static XAttrFeatureProto.Builder buildXAttrs(XAttrFeature f) {
       XAttrFeatureProto.Builder b = XAttrFeatureProto.newBuilder();
       for (XAttr a : f.getXAttrs()) {
@@ -656,7 +658,8 @@ public final class FSImageFormatPBINode {
       
       return b;
     }
-
+    //QuotaCounts q —— 存储配额信息的对象，包含不同存储类型的配额数据
+    //将 QuotaCounts 对象中的每种存储类型的配额数据转换为 QuotaByStorageTypeFeatureProto。它会遍历所有支持配额的存储类型，并将每种类型的配额数据添加到构建器中
     private static QuotaByStorageTypeFeatureProto.Builder
         buildQuotaByStorageTypeEntries(QuotaCounts q) {
       QuotaByStorageTypeFeatureProto.Builder b =
@@ -672,7 +675,8 @@ public final class FSImageFormatPBINode {
       }
       return b;
     }
-
+   //INodeFileAttributes file —— 文件的 inode 属性对象，包含文件的各种属性信息
+    //将文件的属性转换为 INodeSection.INodeFile.Builder 对象，包括文件的访问时间、修改时间、权限、块大小等属性。如果文件是条带化的（使用了 Erasure Coding），还会保存相应的编码策略信息
     public static INodeSection.INodeFile.Builder buildINodeFile(
         INodeFileAttributes file, final SaverContext state) {
       INodeSection.INodeFile.Builder b = INodeSection.INodeFile.newBuilder()
@@ -699,7 +703,8 @@ public final class FSImageFormatPBINode {
       }
       return b;
     }
-
+    //INodeDirectoryAttributes dir —— 目录的 inode 属性对象，包含目录的各种属性信息
+    //将目录的属性转换为 INodeSection.INodeDirectory.Builder 对象，包括目录的修改时间、配额信息、权限等。如果目录有子目录或文件，方法还会将配额信息和 ACL 数据保存
     public static INodeSection.INodeDirectory.Builder buildINodeDirectory(
         INodeDirectoryAttributes dir, final SaverContext state) {
       QuotaCounts quota = dir.getQuotaCounts();
@@ -723,10 +728,13 @@ public final class FSImageFormatPBINode {
       }
       return b;
     }
-
+    //表示 HDFS 的文件系统名称系统,负责管理 HDFS 上的文件和目录结构，支持创建、删除、重命名文件/目录等操作
     private final FSNamesystem fsn;
+    //用于构建并存储文件摘要信息
     private final FileSummary.Builder summary;
+    //提供与当前保存文件系统镜像相关的上下文信息
     private final SaveNamespaceContext context;
+    //表示父类保存器，负责处理文件系统镜像的更高层次的保存逻辑
     private final FSImageFormatProtobuf.Saver parent;
 
     Saver(FSImageFormatProtobuf.Saver parent, FileSummary.Builder summary) {
@@ -736,21 +744,25 @@ public final class FSImageFormatPBINode {
       this.fsn = context.getSourceNamesystem();
       this.numImageErrors = 0;
     }
-
+    //用于将 INode 目录部分的数据序列化到输出流中。它的目标是遍历并处理所有的目录节点，并将每个目录的子节点（即目录的子文件或子目录）信息保存到指定的输出流中
     void serializeINodeDirectorySection(OutputStream out) throws IOException {
+      //获取 FSDirectory，它是 HDFS 文件系统目录的核心
       FSDirectory dir = fsn.getFSDirectory();
+      //获取 INodeMap 的迭代器
       Iterator<INodeWithAdditionalFields> iter = dir.getINodeMap()
           .getMapIterator();
+      //初始化参考列表
       final ArrayList<INodeReference> refList = parent.getSaverContext()
           .getRefList();
       int i = 0;
       int outputInodes = 0;
+      //遍历 INodeMap 中的每个节点，如果当前节点是目录类型，则处理它
       while (iter.hasNext()) {
         INodeWithAdditionalFields n = iter.next();
         if (!n.isDirectory()) {
           continue;
         }
-
+        //获取目录子节点
         ReadOnlyList<INode> children = n.asDirectory().getChildrenList(
             Snapshot.CURRENT_STATE_ID);
         if (children.size() > 0) {
@@ -758,6 +770,7 @@ public final class FSImageFormatPBINode {
               DirEntry.newBuilder().setParent(n.getId());
           for (INode inode : children) {
             // Error if the child inode doesn't exist in inodeMap
+            //如果子节点的 ID 在 INodeMap 中找不到对应的 INode，则记录错误，说明该子节点丢失
             if (dir.getInode(inode.getId()) == null) {
               FSImage.LOG.error(
                   "FSImageFormatPBINode#serializeINodeDirectorySection: " +
@@ -781,17 +794,19 @@ public final class FSImageFormatPBINode {
           INodeDirectorySection.DirEntry e = b.build();
           e.writeDelimitedTo(out);
         }
-
+        //每隔一定数量的节点检查取消状态
         ++i;
         if (i % FSImageFormatProtobuf.Saver.CHECK_CANCEL_INTERVAL == 0) {
           context.checkCancelled();
         }
+        //每处理一定数量的节点提交子部分
         if (outputInodes >= parent.getInodesPerSubSection()) {
           outputInodes = 0;
           parent.commitSubSection(summary,
               FSImageFormatProtobuf.SectionName.INODE_DIR_SUB);
         }
       }
+      //序列化完成后提交整个部分
       parent.commitSectionAndSubSection(summary,
           FSImageFormatProtobuf.SectionName.INODE_DIR,
           FSImageFormatProtobuf.SectionName.INODE_DIR_SUB);

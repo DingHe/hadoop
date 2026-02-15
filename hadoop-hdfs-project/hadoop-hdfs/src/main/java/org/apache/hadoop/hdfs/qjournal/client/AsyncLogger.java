@@ -46,6 +46,12 @@ import org.apache.hadoop.thirdparty.com.google.common.util.concurrent.Listenable
  * implementation.</li>
  * </ul>
  */
+//用于异步与远程JournalNode进行交互的接口，主要围绕 JournalNode 的日志管理进行操作，封装了对 QJournalProtocol 接口的异步调用。该接口的主要作用包括：
+//异步写入事务日志：将 HDFS 的编辑日志（edits）发送到远程节点。
+//日志段管理：支持日志段的开始、完成和清理操作。
+//恢复与故障处理：提供日志恢复、数据回滚等功能，保证 HDFS 在崩溃时的数据完整性和一致性。
+//日志元数据查询：获取远程节点的日志状态、已提交事务 ID、可用日志段等信息。
+//升级和回滚：支持 HDFS 升级和回滚操作，确保数据兼容性和系统平稳升级
 interface AsyncLogger {
   
   interface Factory {
@@ -60,6 +66,11 @@ interface AsyncLogger {
    * @param numTxns the number of transactions in the batch
    * @param data the actual data to be sent
    */
+  //向远程 JournalNode 发送一批编辑日志，保证事务的持久化
+  //segmentTxId：当前日志段的起始事务 ID，用于标识一个日志文件
+  //firstTxnId：本次批量事务的第一个事务 ID，确保事务的有序性和一致性
+  //numTxns：事务数量，表示本次批量操作中包含多少个事务
+  //data：编辑日志的二进制数据，通常是 HDFS 操作的序列化结果
   public ListenableFuture<Void> sendEdits(
       final long segmentTxId, final long firstTxnId,
       final int numTxns, final byte[] data);
@@ -70,6 +81,9 @@ interface AsyncLogger {
    * @param txid the first txid to be written to the new log
    * @param layoutVersion the LayoutVersion of the log
    */
+  //在 JournalNode 上启动一个新的日志段，通常在 HDFS 开始新的写入周期时调用
+  //txid：新日志段的第一个事务 ID，表示新日志的起点
+  //layoutVersion：HDFS 的布局版本，确保数据格式与 JournalNode 兼容
   public ListenableFuture<Void> startLogSegment(long txid, int layoutVersion);
 
   /**
@@ -78,6 +92,9 @@ interface AsyncLogger {
    * @param startTxId the first txid that was written to the segment
    * @param endTxId the last txid that was written to the segment
    */
+  //在 JournalNode 上完成一个日志段，确保事务已持久化并标记为不可修改
+  //startTxId：该日志段的起始事务 ID
+  //endTxId：该日志段的结束事务 ID
   public ListenableFuture<Void> finalizeLogSegment(
       long startTxId, long endTxId);
 
@@ -85,6 +102,7 @@ interface AsyncLogger {
    * Allow the remote node to purge edit logs earlier than this.
    * @param minTxIdToKeep the min txid which must be retained
    */
+  //删除 JournalNode 上比 minTxIdToKeep 旧的日志段，节省存储空间
   public ListenableFuture<Void> purgeLogsOlderThan(long minTxIdToKeep);
 
   /**
@@ -92,11 +110,13 @@ interface AsyncLogger {
    * @param nsInfo the namespace info to format with
    * @param force the force option to format
    */
+  //格式化远程 JournalNode，清空所有日志数据
   public ListenableFuture<Void> format(NamespaceInfo nsInfo, boolean force);
 
   /**
    * @return whether or not the remote node has any valid data.
    */
+  //检查 JournalNode 是否已经格式化，是否具备有效数据
   public ListenableFuture<Boolean> isFormatted();
   
   /**

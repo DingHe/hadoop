@@ -64,37 +64,51 @@ import static org.apache.hadoop.fs.FileUtil.maybeIgnoreMissingDirectory;
  * deal with non-splittable files <i>must</i> override this method, since
  * the default implementation assumes splitting is always possible.
  */
+// FileInputFormat 是所有基于文件的数据输入格式（如 TextInputFormat、SequenceFileInputFormat）的基类。
+// 它的主要作用是管理文件系统中的**输入路径、文件过滤和数据分块（InputSplit）**逻辑。
+// 核心功能概括：
+// 输入路径管理： 提供设置和获取 MapReduce 作业输入路径的静态方法。
+// 文件列表和过滤： 负责递归地遍历输入目录、应用内置的（例如忽略隐藏文件）和用户自定义的路径过滤器，生成最终要处理的文件列表（FileStatus）。
+// 数据分块（Split）逻辑： 实现了将文件列表转换为 Map Task 可以处理的逻辑分块（InputSplit，通常是 FileSplit）的通用算法。这个算法考虑了文件的可拆分性、HDFS 块大小、以及用户设置的最小/最大分块大小限制。
+// 数据本地性： 在生成 Split 时，获取文件的块位置信息，为 Map Task 调度提供数据本地性提示。
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
+  // 用于存储 MapReduce 作业的输入路径列表（逗号分隔）
   public static final String INPUT_DIR = 
     "mapreduce.input.fileinputformat.inputdir";
+  // 用于设置单个 InputSplit 的最大字节大小。
   public static final String SPLIT_MAXSIZE = 
     "mapreduce.input.fileinputformat.split.maxsize";
+  // 用于设置单个 InputSplit 的最小字节大小
   public static final String SPLIT_MINSIZE = 
     "mapreduce.input.fileinputformat.split.minsize";
+  // 用于指定用户自定义的 PathFilter 类，以过滤输入路径中的文件
   public static final String PATHFILTER_CLASS = 
     "mapreduce.input.pathFilter.class";
+  // 用于存储最终确定要处理的输入文件总数（通常在 getSplits 运行后设置）
   public static final String NUM_INPUT_FILES =
     "mapreduce.input.fileinputformat.numinputfiles";
+  // 用于设置是否递归地遍历输入目录下的所有子目录来查找文件
   public static final String INPUT_DIR_RECURSIVE =
     "mapreduce.input.fileinputformat.input.dir.recursive";
   public static final String INPUT_DIR_NONRECURSIVE_IGNORE_SUBDIRS =
     "mapreduce.input.fileinputformat.input.dir.nonrecursive.ignore.subdirs";
+  // 设置在 listStatus 方法中并行获取文件状态信息时使用的线程数，以加速大规模文件列表的生成
   public static final String LIST_STATUS_NUM_THREADS =
       "mapreduce.input.fileinputformat.list-status.num-threads";
   public static final int DEFAULT_LIST_STATUS_NUM_THREADS = 1;
 
   private static final Logger LOG =
       LoggerFactory.getLogger(FileInputFormat.class);
-
+  // 分块计算中的容差因子（默认为 1.1，即 10%）。用于确保剩余文件字节数接近 Split 大小时，仍作为一个 Split 处理，而不是创建一个过小的 Split
   private static final double SPLIT_SLOP = 1.1;   // 10% slop
   
   @Deprecated
   public enum Counter {
     BYTES_READ
   }
-
+  // 内置的路径过滤器。用于忽略以 _ 或 . 开头的文件或目录（如 HDFS 的 _SUCCESS 文件、.crc 文件等）
   private static final PathFilter hiddenFileFilter = new PathFilter(){
       public boolean accept(Path p){
         String name = p.getName(); 
@@ -107,6 +121,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * constructor do. Used by the listPaths() to apply the built-in
    * hiddenFileFilter together with a user provided one (if any).
    */
+  // 多重路径过滤器。 实现了 PathFilter 接口。它接收一个 PathFilter 列表，只有当所有内部过滤器都接受（accept 返回 true）给定的路径时，它才接受该路径
   private static class MultiPathFilter implements PathFilter {
     private List<PathFilter> filters;
 
@@ -129,6 +144,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    *          the job to modify
    * @param inputDirRecursive
    */
+  // 设置作业是否应递归扫描输入目录
   public static void setInputDirRecursive(Job job,
       boolean inputDirRecursive) {
     job.getConfiguration().setBoolean(INPUT_DIR_RECURSIVE,
@@ -149,6 +165,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * Get the lower bound on split size imposed by the format.
    * @return the number of bytes of the minimal split for this format
    */
+  // 获取该具体 InputFormat 实例施加的最小 Split 大小约束。默认返回 1。子类可以重写此方法
   protected long getFormatMinSplitSize() {
     return 1;
   }
@@ -169,6 +186,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param filename the file name to check
    * @return is this file splitable?
    */
+  // 检查给定文件是否可以被拆分成多个 Split。默认返回 true。对于不可拆分的文件格式（如 gzip 压缩文件），子类必须重写此方法返回 false
   protected boolean isSplitable(JobContext context, Path filename) {
     return true;
   }
@@ -178,6 +196,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param job the job to modify
    * @param filter the PathFilter class use for filtering the input paths.
    */
+  // 设置用于过滤输入文件的用户自定义 PathFilter 类
   public static void setInputPathFilter(Job job,
                                         Class<? extends PathFilter> filter) {
     job.getConfiguration().setClass(PATHFILTER_CLASS, filter, 
@@ -189,6 +208,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param job the job to modify
    * @param size the minimum size
    */
+  // 设置 Map Task 处理的 InputSplit 的最小字节大小
   public static void setMinInputSplitSize(Job job,
                                           long size) {
     job.getConfiguration().setLong(SPLIT_MINSIZE, size);
@@ -199,6 +219,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param job the job
    * @return the minimum number of bytes that can be in a split
    */
+  // 获取配置的最小 Split 大小
   public static long getMinSplitSize(JobContext job) {
     return job.getConfiguration().getLong(SPLIT_MINSIZE, 1L);
   }
@@ -208,6 +229,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param job the job to modify
    * @param size the maximum split size
    */
+  // 设置 Map Task 处理的 InputSplit 的最大字节大小
   public static void setMaxInputSplitSize(Job job,
                                           long size) {
     job.getConfiguration().setLong(SPLIT_MAXSIZE, size);
@@ -218,6 +240,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param context the job to look at.
    * @return the maximum number of bytes a split can include
    */
+  // 获取配置的最大 Split 大小
   public static long getMaxSplitSize(JobContext context) {
     return context.getConfiguration().getLong(SPLIT_MAXSIZE, 
                                               Long.MAX_VALUE);
@@ -228,6 +251,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    *
    * @return the PathFilter instance set for the job, NULL if none has been set.
    */
+  // 实例化并返回用户为作业设置的 PathFilter 实例（如果已设置）
   public static PathFilter getInputPathFilter(JobContext context) {
     Configuration conf = context.getConfiguration();
     Class<?> filterClass = conf.getClass(PATHFILTER_CLASS, null,
@@ -248,14 +272,17 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @return array of FileStatus objects
    * @throws IOException if zero items.
    */
+  // 核心文件发现逻辑
   protected List<FileStatus> listStatus(JobContext job
                                         ) throws IOException {
+    // 获取所有输入路径并检查其有效性
     Path[] dirs = getInputPaths(job);
     if (dirs.length == 0) {
       throw new IOException("No input paths specified in job");
     }
     
     // get tokens for all the required FileSystems..
+    // 获取安全凭证
     TokenCache.obtainTokensForNamenodes(job.getCredentials(), dirs, 
                                         job.getConfiguration());
 
@@ -264,6 +291,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
 
     // creates a MultiPathFilter with the hiddenFileFilter and the
     // user provided one (if any).
+    //应用过滤器： 结合内置的 hiddenFileFilter 和用户自定义的 PathFilter 形成 MultiPathFilter
     List<PathFilter> filters = new ArrayList<PathFilter>();
     filters.add(hiddenFileFilter);
     PathFilter jobFilter = getInputPathFilter(job);
@@ -273,7 +301,8 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
     PathFilter inputFilter = new MultiPathFilter(filters);
     
     List<FileStatus> result = null;
-
+    //遍历文件： 根据配置的线程数（LIST_STATUS_NUM_THREADS）选择单线程或多线程方式，
+    // 递归或非递归地遍历路径，生成符合条件的文件状态列表 (FileStatus 或 LocatedFileStatus)
     int numThreads = job.getConfiguration().getInt(LIST_STATUS_NUM_THREADS,
         DEFAULT_LIST_STATUS_NUM_THREADS);
     StopWatch sw = new StopWatch().start();
@@ -435,6 +464,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param job the job context
    * @throws IOException
    */
+  // 核心分块生成逻辑
   public List<InputSplit> getSplits(JobContext job) throws IOException {
     StopWatch sw = new StopWatch().start();
     long minSize = Math.max(getFormatMinSplitSize(), getMinSplitSize(job));
@@ -442,15 +472,18 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
 
     // generate splits
     List<InputSplit> splits = new ArrayList<InputSplit>();
+    // 调用 listStatus 获取所有符合条件的文件列表
     List<FileStatus> files = listStatus(job);
-
+    //是否递归遍历文件目录
     boolean ignoreDirs = !getInputDirRecursive(job)
       && job.getConfiguration().getBoolean(INPUT_DIR_NONRECURSIVE_IGNORE_SUBDIRS, false);
+    //遍历每个文件
     for (FileStatus file: files) {
       if (ignoreDirs && file.isDirectory()) {
         continue;
       }
       Path path = file.getPath();
+      //取到文件的长度
       long length = file.getLen();
       if (length != 0) {
         BlockLocation[] blkLocations;
@@ -460,10 +493,12 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
           FileSystem fs = path.getFileSystem(job.getConfiguration());
           blkLocations = fs.getFileBlockLocations(file, 0, length);
         }
+        //如果文件可拆分（isSplitable 为 true）
         if (isSplitable(job, path)) {
           long blockSize = file.getBlockSize();
+          // 计算 Split 大小（computeSplitSize），该大小是 HDFS 块大小、minSize 和 maxSize 的中值。
           long splitSize = computeSplitSize(blockSize, minSize, maxSize);
-
+          //循环地将文件分割成多个 FileSplit，直到文件结束
           long bytesRemaining = length;
           while (((double) bytesRemaining)/splitSize > SPLIT_SLOP) {
             int blkIndex = getBlockIndex(blkLocations, length-bytesRemaining);
@@ -487,6 +522,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
                   + "is possible: " + file.getPath());
             }
           }
+          //如果文件不可拆分：整个文件被作为一个单独的 FileSplit
           splits.add(makeSplit(path, 0, length, blkLocations[0].getHosts(),
                       blkLocations[0].getCachedHosts()));
         }
@@ -504,7 +540,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
     }
     return splits;
   }
-
+  //计算文件分片的大小
   protected long computeSplitSize(long blockSize, long minSize,
                                   long maxSize) {
     return Math.max(minSize, Math.min(maxSize, blockSize));
@@ -534,6 +570,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param commaSeparatedPaths Comma separated paths to be set as 
    *        the list of inputs for the map-reduce job.
    */
+  // 设置输入路径列表，路径之间用逗号分隔
   public static void setInputPaths(Job job, 
                                    String commaSeparatedPaths
                                    ) throws IOException {
@@ -549,6 +586,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param commaSeparatedPaths Comma separated paths to be added to
    *        the list of inputs for the map-reduce job.
    */
+  // 将额外的输入路径列表添加到现有配置中
   public static void addInputPaths(Job job, 
                                    String commaSeparatedPaths
                                    ) throws IOException {
@@ -564,7 +602,8 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param job The job to modify 
    * @param inputPaths the {@link Path}s of the input directories/files 
    * for the map-reduce job.
-   */ 
+   */
+  // 使用 Path 数组设置输入路径，并将其转换为全限定路径存储在配置中
   public static void setInputPaths(Job job, 
                                    Path... inputPaths) throws IOException {
     Configuration conf = job.getConfiguration();
@@ -585,6 +624,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param path {@link Path} to be added to the list of inputs for 
    *            the map-reduce job.
    */
+  // 向现有输入路径列表添加单个 Path
   public static void addInputPath(Job job, 
                                   Path path) throws IOException {
     Configuration conf = job.getConfiguration();
@@ -641,6 +681,7 @@ public abstract class FileInputFormat<K, V> extends InputFormat<K, V> {
    * @param context The job
    * @return the list of input {@link Path}s for the map-reduce job.
    */
+  // 从配置中读取并返回所有输入路径的 Path 数组。
   public static Path[] getInputPaths(JobContext context) {
     String dirs = context.getConfiguration().get(INPUT_DIR, "");
     String [] list = StringUtils.split(dirs);

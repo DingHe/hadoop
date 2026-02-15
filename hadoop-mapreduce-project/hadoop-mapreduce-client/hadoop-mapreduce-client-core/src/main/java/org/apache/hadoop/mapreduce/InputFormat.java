@@ -83,6 +83,8 @@ public abstract class InputFormat<K, V> {
    * @param context job configuration.
    * @return an array of {@link InputSplit}s for the job.
    */
+  //将作业的输入数据集分割成若干个 InputSplit，
+  //每个 InputSplit 对应一个 Map 任务（Mapper）,切片操作是逻辑切片，并不会真正地对文件进行物理拆分
   public abstract 
     List<InputSplit> getSplits(JobContext context
                                ) throws IOException, InterruptedException;
@@ -97,6 +99,7 @@ public abstract class InputFormat<K, V> {
    * @throws IOException
    * @throws InterruptedException
    */
+  //根据给定的 InputSplit 创建一个 RecordReader 对象，RecordReader 负责将输入数据解析为键值对，并提供给 Mapper 处理
   public abstract 
     RecordReader<K,V> createRecordReader(InputSplit split,
                                          TaskAttemptContext context

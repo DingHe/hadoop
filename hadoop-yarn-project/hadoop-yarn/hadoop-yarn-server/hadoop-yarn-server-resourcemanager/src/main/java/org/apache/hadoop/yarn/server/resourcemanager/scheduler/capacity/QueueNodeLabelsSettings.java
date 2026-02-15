@@ -27,11 +27,17 @@ import java.util.Set;
  * label expression based on the {@link CapacitySchedulerConfiguration} object and other queue
  * properties.
  */
+//管理 YARN CapacityScheduler 队列的节点标签（Node Labels）相关设置
 public class QueueNodeLabelsSettings {
+  //该队列的父队列，方便继承父队列的节点标签信息。
   private final CSQueue parent;
+  //该队列的路径信息，用于从配置中获取节点标签设置。
   private final QueuePath queuePath;
+  //该队列可访问的节点标签集合。如果为空，则队列无法访问任何带标签的节点
   private Set<String> accessibleLabels;
+  //该队列在配置文件中明确指定的节点标签集合。
   private Set<String> configuredNodeLabels;
+  //该队列的默认节点标签表达式，决定默认情况下任务会提交到哪些带标签的节点上
   private String defaultLabelExpression;
 
   public QueueNodeLabelsSettings(CapacitySchedulerConfiguration configuration,
@@ -51,15 +57,16 @@ public class QueueNodeLabelsSettings {
     initializeConfiguredNodeLabels(configuration, configuredNodeLabels);
     validateNodeLabels();
   }
-
+  //初始化可访问标签
   private void initializeAccessibleLabels(CapacitySchedulerConfiguration configuration) {
     this.accessibleLabels = configuration.getAccessibleNodeLabels(queuePath.getFullPath());
     // Inherit labels from parent if not set
+    //如果该队列没有配置可访问标签，则递归从父队列获取
     if (this.accessibleLabels == null && parent != null) {
       this.accessibleLabels = parent.getAccessibleNodeLabels();
     }
   }
-
+  //初始化默认标签表达式
   private void initializeDefaultLabelExpression(CapacitySchedulerConfiguration configuration) {
     this.defaultLabelExpression = configuration.getDefaultNodeLabelExpression(
         queuePath.getFullPath());
@@ -71,7 +78,7 @@ public class QueueNodeLabelsSettings {
       this.defaultLabelExpression = parent.getDefaultNodeLabelExpression();
     }
   }
-
+  //初始化已配置节点标签
   private void initializeConfiguredNodeLabels(CapacitySchedulerConfiguration configuration,
       ConfiguredNodeLabels configuredNodeLabelsParam) {
     if (configuredNodeLabelsParam != null) {

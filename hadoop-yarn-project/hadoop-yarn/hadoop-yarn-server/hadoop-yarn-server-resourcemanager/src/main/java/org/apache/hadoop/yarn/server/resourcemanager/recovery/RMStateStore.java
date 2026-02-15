@@ -94,30 +94,39 @@ import org.apache.hadoop.yarn.state.StateMachineFactory;
  * Real store implementations need to derive from it and implement blocking
  * store and load methods to actually store and load the state.
  */
+//资源管理器 (ResourceManager, RM) 的状态存储抽象类，负责管理和存储 RM 的状态信息。
+// 它主要用于持久化 RM 相关的数据，以支持 RM 的 恢复 (Recovery) 机制
+//主要作用包括：
+//持久化应用程序状态：存储 YARN 应用的生命周期信息，如 ApplicationStateData、ApplicationAttemptStateData 等。
+//管理委托令牌 (Delegation Token)：存储、更新和删除 YARN 的安全令牌，如 RMDelegationTokenIdentifier。
+//管理 AM-RM (Application Master - ResourceManager) 令牌：处理 AM 与 RM 之间的安全交互，如 AMRMTokenSecretManagerState。
+//处理 RM 高可用 (HA) 相关的状态：包括 RM 版本信息、代理 CA 证书 (ProxyCA) 等。
+//实现状态机机制：通过 StateMachineFactory 维护 RM 的存储状态，支持 ACTIVE 和 FENCED 两种模式
 public abstract class RMStateStore extends AbstractService {
 
   // constants for RM App state and RMDTSecretManagerState.
+  //常量用于存储 RM 状态的 Zookeeper 节点名称 或 Key
   @VisibleForTesting
-  public static final String RM_APP_ROOT = "RMAppRoot";
-  protected static final String RM_DT_SECRET_MANAGER_ROOT = "RMDTSecretManagerRoot";
+  public static final String RM_APP_ROOT = "RMAppRoot"; //存储 RM 运行的应用程序的根目录
+  protected static final String RM_DT_SECRET_MANAGER_ROOT = "RMDTSecretManagerRoot"; //存储 RM 委托令牌管理器的根目录
   protected static final String RM_DELEGATION_TOKENS_ROOT_ZNODE_NAME =
-      "RMDelegationTokensRoot";
-  protected static final String DELEGATION_KEY_PREFIX = "DelegationKey_";
-  protected static final String DELEGATION_TOKEN_PREFIX = "RMDelegationToken_";
+      "RMDelegationTokensRoot";//存储 RM 委托令牌的根节点名称
+  protected static final String DELEGATION_KEY_PREFIX = "DelegationKey_";//用于存储委托密钥 (DelegationKey)，例如 DelegationKey_123
+  protected static final String DELEGATION_TOKEN_PREFIX = "RMDelegationToken_";//用于存储委托令牌 (RMDelegationToken)，例如 RMDelegationToken_456
   protected static final String DELEGATION_TOKEN_SEQUENCE_NUMBER_PREFIX =
-      "RMDTSequenceNumber_";
+      "RMDTSequenceNumber_";//存储令牌序列号
   protected static final String AMRMTOKEN_SECRET_MANAGER_ROOT =
-      "AMRMTokenSecretManagerRoot";
+      "AMRMTokenSecretManagerRoot";//存储 AM-RM 令牌 (AMRMTokenSecretManagerState) 相关信息
   protected static final String RESERVATION_SYSTEM_ROOT =
-      "ReservationSystemRoot";
-  protected static final String PROXY_CA_ROOT = "ProxyCARoot";
-  protected static final String PROXY_CA_CERT_NODE = "caCert";
-  protected static final String PROXY_CA_PRIVATE_KEY_NODE = "caPrivateKey";
-  protected static final String VERSION_NODE = "RMVersionNode";
-  protected static final String EPOCH_NODE = "EpochNode";
-  protected long baseEpoch;
-  private long epochRange;
-  protected ResourceManager resourceManager;
+      "ReservationSystemRoot";//存储 YARN 资源预留系统的状态信息
+  protected static final String PROXY_CA_ROOT = "ProxyCARoot";//存储代理 CA 证书 (Proxy CA) 相关信息
+  protected static final String PROXY_CA_CERT_NODE = "caCert";//公钥
+  protected static final String PROXY_CA_PRIVATE_KEY_NODE = "caPrivateKey";//私钥
+  protected static final String VERSION_NODE = "RMVersionNode";//存储 RM 版本信息
+  protected static final String EPOCH_NODE = "EpochNode";//存储 RM 的 Epoch 信息 (用于 RM 的 HA 切换控制)
+  protected long baseEpoch;//RM 的初始 Epoch 值，用于标识 RM 的启动周期
+  private long epochRange;//Epoch 的范围，用于 RM HA 模式下的 Epoch 控制
+  protected ResourceManager resourceManager;//对 ResourceManager 的引用，允许 RMStateStore 访问 RM 相关信息
   private final ReadLock readLock;
   private final WriteLock writeLock;
 
@@ -128,7 +137,10 @@ public abstract class RMStateStore extends AbstractService {
    * The enum defines state of RMStateStore.
    */
   public enum RMStateStoreState {
+    //表示 RMStateStore 处于活动状态。这意味着状态存储系统是正常的，并且可以用于存储和读取 ResourceManager 的状态数据
     ACTIVE,
+    //表示 RMStateStore 被“围栏”或禁用。当 RMStateStore 处于 FENCED 状态时，
+    // 它将无法接受任何新的状态更新或访问请求，通常意味着状态存储已经失效，无法再进行正常的操作
     FENCED
   };
 
@@ -140,10 +152,11 @@ public abstract class RMStateStore extends AbstractService {
                                                     RMStateStoreState,
                                                     RMStateStoreEventType,
                                                     RMStateStoreEvent>(
-      RMStateStoreState.ACTIVE)
+      RMStateStoreState.ACTIVE)  //初始状态为ACTIVE，意味着状态存储系统是正常的
       .addTransition(RMStateStoreState.ACTIVE,
           EnumSet.of(RMStateStoreState.ACTIVE, RMStateStoreState.FENCED),
-          RMStateStoreEventType.STORE_APP, new StoreAppTransition())
+          RMStateStoreEventType.STORE_APP, new StoreAppTransition())//处理STORE_APP事件，从ACTIVE状态转为ACTIVE或者FENCED状态
+
       .addTransition(RMStateStoreState.ACTIVE,
           EnumSet.of(RMStateStoreState.ACTIVE, RMStateStoreState.FENCED),
           RMStateStoreEventType.UPDATE_APP, new UpdateAppTransition())
@@ -334,13 +347,16 @@ public abstract class RMStateStore extends AbstractService {
       appState.setApplicationSubmissionContext(context);
     }
   }
-
+  //主要用于处理删除应用状态（ApplicationStateData）的操作。它在资源管理器（RM）状态存储中执行删除应用操作，
+  // 处理的事件是 RMStateStoreRemoveAppEvent，表示要移除一个应用的状态信息
   private static class RemoveAppTransition implements
       MultipleArcTransition<RMStateStore, RMStateStoreEvent,
           RMStateStoreState> {
     @Override
     public RMStateStoreState transition(RMStateStore store,
         RMStateStoreEvent event) {
+      //首先检查事件类型是否为 RMStateStoreRemoveAppEvent。
+      // 如果事件类型不符，记录错误日志，并返回 RMStateStoreState.ACTIVE 状态，因为这种情况不应该发生
       if (!(event instanceof RMStateStoreRemoveAppEvent)) {
         // should never happen
         LOG.error("Illegal event type: " + event.getClass());
@@ -353,6 +369,7 @@ public abstract class RMStateStore extends AbstractService {
           appState.getApplicationSubmissionContext().getApplicationId();
       LOG.info("Removing info for app: " + appId);
       try {
+        //资源管理器状态存储中删除该应用的状态
         store.removeApplicationStateInternal(appState);
       } catch (Exception e) {
         LOG.error("Error removing app: " + appId, e);
@@ -658,13 +675,17 @@ public abstract class RMStateStore extends AbstractService {
   private static RMStateStoreState finalState(boolean isFenced) {
     return isFenced ? RMStateStoreState.FENCED : RMStateStoreState.ACTIVE;
   }
-
+  //主要用于在资源管理器（RM）状态存储中移除应用尝试（ApplicationAttempt）
   private static class RemoveAppAttemptTransition implements
       MultipleArcTransition<RMStateStore, RMStateStoreEvent,
           RMStateStoreState> {
+    //store：RMStateStore，资源管理器状态存储对象，用于存储和操作应用状态
+    //event：RMStateStoreEvent，触发状态转换的事件，在这个方法中期望是 RMStateStoreRemoveAppAttemptEvent
     @Override
     public RMStateStoreState transition(RMStateStore store,
         RMStateStoreEvent event) {
+      //首先检查事件类型是否为 RMStateStoreRemoveAppAttemptEvent。
+      // 如果不是，记录错误日志并返回 ACTIVE 状态，因为这种情况不应该发生
       if (!(event instanceof RMStateStoreRemoveAppAttemptEvent)) {
         // should never happen
         LOG.error("Illegal event type: " + event.getClass());
@@ -676,15 +697,18 @@ public abstract class RMStateStore extends AbstractService {
       ApplicationId appId = attemptId.getApplicationId();
       LOG.info("Removing attempt " + attemptId + " from app: " + appId);
       try {
+        //尝试调用 store.removeApplicationAttemptInternal(attemptId) 方法，从状态存储中移除指定的应用尝试
         store.removeApplicationAttemptInternal(attemptId);
       } catch (Exception e) {
         LOG.error("Error removing attempt: " + attemptId, e);
+        //通知状态存储操作失败
         isFenced = store.notifyStoreOperationFailedInternal(e);
       }
+      //根据是否发生异常来确定最终状态
       return finalState(isFenced);
     }
   }
-
+  //构造函数
   public RMStateStore() {
     super(RMStateStore.class.getName());
     ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
@@ -692,15 +716,17 @@ public abstract class RMStateStore extends AbstractService {
     this.writeLock = lock.writeLock();
     stateMachine = stateMachineFactory.make(this);
   }
-
+  //资源管理器（RM）委托令牌的状态。它保存了与委托令牌相关的各种信息，如令牌状态、主密钥状态和令牌序列号。
+  // 这个类是委托令牌秘密管理器的一部分，用于维护 RM 委托令牌的生命周期
   public static class RMDTSecretManagerState {
     // DTIdentifier -> renewDate
+    //保存委托令牌及其对应的续期时间
     Map<RMDelegationTokenIdentifier, Long> delegationTokenState =
         new HashMap<RMDelegationTokenIdentifier, Long>();
-
+    //保存 RM 的主密钥状态。DelegationKey 对象包含密钥信息，用于保护委托令牌的机密性和安全性
     Set<DelegationKey> masterKeyState =
         new HashSet<DelegationKey>();
-
+    //表示委托令牌的序列号。每当创建一个新的委托令牌时，该序列号会递增，以确保令牌的唯一性
     int dtSequenceNumber = 0;
 
     public Map<RMDelegationTokenIdentifier, Long> getTokenState() {
@@ -715,9 +741,12 @@ public abstract class RMStateStore extends AbstractService {
       return dtSequenceNumber;
     }
   }
-
+  //管理代理 CA（Certificate Authority，证书颁发机构） 状态的类，
+  // 主要用于存储和操作 CA 证书（X.509） 及其 私钥（PrivateKey）。它提供了 获取、设置 以及 从字节数据转换证书和私钥 的方法
   public static class ProxyCAState {
+    //存储 CA 证书（公钥证书），用于验证客户端或服务器的身份
     private X509Certificate caCert;
+    //存储 CA 私钥，用于签署证书或加密数据
     private PrivateKey caPrivateKey;
 
     public X509Certificate getCaCert() {
@@ -752,17 +781,20 @@ public abstract class RMStateStore extends AbstractService {
   /**
    * State of the ResourceManager
    */
+  //存储 RM 运行时的关键状态信息。它主要用于持久化和恢复RM在YARN集群中的状态，以支持高可用性（HA）和故障恢复
   public static class RMState {
+    //存储所有应用程序的状态信息
     Map<ApplicationId, ApplicationStateData> appState =
         new TreeMap<ApplicationId, ApplicationStateData>();
-
+    //资源管理器（RM）的委托令牌管理器
     RMDTSecretManagerState rmSecretManagerState = new RMDTSecretManagerState();
-
+    //Application Master 与 RM 之间通信的令牌的状态，支持安全认证
     AMRMTokenSecretManagerState amrmTokenSecretManagerState = null;
-
+    //用于存储 YARN 资源预留（Reservation）相关的状态信息，
+    // 键是队列名称，值是 ReservationId 到 ReservationAllocationStateProto 的映射，表示某个队列内的所有资源预留分配状态
     private Map<String, Map<ReservationId, ReservationAllocationStateProto>>
         reservationState = new TreeMap<>();
-
+    //代理证书颁发机构（CA，Certificate Authority）的状态，可能用于管理应用的安全证书
     ProxyCAState proxyCAState = new ProxyCAState();
 
     public Map<ApplicationId, ApplicationStateData> getApplicationState() {
@@ -786,7 +818,7 @@ public abstract class RMStateStore extends AbstractService {
       return proxyCAState;
     }
   }
-    
+  //资源管理器的派发器
   private Dispatcher rmDispatcher;
 
   /**
@@ -795,6 +827,7 @@ public abstract class RMStateStore extends AbstractService {
    *
    * @param dispatcher Dispatcher.
    */
+  //设置派发器，用于发送状态操作完成事件到ResourceManager服务
   public void setRMDispatcher(Dispatcher dispatcher) {
     this.rmDispatcher = dispatcher;
   }
@@ -803,15 +836,19 @@ public abstract class RMStateStore extends AbstractService {
   @SuppressWarnings("rawtypes")
   @VisibleForTesting
   protected EventHandler rmStateStoreEventHandler;
-
+  //初始化 ResourceManager (RM) 的状态存储服务，主要涉及事件调度、事件处理、epoch 配置等
   @Override
   protected void serviceInit(Configuration conf) throws Exception{
     // create async handler
+    //异步事件调度器
     dispatcher = new AsyncDispatcher("RM StateStore dispatcher");
     dispatcher.init(conf);
+    //创建事件处理器
+    //ForwardingEventHandler 负责接收事件并转发给具体的处理逻辑
     rmStateStoreEventHandler = new ForwardingEventHandler();
     dispatcher.register(RMStateStoreEventType.class, 
                         rmStateStoreEventHandler);
+    //设置 dispatcher 在停止时等待事件处理完成
     dispatcher.setDrainEventsOnStop();
     // read the base epoch value from conf
     baseEpoch = conf.getLong(YarnConfiguration.RM_EPOCH,
@@ -910,6 +947,7 @@ public abstract class RMStateStore extends AbstractService {
    * Get the current version of the underlying state store.
    * @return current version.
    */
+  //获取状态存储的当前版本
   protected abstract Version getCurrentVersion();
 
 
@@ -1173,7 +1211,7 @@ public abstract class RMStateStore extends AbstractService {
         reservationAllocation, RMStateStoreEventType.STORE_RESERVATION,
         planName, reservationIdName));
   }
-
+  //删除系统预留空间
   public void removeReservation(String planName, String reservationIdName) {
     handleStoreEvent(new RMStateStoreStoreReservationEvent(
             null, RMStateStoreEventType.REMOVE_RESERVATION,
@@ -1251,16 +1289,20 @@ public abstract class RMStateStore extends AbstractService {
    *
    * @param app RMApp.
    */
+  //将应用程序从 RMStateStore（ResourceManager 状态存储）中移除。
+  //它是一个非阻塞（Non-blocking）API，不会阻塞 dispatcher 线程，并且不会提供完成通知
   @SuppressWarnings("unchecked")
   public void removeApplication(RMApp app) {
+    //创建一个 ApplicationStateData 实例，存储该应用的状态信息
     ApplicationStateData appState =
         ApplicationStateData.newInstance(app.getSubmitTime(),
             app.getStartTime(), app.getApplicationSubmissionContext(),
             app.getUser(), app.getRealUser(), app.getCallerContext());
     for(RMAppAttempt appAttempt : app.getAppAttempts().values()) {
+      //将应用尝试（Attempts）设为 null，这表示应用的所有尝试都会被移除
       appState.attempts.put(appAttempt.getAppAttemptId(), null);
     }
-    
+    // 发送事件，通知 RMStateStore 执行删除
     getRMStateStoreEventHandler().handle(
         new RMStateStoreRemoveAppEvent(appState));
   }
@@ -1285,6 +1327,7 @@ public abstract class RMStateStore extends AbstractService {
    *
    * @param applicationAttemptId applicationAttemptId.
    */
+  //删除应用尝试
   @SuppressWarnings("unchecked")
   public synchronized void removeApplicationAttempt(
       ApplicationAttemptId applicationAttemptId) {
@@ -1310,10 +1353,12 @@ public abstract class RMStateStore extends AbstractService {
 
   public static final Text AM_CLIENT_TOKEN_MASTER_KEY_NAME =
       new Text("YARN_CLIENT_TOKEN_MASTER_KEY");
-  
+
+  //从 RMAppAttempt 对象中提取凭据（Credentials），主要获取 clientTokenMasterKey 并存入 Credentials 对象
+  //clientTokenMasterKey 用于身份验证，确保 ApplicationMaster（AM）和 ResourceManager（RM）之间的通信安全
   public Credentials getCredentialsFromAppAttempt(RMAppAttempt appAttempt) {
     Credentials credentials = new Credentials();
-
+    //获取客户端 Token 的主密钥（clientTokenMasterKey）
     SecretKey clientTokenMasterKey =
         appAttempt.getClientTokenMasterKey();
     if(clientTokenMasterKey != null){
@@ -1322,21 +1367,22 @@ public abstract class RMStateStore extends AbstractService {
     }
     return credentials;
   }
-  
+  //判断RMStateStore是否是FENCED状态
   @VisibleForTesting
   protected boolean isFencedState() {
     return (RMStateStoreState.FENCED == getRMStateStoreState());
   }
 
   // Dispatcher related code
+  //用于处理 RMStateStoreEvent 事件，执行相应的状态转换，并记录日志
   protected void handleStoreEvent(RMStateStoreEvent event) {
     this.writeLock.lock();
     try {
 
       LOG.debug("Processing event of type {}", event.getType());
-
+      //获取RMStateStore当前的状态
       final RMStateStoreState oldState = getRMStateStoreState();
-
+      //执行状态转换
       this.stateMachine.doTransition(event.getType(), event);
 
       if (oldState != getRMStateStoreState()) {
@@ -1410,6 +1456,8 @@ public abstract class RMStateStore extends AbstractService {
    * EventHandler implementation which forward events to the FSRMStateStore
    * This hides the EventHandle methods of the store from its public interface
    */
+  //负责将事件转发到 FSRMStateStore（ResourceManager 状态存储）进行处理。
+  // 该类的主要作用是封装 FSRMStateStore 中的事件处理逻辑，从而将 FSRMStateStore 的方法隐藏在公共接口之外
   private final class ForwardingEventHandler 
                                   implements EventHandler<RMStateStoreEvent> {
     
@@ -1436,10 +1484,11 @@ public abstract class RMStateStore extends AbstractService {
   public abstract void removeApplication(ApplicationId removeAppId)
       throws Exception;
 
+  //设置ResourceManager的引用
   public void setResourceManager(ResourceManager rm) {
     this.resourceManager = rm;
   }
-
+  //获取RMStateStore的状态
   public RMStateStoreState getRMStateStoreState() {
     this.readLock.lock();
     try {
@@ -1450,6 +1499,7 @@ public abstract class RMStateStore extends AbstractService {
   }
 
   @SuppressWarnings("rawtypes")
+  //获取事件处理器
   protected EventHandler getRMStateStoreEventHandler() {
     return dispatcher.getEventHandler();
   }

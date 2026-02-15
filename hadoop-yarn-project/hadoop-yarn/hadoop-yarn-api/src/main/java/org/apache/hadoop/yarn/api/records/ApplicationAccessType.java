@@ -23,6 +23,7 @@ import org.apache.hadoop.classification.InterfaceStability.Stable;
 /**
  * Application access types.
  */
+//表示 YARN 中对应用程序的 访问类型。它定义了两种不同的访问权限，分别是 查看 和 修改，用于控制不同角色对应用程序的访问权限
 @Public
 @Stable
 public enum ApplicationAccessType {
@@ -31,6 +32,7 @@ public enum ApplicationAccessType {
    * Access-type representing 'viewing' application. ACLs against this type
    * dictate who can 'view' some or all of the application related details.
    */
+  //使用这种访问权限的用户可以查看与应用程序相关的详细信息（如应用状态、资源使用情况等），但无法对应用进行修改
   VIEW_APP,
 
   /**
@@ -38,5 +40,6 @@ public enum ApplicationAccessType {
    * dictate who can 'modify' the application for e.g., by killing the
    * application
    */
+  //使用这种访问权限的用户可以对应用进行修改，如终止应用程序或其他管理操作
   MODIFY_APP;
 }

@@ -20,7 +20,7 @@ package org.apache.hadoop.fs.permission;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 
-/**
+/**指定 ACL（Access Control List，访问控制列表） 条目范围或用途的枚举类
  * Specifies the scope or intended usage of an ACL entry.
  */
 @InterfaceAudience.Public
@@ -30,7 +30,7 @@ public enum AclEntryScope {
    * An ACL entry that is inspected during permission checks to enforce
    * permissions.
    */
-  ACCESS,
+  ACCESS,//访问 ACL 条目，用于检查权限，决定用户或用户组对文件的访问权限。
 
   /**
    * An ACL entry to be applied to a directory's children that do not otherwise
@@ -38,5 +38,7 @@ public enum AclEntryScope {
    * entry is not inspected as part of permission enforcement on the directory
    * that owns it.
    */
-  DEFAULT;
+  DEFAULT;//默认 ACL 条目，用于继承权限，作用于目录的子项，但不影响自身权限检查。
+  //只适用于目录，不适用于文件
+  //当新文件或子目录在此目录中创建时，会继承这些默认 ACL
 }

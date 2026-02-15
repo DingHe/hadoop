@@ -35,6 +35,11 @@ import org.apache.hadoop.yarn.api.records.NodeAttributeOpCode;
  * {@code PlacementConstraint} represents a placement constraint for a resource
  * allocation.
  */
+//代表YARN资源分配时的调度约束，用于定义任务如何在集群节点上进行放置。通过该类，用户可以指定应用的分配规则，例如：
+//亲和性 (Affinity)：任务必须与某些特定的资源或标签一起放置。
+//反亲和性 (Anti-affinity)：任务不能与某些特定资源或标签一起放置。
+//基于属性的约束：任务必须分配到具有特定属性的节点上。
+//基于拓扑的约束：任务可以基于集群拓扑规则，例如在同一个节点、机架或其他层次结构中进行分配。
 @Public
 @Unstable
 public class PlacementConstraint {
@@ -85,6 +90,7 @@ public class PlacementConstraint {
   /**
    * Interface used to enable the elements of the constraint tree to be visited.
    */
+  //访问者模式接口
   @Private
   public interface Visitable {
     /**
@@ -127,6 +133,7 @@ public class PlacementConstraint {
    * Abstract class that acts as the superclass of all placement constraint
    * classes.
    */
+  //所有调度约束的父类
   public abstract static class AbstractConstraint implements Visitable {
     public PlacementConstraint build() {
       return new PlacementConstraint(this);
@@ -151,12 +158,13 @@ public class PlacementConstraint {
    * allocationTag("zk")}}, requires an allocation to be placed within a rack
    * that has at least 2 and at most 10 other allocations with tag "zk".
    */
+  //表示在指定范围（scope）内，目标表达式（target expressions）出现的次数必须满足最小（min）和最大（max）限制
   public static class SingleConstraint extends AbstractConstraint {
-    private String scope;
-    private int minCardinality;
-    private int maxCardinality;
-    private Set<TargetExpression> targetExpressions;
-    private NodeAttributeOpCode attributeOpCode;
+    private String scope; //作用域（如 RACK、NODE），定义约束的适用范围
+    private int minCardinality; //最小出现次数，必须至少 minCardinality 次
+    private int maxCardinality; //最大出现次数，最多 maxCardinality 次
+    private Set<TargetExpression> targetExpressions; //目标表达式，定义具体匹配的条件
+    private NodeAttributeOpCode attributeOpCode; //节点属性运算符（可选），用于基于节点属性的调度
 
     public SingleConstraint(String scope, int minCardinality,
         int maxCardinality, NodeAttributeOpCode opCode,
@@ -323,6 +331,10 @@ public class PlacementConstraint {
    * tags, or be self-targets (referring to the allocation to which the
    * constraint is attached).
    */
+  //用于描述节点属性或分配标签，这些表达式用于定义资源调度的放置约束。
+  //在 YARN 的放置约束（PlacementConstraint）中，TargetExpression 可以被用于：
+  //约束任务必须分配到具有某些节点属性的节点上（如 rack=us-west）。
+  //约束任务必须分配到具有相同分配标签的节点上（如 zk 和 nn 任务必须在同一节点上）
   public static class TargetExpression implements Visitable {
     /**
      * Enum specifying the type of the target expression.
@@ -331,9 +343,9 @@ public class PlacementConstraint {
       NODE_ATTRIBUTE, ALLOCATION_TAG
     }
 
-    private TargetType targetType;
-    private String targetKey;
-    private Set<String> targetValues;
+    private TargetType targetType;//目标表达式的类型，可能是节点属性（NODE_ATTRIBUTE）或分配标签（ALLOCATION_TAG）
+    private String targetKey; //在 NODE_ATTRIBUTE 模式下，代表节点属性的名称（如 rack、region）
+    private Set<String> targetValues;//目标键可能的取值，例如 {us-west, us-east}
 
     public TargetExpression(TargetType targetType, String targetKey,
         Set<String> targetValues) {
@@ -443,12 +455,14 @@ public class PlacementConstraint {
    * minimum and the maximum cardinalities take specific values based on the
    * {@link TargetOperator} used.
    */
+  //用于约束任务的放置是否符合某些目标（如位于特定范围内或不在特定范围内）
   public static class TargetConstraint extends AbstractConstraint {
     /**
      * TargetOperator enum helps to specify type.
      */
     enum TargetOperator {
-      IN("in"), NOT_IN("notin");
+      IN("in"), //IN 表示必须包含在目标范围内
+      NOT_IN("notin"); //NOT_IN 表示不能包含在目标范围内
 
       private String operator;
       TargetOperator(String op) {
@@ -459,9 +473,11 @@ public class PlacementConstraint {
         return this.operator;
       }
     }
-
+    //目标操作符（IN / NOT_IN）
     private TargetOperator op;
+    //约束作用范围（如 node 或 rack）
     private String scope;
+    //目标表达式的集合
     private Set<TargetExpression> targetExpressions;
 
     public TargetConstraint(TargetOperator op, String scope,
@@ -551,10 +567,17 @@ public class PlacementConstraint {
    * It is a specialized version of the {@link SingleConstraint}, where the
    * target is a set of allocation tags.
    */
+  // 基数约束（Cardinality Constraint），
+  // 用于限制具有特定标签的任务实例数 在某个作用域 (scope) 内的最小值 (minCardinality) 和最大值 (maxCardinality)
+  // 规定某个分配标签 (allocationTags) 的任务数应该在 [minCardinality, maxCardinality] 之间
   public static class CardinalityConstraint extends AbstractConstraint {
+    //约束的作用域（如节点、机架、数据中心等）
     private String scope;
+    //约束的最小任务数（下界）
     private int minCardinality;
+    //约束的最大任务数（上界）。
     private int maxCardinality;
+    //约束适用的标签集合。
     private Set<String> allocationTags;
 
     public CardinalityConstraint(String scope, int minCardinality,
@@ -660,6 +683,7 @@ public class PlacementConstraint {
    * @param <R> the type of constraints that are used as children of the
    *          specific composite constraint
    */
+  //组合约束，由其他约束组成
   public abstract static class CompositeConstraint<R extends Visitable>
       extends AbstractConstraint {
 
@@ -694,7 +718,9 @@ public class PlacementConstraint {
    * Class that represents a composite constraint that is a conjunction of other
    * constraints.
    */
+  //And 类表示 多个调度约束的合取（AND 关系），即一个应用的调度必须同时满足多个子约束
   public static class And extends CompositeConstraint<AbstractConstraint> {
+    //存储所有子约束，每个子约束都是 AbstractConstraint 的实例
     private List<AbstractConstraint> children;
 
     public And(List<AbstractConstraint> children) {
@@ -781,6 +807,10 @@ public class PlacementConstraint {
    * specified time window. If this is not possible, it should attempt to
    * satisfy the second, and so on.
    */
+    //用于调度系统中带时间窗口的任务放置约束
+    //调度器按顺序尝试满足多个定时放置约束
+    //尝试满足 children 列表中的第一个 TimedPlacementConstraint
+    //如果 无法满足，则尝试 下一个 约束，以此类推
   public static class DelayedOr
       extends CompositeConstraint<TimedPlacementConstraint> {
     private List<TimedPlacementConstraint> children = new ArrayList<>();
@@ -824,17 +854,21 @@ public class PlacementConstraint {
    * Represents a timed placement constraint that has to be satisfied within a
    * time window.
    */
+  //代表带时间限制的放置约束，用于在一定时间窗口内，确保某些调度约束得到满足。这在 Apache YARN 资源调度中可能用于：
+  //任务必须在一定时间内分配到特定类型的节点上。
+  //任务必须在一定调度尝试次数内满足约束
   public static class TimedPlacementConstraint implements Visitable {
     /**
      * The unit of scheduling delay.
      */
     public enum DelayUnit {
-      MILLISECONDS, OPPORTUNITIES
+      MILLISECONDS,//（毫秒）：基于时间的调度约束
+      OPPORTUNITIES//（调度机会）：基于调度尝试次数的约束
     }
 
-    private AbstractConstraint constraint;
-    private long schedulingDelay;
-    private DelayUnit delayUnit;
+    private AbstractConstraint constraint;//表示需要满足的放置约束（如节点属性、任务标签）
+    private long schedulingDelay; //表示时间窗口的长度
+    private DelayUnit delayUnit;//表示调度延迟的单位
 
     public TimedPlacementConstraint(AbstractConstraint constraint,
         long schedulingDelay, DelayUnit delayUnit) {

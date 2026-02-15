@@ -30,6 +30,11 @@ import org.apache.hadoop.yarn.util.Records;
  * <p><code>Token</code> is the security entity used by the framework
  * to verify authenticity of any resource.</p>
  */
+//用于身份验证和安全性的令牌（Token）类。它用于标识和验证用户或进程的权限，以确保 YARN 资源的安全访问。
+// Token 本质上是一种凭证，YARN 通过它来验证访问特定资源的合法性，例如作业提交、资源分配等
+//身份验证：YARN 通过令牌验证用户或进程的身份
+//访问控制：确保只有拥有正确令牌的用户或进程才能访问受保护的资源
+//分布式安全：在分布式计算环境中，令牌用于不同组件（如 ResourceManager 和 NodeManager）之间的安全通信
 @Public
 @Stable
 public abstract class Token {
@@ -39,10 +44,10 @@ public abstract class Token {
   public static Token newInstance(byte[] identifier, String kind, byte[] password,
       String service) {
     Token token = Records.newRecord(Token.class);
-    token.setIdentifier(ByteBuffer.wrap(identifier));
-    token.setKind(kind);
-    token.setPassword(ByteBuffer.wrap(password));
-    token.setService(service);
+    token.setIdentifier(ByteBuffer.wrap(identifier));//令牌的唯一标识符（ID），用于标识某个特定的令牌
+    token.setKind(kind);//令牌的类型，例如 "YARN Delegation Token"，用于区分不同类型的令牌。
+    token.setPassword(ByteBuffer.wrap(password));//令牌的密码（密钥），用于验证令牌的有效性。
+    token.setService(service);//令牌关联的服务，例如 ResourceManager（RM）或 NodeManager（NM）
     return token;
   }
 

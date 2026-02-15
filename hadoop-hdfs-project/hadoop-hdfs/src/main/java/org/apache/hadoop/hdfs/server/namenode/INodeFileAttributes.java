@@ -22,31 +22,32 @@ import org.apache.hadoop.fs.permission.PermissionStatus;
 import org.apache.hadoop.hdfs.protocol.BlockType;
 import org.apache.hadoop.hdfs.server.namenode.INodeFile.HeaderFormat;
 
-/**
+/** 主要用于描述 HDFS 文件的特有属性，扩展了基本的 INode 节点信息，
+ * 主要涵盖了文件复制因子、是否为条带化文件（Erasure Coding）、块类型、首选块大小等特性
  * The attributes of a file.
  */
 @InterfaceAudience.Private
 public interface INodeFileAttributes extends INodeAttributes {
-  /** @return the file replication. */
+  /** @return the file replication. 获取文件的副本数（适用于普通 HDFS 文件）*/
   short getFileReplication();
 
-  /** @return whether the file is striped (instead of contiguous) */
+  /** @return whether the file is striped (instead of contiguous) 判断文件是否使用条带化布局*/
   boolean isStriped();
 
-  /** @return whether the file is striped (instead of contiguous) */
+  /** @return whether the file is striped (instead of contiguous)获取文件的块布局类型（如 CONTIGUOUS、STRIPED） */
   BlockType getBlockType();
 
-  /** @return the ID of the ErasureCodingPolicy */
+  /** @return the ID of the ErasureCodingPolicy 获取文件的 Erasure Coding 策略编号，只有条带化文件有此属性*/
   byte getErasureCodingPolicyID();
 
-  /** @return preferred block size in bytes */
+  /** @return preferred block size in bytes 获取文件在 HDFS 中的每个块的理想大小*/
   long getPreferredBlockSize();
 
   /** @return the header as a long. */
   long getHeaderLong();
 
   boolean metadataEquals(INodeFileAttributes other);
-
+   //获取文件的存储策略，指示文件数据在 HDFS 中的存储方式（例如 HOT、COLD、ALL_SSD）
   byte getLocalStoragePolicyID();
 
   /** A copy of the inode file attributes */

@@ -32,8 +32,9 @@ import org.apache.hadoop.util.Preconditions;
  * Storing all the {@link INode}s and maintaining the mapping between INode ID
  * and INode.  
  */
+//存储和维护 INode（即文件系统中的节点）及其与节点ID之间映射关系的类。它实现了对 INode 对象的管理操作，如添加、删除、获取 INode 等
 public class INodeMap {
-  
+   //返回一个新的 INodeMap 实例
   static INodeMap newInstance(INodeDirectory rootDir) {
     // Compute the map capacity by allocating 1% of total memory
     int capacity = LightWeightGSet.computeCapacity(1, "INodeMap");
@@ -44,8 +45,9 @@ public class INodeMap {
   }
 
   /** Synchronized by external lock. */
+  //存储 INode（文件系统中的节点）,通过 INode 的 ID 来快速存储和查找节点
   private final GSet<INode, INodeWithAdditionalFields> map;
-  
+  //返回 INodeMap 中 map 集合的迭代器，以便可以遍历 INode 对象
   public Iterator<INodeWithAdditionalFields> getMapIterator() {
     return map.iterator();
   }
@@ -60,13 +62,14 @@ public class INodeMap {
    * necessary. 
    * @param inode The {@link INode} to be added to the map.
    */
+  //要添加到 map 中的 INode 对象
   public final void put(INode inode) {
     if (inode instanceof INodeWithAdditionalFields) {
       map.put((INodeWithAdditionalFields)inode);
     }
   }
   
-  /**
+  /** 要从 map 中移除的 INode 对象
    * Remove a {@link INode} from the map.
    * @param inode The {@link INode} to be removed.
    */
@@ -74,7 +77,7 @@ public class INodeMap {
     map.remove(inode);
   }
   
-  /**
+  /** 返回 map 中元素的数量
    * @return The size of the map.
    */
   public int size() {
@@ -87,6 +90,7 @@ public class INodeMap {
    * @return The {@link INode} in the map with the given id. Return null if no 
    *         such {@link INode} in the map.
    */
+  //id - 要查找的 INode 的 ID
   public INode get(long id) {
     INode inode = new INodeWithAdditionalFields(id, null, new PermissionStatus(
         "", "", new FsPermission((short) 0)), 0, 0) {

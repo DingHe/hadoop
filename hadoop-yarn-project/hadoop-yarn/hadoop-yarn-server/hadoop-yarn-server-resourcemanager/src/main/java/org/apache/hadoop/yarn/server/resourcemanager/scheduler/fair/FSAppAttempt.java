@@ -66,6 +66,12 @@ import org.apache.hadoop.yarn.util.resource.Resources;
 /**
  * Represents an application attempt from the viewpoint of the Fair Scheduler.
  */
+//表示在 Apache YARN 的公平调度器（Fair Scheduler）中一个应用程序尝试的实例
+/*主要作用包括：
+管理容器分配、调度和释放。
+处理资源分配与回收。
+实现公平调度策略。
+处理应用程序尝试的生命周期事件*/
 @Private
 @Unstable
 public class FSAppAttempt extends SchedulerApplicationAttempt
@@ -75,32 +81,43 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
       LoggerFactory.getLogger(FSAppAttempt.class);
   private static final DefaultResourceCalculator RESOURCE_CALCULATOR
       = new DefaultResourceCalculator();
-
+  //记录应用程序尝试的启动时间
   private final long startTime;
+  //应用程序的优先级，用于调度时决定该应用程序的资源调度优先级
   private final Priority appPriority;
+  //记录该应用程序的资源需求量
   private Resource demand = Resources.createResource(0);
+
   private final FairScheduler scheduler;
+  ////应用程序的公平资源份额
   private Resource fairShare = Resources.createResource(0, 0);
 
   // Preemption related variables
+  //用于同步访问与抢占相关的资源和容器
   private final Object preemptionVariablesLock = new Object();
+  //需要被抢占的容器列表
   private final Set<RMContainer> containersToBePreempted = new HashSet<>();
+  //需要被抢占的资源数量
   private final Resource resourcesToBePreempted =
       Resources.clone(Resources.none());
-
+  //应用程序因资源分配不公平而导致的资源饥饿状态
   private Resource fairshareStarvation = Resources.none();
+  //记录应用程序上次处于公平份额状态的时间
   private long lastTimeAtFairShare;
+  //下一次检查资源饥饿的时间
   private long nextStarvationCheck;
 
   // minShareStarvation attributed to this application by the leaf queue
+  //由叶队列分配给应用的最小资源份额的饥饿状态
   private Resource minshareStarvation = Resources.none();
 
   // Used to record node reservation by an app.
   // Key = RackName, Value = Set of Nodes reserved by app on rack
+  //记录应用程序在不同机架上保留的节点，键是机架名，值是节点集合
   private final Map<String, Set<String>> reservations = new HashMap<>();
-
+  //应用程序黑名单中的节点，表示这些节点不再为应用程序调度
   private final List<FSSchedulerNode> blacklistNodeIds = new ArrayList<>();
-
+  //标识是否启用 AM 进程的抢占功能
   private boolean enableAMPreemption;
 
   /**
@@ -113,6 +130,7 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
    * at the current allowed level and the time since the last container
    * was scheduled. Currently we use only the former.
    */
+  //记录不同优先级下允许的本地性级别，用于调度时决定是否满足节点本地性要求
   private final Map<SchedulerRequestKey, NodeType> allowedLocalityLevel =
       new HashMap<>();
 

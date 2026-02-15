@@ -168,41 +168,50 @@ public class BlockManager implements BlockStatsMXBean {
 
   public static final Logger LOG = LoggerFactory.getLogger(BlockManager.class);
   public static final Logger blockLog = NameNode.blockStateChangeLog;
-
+  //表示因状态或生成戳（generation stamp）错误导致的块不一致的原因
   private static final String QUEUE_REASON_CORRUPT_STATE =
     "it has the wrong state or generation stamp";
-
+  //表示因生成戳在未来导致的块不一致的原因
   private static final String QUEUE_REASON_FUTURE_GENSTAMP =
     "generation stamp is in the future";
-
+  //块恢复超时时间的倍数，用于调整恢复操作的超时时间
   private static final long BLOCK_RECOVERY_TIMEOUT_MULTIPLIER = 30;
 
   private final Namesystem namesystem;
-
+  //用于管理 HDFS 的安全模式
   private final BlockManagerSafeMode bmSafeMode;
-
+  //管理所有 DataNode 的信息
   private final DatanodeManager datanodeManager;
+  //用于管理 DataNode 的心跳
   private final HeartbeatManager heartbeatManager;
+  //管理块令牌的秘钥
   private final BlockTokenSecretManager blockTokenSecretManager;
 
   // Block pool ID used by this namenode
+  //当前名称节点使用的块池 ID
   private String blockPoolId;
-
+  //存储待处理的 DataNode 消息
   private final PendingDataNodeMessages pendingDNMessages =
     new PendingDataNodeMessages();
-
+  //待重建块的数量
   private volatile long pendingReconstructionBlocksCount = 0L;
+  //损坏副本块的数量
   private volatile long corruptReplicaBlocksCount = 0L;
+  //低冗余块的数量
   private volatile long lowRedundancyBlocksCount = 0L;
+  //调度中的复制块的数量
   private volatile long scheduledReplicationBlocksCount = 0L;
-
+  //删除块的锁定时间（毫秒）
   private final long deleteBlockLockTimeMs;
+  //删除块解锁的间隔时间（毫秒）
   private final long deleteBlockUnlockIntervalTimeMs;
 
   /** flag indicating whether replication queues have been initialized */
+  //标记复制队列是否已初始化
   private boolean initializedReplQueues;
-
+  //启动延迟块删除的时间（毫秒）
   private final long startupDelayBlockDeletionInMs;
+  //管理块报告租约的对象
   private final BlockReportLeaseManager blockReportLeaseManager;
   private ObjectName mxBeanName;
 
@@ -310,7 +319,7 @@ public class BlockManager implements BlockStatsMXBean {
     return 0;
   }
 
-  /**
+  /**重复检查间隔时间，用于重新检查需要复制的块
    * redundancyRecheckInterval is how often namenode checks for new
    * reconstruction work.
    */
@@ -323,45 +332,52 @@ public class BlockManager implements BlockStatsMXBean {
    * of zero means the queue position will only be reset once the next of the
    * queue has been reached.
    */
+  //表示在处理一定数量的队列调用后，复制队列需要重置
   private int replQueueResetToHeadThreshold;
+  //记录自上次重置以来的调用次数
   private int replQueueCallsSinceReset = 0;
 
   /**
    * Mapping: Block {@literal ->} { BlockCollection, datanodes, self ref }
    * Updated only in response to client-sent information.
    */
+  //正常的Block保存在这里
   final BlocksMap blocksMap;
 
   /** Redundancy thread. */
+  //用于管理冗余块的线程
   private final Daemon redundancyThread = new Daemon(new RedundancyMonitor());
   /**
    * Timestamp marking the end time of {@link #redundancyThread}'s full cycle.
    * This value can be checked by the Junit tests to verify that the
    * {@link #redundancyThread} has run at least one full iteration.
    */
+  //记录冗余线程的最后一个完整周期的时间戳
   private final AtomicLong lastRedundancyCycleTS = new AtomicLong(-1);
   /**
    * markedDeleteBlockScrubber thread for handling async delete blocks.
    */
+  //处理删除标记块的线程
   private final Daemon markedDeleteBlockScrubberThread =
       new Daemon(new MarkedDeleteBlockScrubber());
 
   /** Block report thread for handling async reports. */
+  //处理异步块报告的线程
   private final BlockReportProcessingThread blockReportThread;
 
-  /**
+  /**存储损坏副本块的集合
    * Store blocks {@literal ->} datanodedescriptor(s) map of corrupt replicas.
    */
   final CorruptReplicasMap corruptReplicas = new CorruptReplicasMap();
 
-  /**
+  /**存储待失效的块的集合
    * Blocks to be invalidated.
    * For a striped block to invalidate, we should track its individual internal
    * blocks.
    */
   private final InvalidateBlocks invalidateBlocks;
   
-  /**
+  /**存储推迟操作的误复制块集合,主要解决的是在Active和Standby NameNode切换时防止误删除
    * After a failover, over-replicated blocks may not be handled
    * until all of the replicas have done a block report to the
    * new active. This is to make sure that this NameNode has been
@@ -370,13 +386,16 @@ public class BlockManager implements BlockStatsMXBean {
    */
   private final Set<Block> postponedMisreplicatedBlocks =
       new LinkedHashSet<Block>();
+  //每次重新扫描的块数量
   private final int blocksPerPostpondedRescan;
+  //被重新扫描的误复制块列表
   private final ArrayList<Block> rescannedMisreplicatedBlocks;
 
   /**
    * Maps a StorageID to the set of blocks that are "extra" for this
    * DataNode. We'll eventually remove these extras.
    */
+  //存储额外冗余块的集合
   private final ExcessRedundancyMap excessRedundancyMap =
       new ExcessRedundancyMap();
 
@@ -384,44 +403,56 @@ public class BlockManager implements BlockStatsMXBean {
    * Store set of Blocks that need to be replicated 1 or more times.
    * We also store pending reconstruction-orders.
    */
+  //存储待复制的块，这些块的冗余度已经变低
   public final LowRedundancyBlocks neededReconstruction =
       new LowRedundancyBlocks();
-
+  //存储正在执行复制副本的块。
   @VisibleForTesting
   final PendingReconstructionBlocks pendingReconstruction;
 
   /** Stores information about block recovery attempts. */
+  //存储待恢复的块集合
   private final PendingRecoveryBlocks pendingRecoveryBlocks;
 
   /** The maximum number of replicas allowed for a block */
+  //最大副本数
   public final short maxReplication;
   /**
    * The maximum number of outgoing replication streams a given node should have
    * at one time considering all but the highest priority replications needed.
     */
+  //每个节点允许的最大复制流数
   private volatile int maxReplicationStreams;
   /**
    * The maximum number of outgoing replication streams a given node should have
    * at one time.
    */
+  //每个节点允许的硬限制复制流数
   private volatile int replicationStreamsHardLimit;
   /** Minimum copies needed or else write is disallowed */
+  //最小副本数，写入时必须满足此数量
   public final short minReplication;
   /** Default number of replicas */
+  //默认副本数
   public final int defaultReplication;
   /** value returned by MAX_CORRUPT_FILES_RETURNED */
+  //返回的最大损坏文件数
   final int maxCorruptFilesReturned;
-
+  //块删除数量的成数
   final float blocksInvalidateWorkPct;
+  //块复制工作的成数，决定每次任务复制多少块
   private volatile int blocksReplWorkMultiplier;
 
   // whether or not to issue block encryption keys.
+  //是否启用块加密传输
   final boolean encryptDataTransfer;
   
   // Max number of blocks to log info about during a block report.
+  //每次块报告中最大日志数量
   private final long maxNumBlocksToLog;
 
   // Max write lock hold time for BlockReportProcessingThread(ms).
+  //最大锁持有时间
   private final long maxLockHoldTime;
 
   /**
@@ -430,70 +461,85 @@ public class BlockManager implements BlockStatsMXBean {
    * the active NameNode. Thus, it will postpone them for later processing,
    * instead of marking the blocks as corrupt.
    */
+  //标记是否推迟未来的块报告
   private boolean shouldPostponeBlocksFromFuture = false;
 
   /**
    * Process reconstruction queues asynchronously to allow namenode safemode
    * exit and failover to be faster. HDFS-5496.
    */
+  //处理重建队列的线程
   private Daemon reconstructionQueuesInitializer = null;
   /**
    * Number of blocks to process asychronously for reconstruction queues
    * initialization once aquired the namesystem lock. Remaining blocks will be
    * processed again after aquiring lock again.
    */
+  //每次处理的块数量
   private int numBlocksPerIteration;
 
   /**
    * The blocks of deleted files are put into the queue,
    * and the cleanup thread processes these blocks periodically.
    */
+  //存储待删除块的队列
   private final ConcurrentLinkedQueue<List<BlockInfo>> markedDeleteQueue;
 
   /**
    * Progress of the Reconstruction queues initialisation.
    */
+  //重建队列初始化进度
   private float reconstructionQueuesInitProgress = 0.0f;
 
   /** for block replicas placement */
+  //用于块副本放置策略的对象
   private volatile BlockPlacementPolicies placementPolicies;
+  //存储策略套件
   private final BlockStoragePolicySuite storagePolicySuite;
 
   /** Check whether name system is running before terminating */
+  //是否检查命名空间是否运行
   private boolean checkNSRunning = true;
 
   /** Check whether there are any non-EC blocks using StripedID */
+  //是否存在使用条带化 ID 的非 EC 块
   private boolean hasNonEcBlockUsingStripedID = false;
-
+  //管理块的 ID
   private final BlockIdManager blockIdManager;
 
   /**
    * For satisfying block storage policies. Instantiates if sps is enabled
    * internally or externally.
    */
+  //存储策略满足管理器
   private StoragePolicySatisfyManager spsManager;
 
   /** Minimum live replicas needed for the datanode to be transitioned
    * from ENTERING_MAINTENANCE to IN_MAINTENANCE.
    */
+  //最小副本数，允许 DataNode 转换为维护模式
   private final short minReplicationToBeInMaintenance;
   /**
    * Whether to delete corrupt replica immediately irrespective of other
    * replicas available on stale storages.
    */
+  //是否立即删除损坏副本
   private final boolean deleteCorruptReplicaImmediately;
 
   /** Storages accessible from multiple DNs. */
+  //提供存储的映射
   private final ProvidedStorageMap providedStorageMap;
 
   /**
    * Timeout for excess redundancy block.
    */
+  //额外冗余块的超时时间
   private long excessRedundancyTimeout;
 
   /**
    * Limits number of blocks used to check for excess redundancy timeout.
    */
+  //检查冗余超时的块数量
   private long excessRedundancyTimeoutCheckLimit;
 
   public BlockManager(final Namesystem namesystem, boolean haEnabled,
@@ -611,7 +657,7 @@ public class BlockManager implements BlockStatsMXBean {
 
     printInitialConfigs();
   }
-
+  //获取 HDFS 数据块的最小副本数，确保系统中每个数据块至少存在一定数量的副本，保证数据的可靠性和容灾能力
   private int initMinReplication(Configuration conf) throws IOException {
     final int minR = conf.getInt(
         DFSConfigKeys.DFS_NAMENODE_REPLICATION_MIN_KEY,
@@ -623,7 +669,7 @@ public class BlockManager implements BlockStatsMXBean {
     }
     return minR;
   }
-
+  //从 HDFS 配置中获取 数据块的最大副本数，并对其进行合法性检查，确保其值符合条件
   private int initMaxReplication(Configuration conf) throws IOException {
     final int maxR = conf.getInt(DFSConfigKeys.DFS_REPLICATION_MAX_KEY,
         DFSConfigKeys.DFS_REPLICATION_MAX_DEFAULT);
@@ -641,7 +687,7 @@ public class BlockManager implements BlockStatsMXBean {
     }
     return maxR;
   }
-
+  //HDFS 配置中获取 进入维护模式的数据块最小副本数，并对其进行合法性检查
   private int initMinReplicationToBeInMaintenance(Configuration conf)
       throws IOException {
     final int minMaintenanceR = conf.getInt(
@@ -662,7 +708,7 @@ public class BlockManager implements BlockStatsMXBean {
     }
     return minMaintenanceR;
   }
-
+ //确保副本冗余队列的重置迭代次数合法，避免因配置错误导致副本恢复逻辑异常或系统性能下降。
   private int initReplQueueResetToHeadThreshold(Configuration conf) {
     int threshold = conf.getInt(
         DFSConfigKeys.DFS_NAMENODE_REDUNDANCY_QUEUE_RESTART_ITERATIONS,
@@ -749,7 +795,7 @@ public class BlockManager implements BlockStatsMXBean {
           shouldWriteProtobufToken, shouldWrapQOP);
     }
   }
-
+  //获取存储测了
   public BlockStoragePolicy getStoragePolicy(final String policyName) {
     return storagePolicySuite.getPolicy(policyName);
   }
@@ -797,9 +843,18 @@ public class BlockManager implements BlockStatsMXBean {
   boolean shouldUpdateBlockKey(final long updateTime) throws IOException {
     return isBlockTokenEnabled() && blockTokenSecretManager.updateKeys(updateTime);
   }
-
+  //是激活 BlockManager 组件，主要执行了一系列初始化和启动操作，确保 HDFS 数据块管理 和 节点管理 的核心线程、监控、清理机制等可以正常运行
+  //long blockTotal：数据块总数，表示当前 HDFS 集群中的数据块数量，通常用于安全模式（SafeMode）的初始化
+  //activate() 方法执行流程：
+  //    ├── 1. 启动副本恢复线程 (pendingReconstruction)
+  //    ├── 2. 激活 DataNode 管理 (datanodeManager)
+  //    ├── 3. 启动冗余监控线程 (redundancyThread)
+  //    ├── 4. 启动删除清理线程 (markedDeleteBlockScrubberThread)
+  //    ├── 5. 启动数据块报告线程 (blockReportThread)
+  //    ├── 6. 注册 JMX 监控 (BlockStats)
+  //    └── 7. 激活安全模式 (bmSafeMode)
   public void activate(Configuration conf, long blockTotal) {
-    pendingReconstruction.start();
+    pendingReconstruction.start(); //启动低冗余副本的块复制
     datanodeManager.activate(conf);
     this.redundancyThread.setName("RedundancyMonitor");
     this.redundancyThread.start();
@@ -1170,8 +1225,11 @@ public class BlockManager implements BlockStatsMXBean {
    * @throws IOException if the block does not have at least a minimal number
    * of replicas reported from data-nodes.
    */
+  //用于提交文件的一个数据块（block），将数据块的状态从**UNDER_CONSTRUCTION（构建中）更改为COMMITTED**（已提交），
+  // 确保数据块在 DataNode 上的副本数量和信息符合要求
   private boolean commitBlock(final BlockInfo block,
       final Block commitBlock) throws IOException {
+    //如果 block 的状态已是 COMMITTED，说明该数据块已经提交，不需要重复操作，直接返回 false
     if (block.getBlockUCState() == BlockUCState.COMMITTED)
       return false;
     assert block.getNumBytes() <= commitBlock.getNumBytes() :
@@ -1182,7 +1240,7 @@ public class BlockManager implements BlockStatsMXBean {
           block + ", client submits " + commitBlock);
     }
     List<ReplicaUnderConstruction> staleReplicas =
-        block.commitBlock(commitBlock);
+        block.commitBlock(commitBlock); //将数据块的状态从 UNDER_CONSTRUCTION 更新为 COMMITTED
     removeStaleReplicas(staleReplicas, block);
     return true;
   }
@@ -1198,20 +1256,24 @@ public class BlockManager implements BlockStatsMXBean {
    * @throws IOException if the block does not have at least a minimal number
    * of replicas reported from data-nodes.
    */
+  //用于提交或完成文件的最后一个数据块（last block），并根据数据块的副本数量决定是否将其标记为已完成（complete）。
+  // 此方法是 HDFS 在文件写入流程中确保数据块正确提交和持久化的关键步骤
+  //commitBlock：Block，客户端提交的数据块，包含最新的块长度和生成戳（GS）
+  //bc：BlockCollection，表示一个文件或目录，管理其包含的数据块
   public boolean commitOrCompleteLastBlock(BlockCollection bc,
       Block commitBlock, INodesInPath iip) throws IOException {
     if(commitBlock == null)
       return false; // not committing, this is a block allocation retry
     BlockInfo lastBlock = bc.getLastBlock();
     if(lastBlock == null)
-      return false; // no blocks in file yet
+      return false; // no blocks in file yet 文件中还没有数据块，无法提交，返回 false
     if(lastBlock.isComplete())
       return false; // already completed (e.g. by syncBlock)
-    if(lastBlock.isUnderRecovery()) {
+    if(lastBlock.isUnderRecovery()) { //如果数据块正在恢复（under recovery），则抛出 IOException，防止在恢复过程中提交或完成数据块
       throw new IOException("Commit or complete block " + commitBlock +
           ", whereas it is under recovery.");
     }
-    
+    //如果数据块是**条带化（Striped）**数据块，更新与其相关的存储信息，确保所有存储节点正确记录数据块的大小。
     final boolean committed = commitBlock(lastBlock, commitBlock);
     if (committed && lastBlock.isStriped()) {
       // update scheduled size for DatanodeStorages that do not store any
@@ -1222,21 +1284,25 @@ public class BlockManager implements BlockStatsMXBean {
 
     // Count replicas on decommissioning nodes, as these will not be
     // decommissioned unless recovery/completing last block has finished
+    //计算可用副本总数 numUsableReplicas，包括正常副本、退役副本和维护副本
     NumberReplicas numReplicas = countNodes(lastBlock);
     int numUsableReplicas = numReplicas.liveReplicas() +
         numReplicas.decommissioning() +
         numReplicas.liveEnteringMaintenanceReplicas();
-
+    //检查数据块的可用副本数是否满足最小冗余要求
     if (hasMinStorage(lastBlock, numUsableReplicas)) {
       if (committed) {
+        //若成功提交数据块，则将预期副本数加入 pending 列表，确保副本恢复工作能够继续进行
         addExpectedReplicasToPending(lastBlock);
       }
-      completeBlock(lastBlock, iip, false);
+      completeBlock(lastBlock, iip, false);//标记数据块为完成（complete）
     } else if (pendingRecoveryBlocks.isUnderRecovery(lastBlock)) {
+      //如果数据块正在恢复
       // We've just finished recovery for this block, complete
       // the block forcibly disregarding number of replicas.
       // This is to ignore minReplication, the block will be closed
       // and then replicated out.
+      //强制完成数据块，忽略副本数量是否满足最小要求
       completeBlock(lastBlock, iip, true);
       updateNeededReconstructions(lastBlock, 1, 0);
     }
@@ -1249,16 +1315,26 @@ public class BlockManager implements BlockStatsMXBean {
    * the block. In case of erasure coding blocks, adds only in case there
    * isn't any missing node.
    */
+  //用于将期望副本尚未从指定 DataNode 位置发送的块，添加到 pendingReconstruction 中，
+  // 以防止 RedundancyMonitor 在副本数量不足时调度数据块进行恢复。
+  // 特别地，对于使用 擦除编码（erasure coding） 的数据块，只有在没有缺失节点的情况下才会加入待处理列表
+
+  //主要功能是检查数据块的副本状态，并在副本尚未从期望位置发送时，将缺失的副本加入待恢复列表。特别地，
+  // 对于条带化块，只有当所有副本都已满足要求时，才会加入待处理队列
   public void addExpectedReplicasToPending(BlockInfo blk) {
     boolean addForStriped = false;
+    //获取期望的存储位置（即副本应该存储的 DataNode 信息）
     DatanodeStorageInfo[] expectedStorages =
         blk.getUnderConstructionFeature().getExpectedStorageLocations();
     if (blk.isStriped()) {
+      //如果数据块是条带化的（blk.isStriped()），则判断条带化块是否已满足存储需求。若满足，设置 addForStriped 为 true
       BlockInfoStriped blkStriped = (BlockInfoStriped) blk;
       addForStriped =
           blkStriped.getRealTotalBlockNum() == expectedStorages.length;
     }
     if (!blk.isStriped() || addForStriped) {
+      //如果数据块不是条带化的，或者条带化块满足条件（addForStriped == true），
+      // 则检查 期望副本数 是否大于已存在副本数（expectedStorages.length - blk.numNodes()）
       if (expectedStorages.length - blk.numNodes() > 0) {
         ArrayList<DatanodeStorageInfo> pendingNodes = new ArrayList<>();
         for (DatanodeStorageInfo storage : expectedStorages) {
@@ -2099,10 +2175,13 @@ public class BlockManager implements BlockStatsMXBean {
    * @return number of blocks scheduled for reconstruction during this
    *         iteration.
    */
+  //用于扫描那些需要重建（如复制或纠删码）的块，并为它们分配重建任务（将任务分配给适当的数据节点）。
+  // 它确定在当前周期内需要处理多少块，并返回已调度的重建工作数量
   int computeBlockReconstructionWork(int blocksToProcess) {
     List<List<BlockInfo>> blocksToReconstruct = null;
     namesystem.writeLock();
     try {
+      //判断是否需要重置复制队列
       boolean reset = false;
       if (replQueueResetToHeadThreshold > 0) {
         if (replQueueCallsSinceReset >= replQueueResetToHeadThreshold) {
@@ -2113,11 +2192,13 @@ public class BlockManager implements BlockStatsMXBean {
         }
       }
         // Choose the blocks to be reconstructed
+      //选择需要重建的块
       blocksToReconstruct = neededReconstruction
           .chooseLowRedundancyBlocks(blocksToProcess, reset);
     } finally {
       namesystem.writeUnlock("computeBlockReconstructionWork");
     }
+    //计算并返回重建工作量
     return computeReconstructionWorkForBlocks(blocksToReconstruct);
   }
 
@@ -2128,6 +2209,8 @@ public class BlockManager implements BlockStatsMXBean {
    * @param blocksToReconstruct blocks to be reconstructed, for each priority
    * @return the number of blocks scheduled for replication
    */
+  //据传入的低冗余块列表（blocksToReconstruct）进行块的重建工作安排。重建可以通过复制（Replication）或通过擦除编码（Erasure Coding）实现。
+  // 方法的目标是将缺失冗余的块重建为完整的冗余，通过调度任务在适当的 DataNode 上进行复制或编码
   @VisibleForTesting
   int computeReconstructionWorkForBlocks(
       List<List<BlockInfo>> blocksToReconstruct) {
@@ -2135,12 +2218,14 @@ public class BlockManager implements BlockStatsMXBean {
     List<BlockReconstructionWork> reconWork = new ArrayList<>();
 
     // Step 1: categorize at-risk blocks into replication and EC tasks
+    //步骤 1：按复制或擦除编码任务分类处理块
     namesystem.writeLock();
     try {
       synchronized (neededReconstruction) {
         for (int priority = 0; priority < blocksToReconstruct
             .size(); priority++) {
           for (BlockInfo block : blocksToReconstruct.get(priority)) {
+            //对于每个块，调用 scheduleReconstruction 方法安排其重建任务。该方法会根据块的冗余优先级决定是进行复制还是擦除编码
             BlockReconstructionWork rw = scheduleReconstruction(block,
                 priority);
             if (rw != null) {
@@ -2154,12 +2239,15 @@ public class BlockManager implements BlockStatsMXBean {
     }
 
     // Step 2: choose target nodes for each reconstruction task
+    //步骤 2：为每个重建任务选择目标节点
     for (BlockReconstructionWork rw : reconWork) {
       // Exclude all of the containing nodes from being targets.
       // This list includes decommissioning or corrupt nodes.
+      //存储当前块的所有包含节点（即已经存储该块的 DataNode）。这些节点将被排除在目标节点选择之外
       final Set<Node> excludedNodes = new HashSet<>(rw.getContainingNodes());
 
       // Exclude all nodes which already exists as targets for the block
+      //获取当前块已被选择的目标节点（即正在进行重建的目标节点），如果有这些节点，则也会排除它们
       List<DatanodeStorageInfo> targets =
           pendingReconstruction.getTargets(rw.getBlock());
       if (targets != null) {
@@ -2169,15 +2257,18 @@ public class BlockManager implements BlockStatsMXBean {
       }
 
       // choose replication targets: NOT HOLDING THE GLOBAL LOCK
+
       final BlockPlacementPolicy placementPolicy =
           placementPolicies.getPolicy(rw.getBlock().getBlockType());
       rw.chooseTargets(placementPolicy, storagePolicySuite, excludedNodes);
     }
 
     // Step 3: add tasks to the DN
+    //步骤 3：将重建任务添加到 DataNode
     namesystem.writeLock();
     try {
       for (BlockReconstructionWork rw : reconWork) {
+        //获取当前重建任务的目标节点列表
         final DatanodeStorageInfo[] targets = rw.getTargets();
         if (targets == null || targets.length == 0) {
           rw.resetTargets();
@@ -5343,8 +5434,11 @@ public class BlockManager implements BlockStatsMXBean {
         try {
           // Process recovery work only when active NN is out of safe mode.
           if (isPopulatingReplQueues()) {
+            //触发数据块的复制和删除服务
             computeDatanodeWork();
+            //将复制超时的块重新加入待重建的队列
             processPendingReconstructions();
+
             rescanPostponedMisreplicatedBlocks();
             processTimedOutExcessBlocks();
             lastRedundancyCycleTS.set(Time.monotonicNow());
@@ -5378,21 +5472,27 @@ public class BlockManager implements BlockStatsMXBean {
    * 
    * @return number of blocks scheduled for replication or removal.
    */
+  //计算应该在数据节点上调度的块复制和块无效化（删除）工作
+  //具体来说，该方法在一个周期内计算出需要复制和删除的块，并安排在下一次心跳中通知数据节点这些工作。
+  // 方法的返回值是已调度的块数目
   int computeDatanodeWork() {
     // Blocks should not be replicated or removed if in safe mode.
     // It's OK to check safe mode here w/o holding lock, in the worst
     // case extra replications will be scheduled, and these will get
     // fixed up later.
+    //首先检查系统是否处于“安全模式”。在安全模式下，块的复制和删除工作不会进行，因此如果处于安全模式，方法直接返回 0，表示没有工作需要调度
     if (namesystem.isInSafeMode()) {
       return 0;
     }
 
     final int numlive = heartbeatManager.getLiveDatanodeCount();
+    //据当前存活的数据节点数量 (numlive)，计算应该处理的块数
     final int blocksToProcess = numlive
         * this.blocksReplWorkMultiplier;
+    //计算需要进行无效化工作的数据节点数量
     final int nodesToProcess = (int) Math.ceil(numlive
         * this.blocksInvalidateWorkPct);
-
+    //计算块重建工作
     int workFound = this.computeBlockReconstructionWork(blocksToProcess);
 
     // Update counters
@@ -5403,6 +5503,7 @@ public class BlockManager implements BlockStatsMXBean {
     } finally {
       namesystem.writeUnlock("computeDatanodeWork");
     }
+    //计算块无效化工作
     workFound += this.computeInvalidateWork(nodesToProcess);
     return workFound;
   }

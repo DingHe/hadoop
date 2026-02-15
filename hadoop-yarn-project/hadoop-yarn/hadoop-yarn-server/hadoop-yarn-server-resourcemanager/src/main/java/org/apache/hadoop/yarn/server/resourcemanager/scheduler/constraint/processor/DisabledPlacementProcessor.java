@@ -33,6 +33,7 @@ import java.io.IOException;
 /**
  * Processor that reject all SchedulingRequests.
  */
+//核心作用是 拒绝 所有包含 放置约束 (Placement Constraints) 或 调度请求 (Scheduling Requests) 的应用请求
 public class DisabledPlacementProcessor extends AbstractPlacementProcessor {
   private static final Logger LOG =
       LoggerFactory.getLogger(DisabledPlacementProcessor.class);
@@ -45,6 +46,8 @@ public class DisabledPlacementProcessor extends AbstractPlacementProcessor {
       throws IOException, YarnException {
     if (request.getPlacementConstraints() != null && !request
         .getPlacementConstraints().isEmpty()) {
+      //如果 Placement Constraints 不为空
+      //抛出 YarnException，拒绝该应用注册
       String message = "Found non empty placement constraints map in "
           + "RegisterApplicationMasterRequest for application="
           + applicationAttemptId.toString() + ", but the configured "
@@ -54,10 +57,11 @@ public class DisabledPlacementProcessor extends AbstractPlacementProcessor {
       LOG.warn(message);
       throw new YarnException(message);
     }
+    //如果 Placement Constraints 为空：正常处理，交给 nextAMSProcessor 处理
     nextAMSProcessor.registerApplicationMaster(applicationAttemptId, request,
         response);
   }
-
+  //处理资源分配请求
   @Override
   public void allocate(ApplicationAttemptId appAttemptId,
       AllocateRequest request, AllocateResponse response) throws YarnException {
@@ -70,8 +74,11 @@ public class DisabledPlacementProcessor extends AbstractPlacementProcessor {
           + " cannot handle placement constraints. Rejecting this "
           + "allocate operation";
       LOG.warn(message);
+      //如果 Scheduling Requests 不为空
+      //抛出 YarnException，拒绝该资源分配请求
       throw new YarnException(message);
     }
+    //如果 Scheduling Requests 为空：正常处理，交给 nextAMSProcessor 处理
     nextAMSProcessor.allocate(appAttemptId, request, response);
   }
 }

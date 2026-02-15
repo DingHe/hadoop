@@ -244,9 +244,9 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
   private boolean allowNullValueProperties = false;
 
   private static class Resource {
-    private final Object resource;
-    private final String name;
-    private final boolean restrictParser;
+    private final Object resource; //资源对象，表示一个具体的配置资源（如配置文件路径、输入流、类路径等）
+    private final String name; //资源名称，是对 resource 对象的描述，通常是资源的字符串表示形式。
+    private final boolean restrictParser; //解析器限制标志，用于指示是否对解析该资源使用受限解析器。
     
     public Resource(Object resource) {
       this(resource, resource.toString());
@@ -368,15 +368,15 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
    * warning message which can be logged whenever the deprecated key is used.
    */
   private static class DeprecatedKeyInfo {
-    private final String[] newKeys;
-    private final String customMessage;
-    private final AtomicBoolean accessed = new AtomicBoolean(false);
+    private final String[] newKeys; //新配置键的数组，用于存储替代废弃配置键的新键列表。
+    private final String customMessage; //自定义警告信息，当使用废弃的配置键时，输出的自定义提示信息。
+    private final AtomicBoolean accessed = new AtomicBoolean(false);//访问标志，用于标识是否已访问该废弃键，确保警告只输出一次。
 
     DeprecatedKeyInfo(String[] newKeys, String customMessage) {
       this.newKeys = newKeys;
       this.customMessage = customMessage;
     }
-
+    //key：String 类型，表示被废弃的配置键   返回相应的警告信息
     private final String getWarningMessage(String key) {
       return getWarningMessage(key, null);
     }
@@ -385,12 +385,12 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
      * Method to provide the warning message. It gives the custom message if
      * non-null, and default message otherwise.
      * @param key the associated deprecated key.
-     * @param source the property source.
+     * @param source the property source. 表示配置项的来源，通常是配置文件的名称
      * @return message that is to be logged when a deprecated key is used.
      */
     private String getWarningMessage(String key, String source) {
       String warningMessage;
-      if(customMessage == null) {
+      if(customMessage == null) { //如果 customMessage 为 null，生成默认警告消息
         StringBuilder message = new StringBuilder(key);
         if (source != null) {
           message.append(" in " + source);
@@ -419,13 +419,13 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
     }
   }
   
-  /**
+  /** 用于定义废弃配置键与其替代配置键的映射关系
    * A pending addition to the global set of deprecated keys.
    */
   public static class DeprecationDelta {
-    private final String key;
-    private final String[] newKeys;
-    private final String customMessage;
+    private final String key; //被废弃的配置键，用于存储已废弃的配置项名称。
+    private final String[] newKeys; //替代的新配置键，存储推荐使用的新配置项列表。
+    private final String customMessage; //自定义警告信息，在使用废弃配置键时提示的自定义信息。
 
     DeprecationDelta(String key, String[] newKeys, String customMessage) {
       Preconditions.checkNotNull(key);
@@ -467,20 +467,20 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
      * Stores the deprecated keys, the new keys which replace the deprecated keys
      * and custom message(if any provided).
      */
-    private final Map<String, DeprecatedKeyInfo> deprecatedKeyMap;
+    private final Map<String, DeprecatedKeyInfo> deprecatedKeyMap; //存储被废弃键及其替代键和自定义信息的映射。
 
     /**
      * Stores a mapping from superseding keys to the keys which they deprecate.
      */
-    private final Map<String, String> reverseDeprecatedKeyMap;
+    private final Map<String, String> reverseDeprecatedKeyMap;//存储替代键到被废弃键的反向映射，用于查找哪个键被废弃。
 
     /**
      * Create a new DeprecationContext by copying a previous DeprecationContext
      * and adding some deltas.
      *
      * @param other   The previous deprecation context to copy, or null to start
-     *                from nothing.
-     * @param deltas  The deltas to apply.
+     *                from nothing. 先前的废弃上下文，可以为 null，用于在已有的废弃映射基础上追加新的废弃键。
+     * @param deltas  The deltas to apply. 要新增的废弃键变更信息数组，用于新增或扩充废弃键
      */
     @SuppressWarnings("unchecked")
     DeprecationContext(DeprecationContext other, DeprecationDelta[] deltas) {
@@ -1785,21 +1785,21 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
       ? defaultValue
       : Enum.valueOf(defaultValue.getDeclaringClass(), val);
   }
-
+ //枚举常量表示特定的时间单位（如纳秒、秒、分钟）
   enum ParsedTimeDuration {
-    NS {
+    NS { //表示纳秒，映射到 TimeUnit.NANOSECONDS
       TimeUnit unit() { return TimeUnit.NANOSECONDS; }
       String suffix() { return "ns"; }
     },
-    US {
+    US { //表示微秒，映射到 TimeUnit.MICROSECONDS
       TimeUnit unit() { return TimeUnit.MICROSECONDS; }
       String suffix() { return "us"; }
     },
-    MS {
+    MS { //表示毫秒，映射到 TimeUnit.MILLISECONDS
       TimeUnit unit() { return TimeUnit.MILLISECONDS; }
       String suffix() { return "ms"; }
     },
-    S {
+    S { //表示秒，映射到 TimeUnit.SECONDS。
       TimeUnit unit() { return TimeUnit.SECONDS; }
       String suffix() { return "s"; }
     },
@@ -1815,8 +1815,8 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
       TimeUnit unit() { return TimeUnit.DAYS; }
       String suffix() { return "d"; }
     };
-    abstract TimeUnit unit();
-    abstract String suffix();
+    abstract TimeUnit unit();//当前枚举常量对应的 TimeUnit 对象。每个时间单位均实现了该方法，返回与其匹配的 TimeUnit
+    abstract String suffix();//返回当前枚举常量的 时间单位后缀，通常用于解析带有时间单位的字符串
     static ParsedTimeDuration unitFor(String s) {
       for (ParsedTimeDuration ptd : values()) {
         // iteration order is in decl order, so SECONDS matched last
@@ -2331,6 +2331,7 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
    * @param name property name.
    * @return property value as a collection of <code>String</code>s, or empty <code>Collection</code> 
    */
+  //获取逗号分割的字符串，并拆分字符串
   public Collection<String> getTrimmedStringCollection(String name) {
     String valueString = get(name);
     if (null == valueString) {
@@ -3153,13 +3154,13 @@ public class Configuration implements Iterable<Map.Entry<String,String>>,
     }
     return reader;
   }
-
+  //用于解析和存储配置信息。该类用于封装配置项的详细信息，如配置名称、键、值、是否终态（不可修改）、来源等
   private static class ParsedItem {
-    String name;
-    String key;
-    String value;
-    boolean isFinal;
-    String[] sources;
+    String name; //配置项的名称，用于标识具体的配置内容。
+    String key; //配置项的键，用于存储配置的唯一标识符。
+    String value; //配置项的值，用于保存该配置项的具体内容。
+    boolean isFinal; //是否为终态，若为 true，表示该配置项不可被覆盖。
+    String[] sources; //配置来源数组，记录该配置项的来源路径或来源位置。
 
     ParsedItem(String name, String key, String value,
         boolean isFinal, String[] sources) {

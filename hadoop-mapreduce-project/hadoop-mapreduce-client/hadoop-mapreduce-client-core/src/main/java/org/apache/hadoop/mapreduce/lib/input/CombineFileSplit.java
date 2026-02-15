@@ -39,7 +39,7 @@ import org.apache.hadoop.mapreduce.RecordReader;
  * the blocks in the same split are probably local to some rack <br> 
  * CombineFileSplit can be used to implement {@link RecordReader}'s, 
  * with reading one record per file.
- * 
+ *  主要用于将多个小文件合并为一个逻辑分片，减少小文件带来的处理开销。与 FileSplit 不同，CombineFileSplit 可以将多个文件或文件块合并在一起，通常用于 MapReduce 作业，提升任务执行效率
  * @see FileSplit
  * @see CombineFileInputFormat 
  */
@@ -47,11 +47,11 @@ import org.apache.hadoop.mapreduce.RecordReader;
 @InterfaceStability.Stable
 public class CombineFileSplit extends InputSplit implements Writable {
 
-  private Path[] paths;
-  private long[] startoffset;
-  private long[] lengths;
-  private String[] locations;
-  private long totLength;
+  private Path[] paths;  // 存储该 Split 中所有文件的路径数组
+  private long[] startoffset;  // 每个文件的起始偏移量，表示该文件从何处开始读取
+  private long[] lengths;  // 每个文件读取的长度，表示从起始偏移量开始读取的字节数
+  private String[] locations;  // 数据所在的节点（数据本地性信息）
+  private long totLength;  // 当前 Split 的总数据长度（所有文件的长度之和）
 
   /**
    * default constructor

@@ -27,15 +27,20 @@ import org.apache.hadoop.classification.InterfaceAudience.Private;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.factories.RecordFactory;
-
+//主要作用是基于 Protocol Buffers (PB) 机制创建 YARN 记录 (Record) 的实例
+//单例模式：使用 self 变量实现单例模式，提供 get() 方法获取唯一实例
+//动态实例化：使用 Java 反射机制，根据给定的类名推导出对应的 PB 实现类，并创建其实例
+//类缓存：使用 ConcurrentHashMap 缓存已解析的构造函数，提高性能，避免重复反射查找
 @Private
 public class RecordFactoryPBImpl implements RecordFactory {
-
+  //用于构造 PB 实现类的包名后缀，表明 PB 相关的实现类通常位于 impl.pb 这个包下
   private static final String PB_IMPL_PACKAGE_SUFFIX = "impl.pb";
+  //用于构造 PB 实现类的类名后缀，PB 版本的类通常以 PBImpl 结尾
   private static final String PB_IMPL_CLASS_SUFFIX = "PBImpl";
 
   private static final RecordFactoryPBImpl self = new RecordFactoryPBImpl();
   private Configuration localConf = new Configuration();
+  //缓存类的无参构造方法，以避免重复反射查找，提高实例化效率
   private ConcurrentMap<Class<?>, Constructor<?>> cache = new ConcurrentHashMap<Class<?>, Constructor<?>>();
 
   private RecordFactoryPBImpl() {
@@ -77,7 +82,7 @@ public class RecordFactoryPBImpl implements RecordFactory {
       throw new YarnRuntimeException(e);
     }
   }
-
+  //根据 clazz 计算出对应的 PB 实现类的全限定类名
   private String getPBImplClassName(Class<?> clazz) {
     String srcPackagePart = getPackageName(clazz);
     String srcClassName = getClassName(clazz);
@@ -85,12 +90,12 @@ public class RecordFactoryPBImpl implements RecordFactory {
     String destClassPart = srcClassName + PB_IMPL_CLASS_SUFFIX;
     return destPackagePart + "." + destClassPart;
   }
-  
+  //获取 clazz 的简单类名（不包含包路径）
   private String getClassName(Class<?> clazz) {
     String fqName = clazz.getName();
     return (fqName.substring(fqName.lastIndexOf(".") + 1, fqName.length()));
   }
-  
+  //获取 clazz 的包名
   private String getPackageName(Class<?> clazz) {
     return clazz.getPackage().getName();
   }

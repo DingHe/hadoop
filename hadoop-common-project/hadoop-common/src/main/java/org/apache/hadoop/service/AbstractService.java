@@ -37,6 +37,13 @@ import org.slf4j.LoggerFactory;
 /**
  * This is the base implementation class for services.
  */
+//用于提供服务 (Service) 的基本框架。它定义了服务的生命周期管理，
+// 包括初始化 (init)、启动 (start)、停止 (stop) 等操作，并支持服务状态管理、故障处理和监听器通知等功能。具体来说，该类的主要作用包括：
+//管理服务的生命周期：提供 init、start、stop 方法，确保服务按照正确的顺序运行。
+//维护服务的状态：通过 ServiceStateModel 记录并管理当前的服务状态，如 INITED、STARTED、STOPPED 等。
+//处理服务失败：提供 noteFailure 方法记录服务失败的异常，并存储失败时的状态。
+//支持监听器机制：允许注册和注销监听器，以便在服务状态变化时通知相关组件。
+//提供阻塞依赖管理：允许其他组件检查当前服务是否因某些依赖未满足而处于阻塞状态
 @Public
 @Evolving
 public abstract class AbstractService implements Service {
@@ -44,33 +51,38 @@ public abstract class AbstractService implements Service {
   private static final Logger LOG =
       LoggerFactory.getLogger(AbstractService.class);
 
-  /**
+  /** 服务的名称，用于标识该服务
    * Service name.
    */
   private final String name;
 
   /** service state */
+  //维护服务的当前状态，并提供状态切换的支持
   private final ServiceStateModel stateModel;
 
   /**
    * Service start time. Will be zero until the service is started.
    */
+  //记录服务的启动时间，默认值为 0，在 start() 方法调用时更新
   private long startTime;
 
   /**
    * The configuration. Will be null until the service is initialized.
    */
+  //服务的 Configuration 配置对象，在 init() 方法中设置
   private volatile Configuration config;
 
   /**
    * List of state change listeners; it is final to ensure
    * that it will never be null.
    */
+  //存储当前服务的状态监听器，在服务状态变化时通知它们
   private final ServiceOperations.ServiceListeners listeners
     = new ServiceOperations.ServiceListeners();
   /**
    * Static listeners to all events across all services
    */
+  //存储全局监听器，所有 AbstractService 实例共享的监听器，接收所有服务的状态变化通知
   private static ServiceOperations.ServiceListeners globalListeners
     = new ServiceOperations.ServiceListeners();
 
@@ -78,30 +90,35 @@ public abstract class AbstractService implements Service {
    * The cause of any failure -will be null.
    * if a service did not stop due to a failure.
    */
+  //记录导致服务失败的异常，如果服务未因故障停止，则该值为 null
   private Exception failureCause;
 
   /**
    * the state in which the service was when it failed.
    * Only valid when the service is stopped due to a failure
    */
+  //记录服务发生故障时的状态，仅在 stop() 方法因异常触发时有效
   private STATE failureState = null;
 
   /**
    * object used to co-ordinate {@link #waitForServiceToStop(long)}
    * across threads.
    */
+  //用于协调 waitForServiceToStop(long) 方法，以支持多个线程等待服务终止
   private final AtomicBoolean terminationNotification =
     new AtomicBoolean(false);
 
   /**
    * History of lifecycle transitions
    */
+  //存储服务的生命周期事件记录，例如 INITED、STARTED、STOPPED 等状态的转换
   private final List<LifecycleEvent> lifecycleHistory
     = new ArrayList<LifecycleEvent>(5);
 
   /**
    * Map of blocking dependencies
    */
+  //存储服务的阻塞依赖，键为阻塞名称，值为具体的阻塞详情
   private final Map<String,String> blockerMap = new HashMap<String, String>();
 
   private final Object stateChangeLock = new Object();
@@ -114,17 +131,17 @@ public abstract class AbstractService implements Service {
     this.name = name;
     stateModel = new ServiceStateModel(name);
   }
-
+  //返回服务的状态
   @Override
   public final STATE getServiceState() {
     return stateModel.getState();
   }
-
+  //返回服务失败的原因
   @Override
   public final synchronized Throwable getFailureCause() {
     return failureCause;
   }
-
+  //返回服务失败时的状态
   @Override
   public synchronized STATE getFailureState() {
     return failureState;
@@ -149,19 +166,23 @@ public abstract class AbstractService implements Service {
    * @throws ServiceStateException if the configuration was null,
    * the state change not permitted, or something else went wrong
    */
+  //服务初始化
   @Override
   public void init(Configuration conf) {
     if (conf == null) {
       throw new ServiceStateException("Cannot initialize service "
                                       + getName() + ": null configuration");
     }
+    //如果已经初始化，直接返回
     if (isInState(STATE.INITED)) {
       return;
     }
+    //同步状态
     synchronized (stateChangeLock) {
       if (enterState(STATE.INITED) != STATE.INITED) {
         setConfig(conf);
         try {
+          //服务初始化
           serviceInit(config);
           if (isInState(STATE.INITED)) {
             //if the service ended up here during init,
@@ -182,6 +203,7 @@ public abstract class AbstractService implements Service {
    * @throws ServiceStateException if the current service state does not permit
    * this action
    */
+  //开启服务
   @Override
   public void start() {
     if (isInState(STATE.STARTED)) {
@@ -192,6 +214,7 @@ public abstract class AbstractService implements Service {
       if (stateModel.enterState(STATE.STARTED) != STATE.STARTED) {
         try {
           startTime = System.currentTimeMillis();
+          //内部调用实现者的服务
           serviceStart();
           if (isInState(STATE.STARTED)) {
             //if the service started (and isn't now in a later state), notify
@@ -210,6 +233,7 @@ public abstract class AbstractService implements Service {
   /**
    * {@inheritDoc}
    */
+  //停止服务
   @Override
   public void stop() {
     if (isInState(STATE.STOPPED)) {
@@ -218,6 +242,7 @@ public abstract class AbstractService implements Service {
     synchronized (stateChangeLock) {
       if (enterState(STATE.STOPPED) != STATE.STOPPED) {
         try {
+          //内部调用服务停止的服务
           serviceStop();
         } catch (Exception e) {
           //stop-time exceptions are logged if they are the first one,
@@ -406,6 +431,7 @@ public abstract class AbstractService implements Service {
    * Notify local and global listeners of state changes.
    * Exceptions raised by listeners are NOT passed up.
    */
+  //回调监听器
   private void notifyListeners() {
     try {
       listeners.notifyListeners(this);

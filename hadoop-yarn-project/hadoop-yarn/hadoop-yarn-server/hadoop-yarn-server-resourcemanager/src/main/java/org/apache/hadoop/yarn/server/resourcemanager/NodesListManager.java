@@ -64,30 +64,38 @@ import org.apache.hadoop.yarn.util.Clock;
 import org.apache.hadoop.yarn.util.SystemClock;
 
 import org.apache.hadoop.classification.VisibleForTesting;
-
+//负责管理资源管理器（ResourceManager）中节点的列表。它的主要作用是维护节点（Node）的状态，支持节点的去激活、停用以及重新加载，
+// 并能根据配置文件对节点进行过滤（包括包含和排除文件）。此外，它还提供了节点的去委托操作（Decommissioning）和管理未跟踪节点的功能
 @SuppressWarnings("unchecked")
 public class NodesListManager extends CompositeService implements
     EventHandler<NodesListManagerEvent> {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(NodesListManager.class);
-
+  //负责读取和解析包含节点信息的文件，用于控制哪些节点被包含或排除
   private HostsFileReader hostsReader;
   private Configuration conf;
+  //RMContext 是资源管理器的上下文对象，提供对 YARN 环境和集群信息的访问
   private final RMContext rmContext;
 
   // Default decommissioning timeout value in seconds.
   // Negative value indicates no timeout. 0 means immediate.
+  //默认的去委托超时时间，单位为秒。负值表示没有超时限制，0 表示立即去委托
   private int defaultDecTimeoutSecs =
       YarnConfiguration.DEFAULT_RM_NODE_GRACEFUL_DECOMMISSION_TIMEOUT;
-
+  //包含节点的文件路径，节点列表中会包含这些文件中指定的节点
   private String includesFile;
+  //排除节点的文件路径，节点列表中不会包含这些文件中指定的节点
   private String excludesFile;
-
+  //用于解析节点 IP 地址的解析器。可以是直接解析（DirectResolver）或缓存解析（CachedResolver）
   private Resolver resolver;
+  //用于定时检查并移除未跟踪的节点
   private Timer removalTimer;
+  //节点移除检查的时间间隔，单位为毫秒
   private int nodeRemovalCheckInterval;
+  //可被优雅去委托的节点集合
   private Set<RMNode> gracefulDecommissionableNodes;
+  //启用未跟踪节点在没有包含路径的情况下的功能
   private boolean enableNodeUntrackedWithoutIncludePath;
 
   public NodesListManager(RMContext rmContext) {
@@ -100,7 +108,7 @@ public class NodesListManager extends CompositeService implements
   protected void serviceInit(Configuration conf) throws Exception {
 
     this.conf = conf;
-
+    //读取节点的 IP 缓存超时时间，创建相应的节点解析器
     int nodeIpCacheTimeout = conf.getInt(
         YarnConfiguration.RM_NODE_IP_CACHE_EXPIRY_INTERVAL_SECS,
         YarnConfiguration.DEFAULT_RM_NODE_IP_CACHE_EXPIRY_INTERVAL_SECS);
@@ -113,6 +121,7 @@ public class NodesListManager extends CompositeService implements
     }
 
     // Read the hosts/exclude files to restrict access to the RM
+    //根据配置读取包含和排除文件，初始化 hostsReader 并设置去委托节点
     try {
       this.includesFile = conf.get(YarnConfiguration.RM_NODES_INCLUDE_FILE_PATH,
           YarnConfiguration.DEFAULT_RM_NODES_INCLUDE_FILE_PATH);
@@ -127,7 +136,7 @@ public class NodesListManager extends CompositeService implements
     } catch (IOException ioe) {
       disableHostsFileReader(ioe);
     }
-
+    //设置去委托的节点超时时间，并启动定时任务来定期检查并移除未跟踪的节点
     enableNodeUntrackedWithoutIncludePath = conf.getBoolean(
         YarnConfiguration.RM_ENABLE_NODE_UNTRACKED_WITHOUT_INCLUDE_PATH,
         YarnConfiguration.DEFAULT_RM_ENABLE_NODE_UNTRACKED_WITHOUT_INCLUDE_PATH);
@@ -401,7 +410,7 @@ public class NodesListManager extends CompositeService implements
   public Resolver getResolver() {
     return resolver;
   }
-
+  //尝试解析主机名的ip地址
   @VisibleForTesting
   public interface Resolver {
     // try to resolve hostName to IP address, fallback to hostName if failed

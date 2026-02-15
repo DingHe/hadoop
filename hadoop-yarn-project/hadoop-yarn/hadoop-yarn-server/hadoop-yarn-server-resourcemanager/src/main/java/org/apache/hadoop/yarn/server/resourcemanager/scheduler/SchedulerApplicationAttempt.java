@@ -99,6 +99,10 @@ import org.apache.hadoop.thirdparty.com.google.common.collect.ConcurrentHashMult
  * Each running app attempt in the RM corresponds to one instance
  * of this class.
  */
+//表示 YARN 调度器视角中的一个应用程序尝试。
+// 每个正在运行的应用程序尝试对应于资源管理器（RM）中的一个 SchedulerApplicationAttempt 实例。
+// 该类主要负责管理应用程序在调度器中的资源使用、容器的分配、状态管理以及与调度器的交互。
+// 它处理了与应用程序尝试相关的各种调度决策，包括资源请求、容器分配、优先级处理等
 @Private
 @Unstable
 public class SchedulerApplicationAttempt implements SchedulableEntity {
@@ -112,46 +116,65 @@ public class SchedulerApplicationAttempt implements SchedulableEntity {
   private static final long MEM_AGGREGATE_ALLOCATION_CACHE_MSECS = 3000;
   protected long lastMemoryAggregateAllocationUpdateTime = 0;
   private Map<String, Long> lastResourceSecondsMap = new HashMap<>();
+  //存储与该应用程序尝试调度相关的信息，如资源使用情况、调度环境等
   protected final AppSchedulingInfo appSchedulingInfo;
+  //表示应用程序尝试的唯一标识符
   protected ApplicationAttemptId attemptId;
+  //存储当前应用程序尝试的所有活动容器
   protected Map<ContainerId, RMContainer> liveContainers =
       new ConcurrentHashMap<>();
+  //存储被保留的容器信息。SchedulerRequestKey 用于区分请求的不同容器，NodeId 用于标识分配容器的节点
   protected final Map<SchedulerRequestKey, Map<NodeId, RMContainer>>
       reservedContainers = new HashMap<>();
-
+  //表示重新预定的容器请求的计数
   private final ConcurrentHashMultiset<SchedulerRequestKey> reReservations =
       ConcurrentHashMultiset.create();
-  
+  //表示此应用程序尝试的资源限制 (Resource)，例如内存和 vCore 的最大使用量
   private volatile Resource resourceLimit = Resource.newInstance(0, 0);
+  //表示应用程序是否使用非托管的 AM（Application Master）。如果是，表示 AM 由外部系统管理
   private boolean unmanagedAM = true;
+  //表示 AM 是否正在运行
   private boolean amRunning = false;
+  //表示应用程序的日志聚合上下文，用于控制日志存储和聚合行为
   private LogAggregationContext logAggregationContext;
-
+  //表示应用程序的优先级
   private volatile Priority appPriority = null;
+  //表示应用程序是否处于恢复状态
   private boolean isAttemptRecovering;
-
+  //表示此应用程序尝试的资源使用情况（如内存、CPU 等）
   protected ResourceUsage attemptResourceUsage = new ResourceUsage();
   /** Resource usage of opportunistic containers. */
+  //表示此应用程序尝试的机会容器的资源使用情况
   protected ResourceUsage attemptOpportunisticResourceUsage =
       new ResourceUsage();
   /** Scheduled by a remote scheduler. */
+  //表示通过远程调度器分配的资源使用情况
   protected ResourceUsage attemptResourceUsageAllocatedRemotely =
       new ResourceUsage();
+  //表示首次请求资源的时间戳
   private AtomicLong firstAllocationRequestSentTime = new AtomicLong(0);
+  //表示首次分配容器的时间戳
   private AtomicLong firstContainerAllocatedTime = new AtomicLong(0);
-
+  //表示新分配的容器列表
   protected List<RMContainer> newlyAllocatedContainers = new ArrayList<>();
+  //表示临时需要杀死的容器列表
   protected List<RMContainer> tempContainerToKill = new ArrayList<>();
+  //表示刚刚晋升为活跃容器的容器映射
   protected Map<ContainerId, RMContainer> newlyPromotedContainers = new HashMap<>();
+  //表示刚刚降级的容器映射
   protected Map<ContainerId, RMContainer> newlyDemotedContainers = new HashMap<>();
+  //表示资源减少的容器映射
   protected Map<ContainerId, RMContainer> newlyDecreasedContainers = new HashMap<>();
+  //表示资源增加的容器映射
   protected Map<ContainerId, RMContainer> newlyIncreasedContainers = new HashMap<>();
+  //表示更新过的 NodeManager token 集合
   protected Set<NMToken> updatedNMTokens = new HashSet<>();
-
+ //表示容器更新错误列表
   protected List<UpdateContainerError> updateContainerErrors = new ArrayList<>();
 
   //Keeps track of recovered containers from previous attempt which haven't
   //been reported to the AM.
+  //表示从上次尝试中恢复的容器，这些容器尚未报告给 AM
   private List<Container> recoveredPreviousAttemptContainers =
       new ArrayList<>();
 
@@ -160,8 +183,9 @@ public class SchedulerApplicationAttempt implements SchedulableEntity {
   // receive the release request form AM before it receives the container status
   // from NM for recovery. In this case, the to-be-recovered containers reported
   // by NM should not be recovered.
+  //用于工作保护恢复场景，跟踪 AM 的未完成释放请求
   private Set<ContainerId> pendingRelease = null;
-
+  //表示机会容器上下文，用于管理机会容器
   private OpportunisticContainerContext oppContainerContext;
 
   /**
@@ -171,6 +195,7 @@ public class SchedulerApplicationAttempt implements SchedulableEntity {
    * the application successfully schedules a task (at rack or node local), it
    * is reset to 0.
    */
+  //记录应用程序在每个优先级下调度任务的机会次数
   private ConcurrentHashMultiset<SchedulerRequestKey> schedulingOpportunities =
       ConcurrentHashMultiset.create();
 
@@ -186,30 +211,33 @@ public class SchedulerApplicationAttempt implements SchedulableEntity {
       ConcurrentHashMultiset.create();
   
   // Time of the last container scheduled at the current allowed level
+  //记录应用程序在每个优先级下错过的非分区资源请求调度机会次数
   protected Map<SchedulerRequestKey, Long> lastScheduledContainer =
       new ConcurrentHashMap<>();
-
+  //表示该应用程序尝试所属于的队列
   protected volatile Queue queue;
+  //表示该应用程序是否已停止
   protected volatile boolean isStopped = false;
-
+  //表示与此应用程序 AM 关联的节点分区名
   protected String appAMNodePartitionName = CommonNodeLabelsManager.NO_LABEL;
 
   protected final RMContext rmContext;
-
+  //表示与此应用程序尝试相关的应用程序尝试对象
   private RMAppAttempt appAttempt;
 
   protected ReentrantReadWriteLock.ReadLock readLock;
   protected ReentrantReadWriteLock.WriteLock writeLock;
-
+  //表示应用程序的调度环境变量
   private Map<String, String> applicationSchedulingEnvs = new HashMap<>();
 
   // Not confirmed allocation resource, will be used to avoid too many proposal
   // rejected because of duplicated allocation
+  //表示尚未确认分配的内存和 vCore 数量
   private AtomicLong unconfirmedAllocatedMem = new AtomicLong();
   private AtomicInteger unconfirmedAllocatedVcores = new AtomicInteger();
-
+  //表示与此应用程序相关的节点标签表达式
   private String nodeLabelExpression;
-
+  //表示应用程序尝试的开始时间戳
   private final long startTime;
 
   public SchedulerApplicationAttempt(ApplicationAttemptId applicationAttemptId, 

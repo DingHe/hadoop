@@ -44,14 +44,18 @@ import org.apache.hadoop.util.Preconditions;
  *   s_k     = s_{k+1} - d_k = (current state) - d_n - d_{n-1} - ... - d_k.
  * </pre>
  */
+//表示 HDFS 中两个快照之间的差异。它维护每个差异的快照 ID、快照节点（snapshotINode）以及后续差异（posteriorDiff）。
+// 通过应用差异，可以从当前状态逐步恢复到旧的快照状态
 abstract class AbstractINodeDiff<N extends INode,
                                  A extends INodeAttributes,
                                  D extends AbstractINodeDiff<N, A, D>>
     implements Comparable<Integer> {
 
   /** The id of the corresponding snapshot. */
+  //当前AbstractInodeDiff对象对应的ID
   private int snapshotId;
   /** The snapshot inode data.  It is null when there is no change. */
+  //快照所对应的Inode的数据，如果没有则为null
   A snapshotINode;
   /**
    * Posterior diff is the diff happened after this diff.
@@ -59,6 +63,7 @@ abstract class AbstractINodeDiff<N extends INode,
    * snapshot and then apply this diff in order to obtain this snapshot.
    * If the posterior diff is null, the posterior state is the current state. 
    */
+  //下一个快照版本与当前快照版本之间的差异
   private D posteriorDiff;
 
   AbstractINodeDiff(int snapshotId, A snapshotINode, D posteriorDiff) {
@@ -68,6 +73,7 @@ abstract class AbstractINodeDiff<N extends INode,
   }
 
   /** Compare diffs with snapshot ID. */
+  //该方法实现了 Comparable<Integer> 接口，用于根据 snapshotId 来比较两个差异（diff）的大小
   @Override
   public final int compareTo(final Integer that) {
     return Snapshot.ID_INTEGER_COMPARATOR.compare(this.snapshotId, that);
@@ -111,6 +117,7 @@ abstract class AbstractINodeDiff<N extends INode,
   }
 
   /** Combine the posterior diff and collect blocks for deletion. */
+  //作用是将后续差异（posterior）与当前差异合并，并收集需要删除的块。具体实现根据需求定制
   abstract void combinePosteriorAndCollectBlocks(
       INode.ReclaimContext reclaimContext, final N currentINode,
       final D posterior);
@@ -120,6 +127,7 @@ abstract class AbstractINodeDiff<N extends INode,
    * @param reclaimContext blocks and inodes that need to be reclaimed
    * @param currentINode The inode where the deletion happens.
    */
+  //作用是删除当前差异，并收集相关的块用于回收
   abstract void destroyDiffAndCollectBlocks(INode.ReclaimContext reclaimContext,
       final N currentINode);
 

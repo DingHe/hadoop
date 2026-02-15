@@ -46,11 +46,21 @@ import org.apache.hadoop.thirdparty.com.google.common.util.concurrent.Listenable
  * calls to the underlying loggers and constructing corresponding
  * {@link QuorumCall} instances.
  */
+//AsyncLoggerSet 是 HDFS（Hadoop 分布式文件系统）QJM（Quorum Journal Manager）的一部分。
+// 它封装了一组 AsyncLogger（异步日志记录器），并提供统一的接口用于管理日志记录器的生命周期和操作，
+// 同时支持对多个 AsyncLogger 进行并行调用，以实现高可用的日志写入。
+//其核心功能包括：
+//
+//维护多个 AsyncLogger，形成一个日志记录器集合。
+//设定 Epoch（纪元），确保所有日志记录器使用相同的 Epoch，防止数据不一致。
+//通过 QuorumCall 机制协调日志写入，确保写入操作满足法定人数（Quorum）的要求。
+//提供日志管理功能，如 startLogSegment、finalizeLogSegment、sendEdits 等。
+//支持日志回滚、格式化、升级等运维操作
 class AsyncLoggerSet {
   static final Logger LOG = LoggerFactory.getLogger(AsyncLoggerSet.class);
-
+  //维护多个 AsyncLogger 实例的不可变列表，形成一个日志集合。
   private final List<AsyncLogger> loggers;
-  
+  //代表无效 Epoch，值为 -1，用于初始化 myEpoch。
   private static final long INVALID_EPOCH = -1;
   private long myEpoch = INVALID_EPOCH;
   
@@ -72,6 +82,7 @@ class AsyncLoggerSet {
    * This should be called after a successful write to a quorum, and is used
    * for extra sanity checks against the protocol. See HDFS-3863.
    */
+  //更新所有 AsyncLogger 的提交事务 ID，确保日志记录一致
   public void setCommittedTxId(long txid) {
     for (AsyncLogger logger : loggers) {
       logger.setCommittedTxId(txid);
@@ -121,6 +132,7 @@ class AsyncLoggerSet {
    * @throws QuorumException if a quorum doesn't respond with success
    * @throws IOException if the thread is interrupted or times out
    */
+  //等待返回法定的数量响应
   <V> Map<AsyncLogger, V> waitForWriteQuorum(QuorumCall<AsyncLogger, V> q,
       int timeoutMs, String operationName) throws IOException {
     int majority = getMajoritySize();

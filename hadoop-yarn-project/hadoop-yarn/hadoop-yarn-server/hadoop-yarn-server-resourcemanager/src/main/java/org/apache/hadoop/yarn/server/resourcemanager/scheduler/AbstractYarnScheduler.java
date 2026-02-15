@@ -111,7 +111,8 @@ import org.apache.hadoop.yarn.util.resource.Resources;
 import org.apache.hadoop.classification.VisibleForTesting;
 import org.apache.hadoop.thirdparty.com.google.common.util.concurrent.SettableFuture;
 
-
+// 旨在为资源调度器提供通用的功能实现，允许具体的调度器（如公平调度器、容量调度器等）继承并扩展它的功能。
+// 这个类负责管理 YARN 集群中的节点、应用、容器等资源的调度。它提供了管理应用、容器资源、节点资源、调度活动以及周期性任务的能力
 @SuppressWarnings("unchecked")
 @Private
 @Unstable
@@ -123,21 +124,24 @@ public abstract class AbstractYarnScheduler
       LoggerFactory.getLogger(AbstractYarnScheduler.class);
 
   private static final Resource ZERO_RESOURCE = Resource.newInstance(0, 0);
-
+  //用于跟踪集群中各个节点的状态和资源信息
   protected final ClusterNodeTracker<N> nodeTracker =
       new ClusterNodeTracker<>();
-
+  //集群中单个容器分配的最小资源要求
   protected Resource minimumAllocation;
 
   protected volatile RMContext rmContext;
-
+  //集群级别应用的最大优先级，用于调度决策中，控制不同应用的优先级
   private volatile Priority maxClusterLevelAppPriority;
-
+  //用于管理调度活动的管理器。调度活动包括容器请求、资源释放、节点更新等
   protected ActivitiesManager activitiesManager;
+  //调度器健康状态的对象，用于监控和报告调度器的健康状况
   protected SchedulerHealth schedulerHealth = new SchedulerHealth();
+  //最后一次节点更新的时间戳，用于跟踪节点状态的更新时间
   protected volatile long lastNodeUpdateTime;
 
   // timeout to join when we stop this service
+  //停止服务时等待线程结束的超时时间
   protected final long THREAD_JOIN_TIMEOUT_MS = 1000;
 
   private volatile Clock clock;
@@ -146,23 +150,32 @@ public abstract class AbstractYarnScheduler
    * To enable the update thread, subclasses should set updateInterval to a
    * positive value during {@link #serviceInit(Configuration)}.
    */
+  //调度器更新的间隔时间。如果设置为正值，调度器会定期更新资源状态
   protected long updateInterval = -1L;
   @VisibleForTesting
+  //用于定期更新调度器状态的线程。如果设置了 updateInterval，则会启动此线程
   Thread updateThread;
+  //用于同步更新线程的对象，防止多线程竞争
   private final Object updateThreadMonitor = new Object();
+  //用于释放缓存的定时任务器，定期清理无用的资源
   private Timer releaseCache;
 
   /*
    * All schedulers which are inheriting AbstractYarnScheduler should use
    * concurrent version of 'applications' map.
    */
+  //存储当前所有应用的信息。每个应用都在调度器中有一个对应的 SchedulerApplication 实例
   protected ConcurrentMap<ApplicationId, SchedulerApplication<T>> applications;
+  //节点失效的时间间隔。如果节点长时间没有与资源管理器通信，就会被认为失效
   protected int nmExpireInterval;
+  //节点与资源管理器之间的心跳间隔
   protected long nmHeartbeatInterval;
+  //跳过节点的时间间隔，某些情况下可能会跳过某些节点的调度
   private long skipNodeInterval;
-
+  //一个空的容器列表，用于表示没有容器的情况
   private final static List<Container> EMPTY_CONTAINER_LIST =
       new ArrayList<Container>();
+  //表示没有分配资源的空分配对象
   protected static final Allocation EMPTY_ALLOCATION = new Allocation(
     EMPTY_CONTAINER_LIST, Resources.createResource(0), null, null, null);
 
@@ -180,11 +193,12 @@ public abstract class AbstractYarnScheduler
 
   // If set to true, then ALL container updates will be automatically sent to
   // the NM in the next heartbeat.
+  //如果设置为 true，则所有容器的更新将在下一次心跳中自动发送到 NodeManager
   private boolean autoUpdateContainers = false;
-
+  //调度监控管理器，用于监控调度器的各种活动
   protected SchedulingMonitorManager schedulingMonitorManager =
       new SchedulingMonitorManager();
-
+  //表示是否启用了调度迁移模式，可能与集群或节点的迁移相关
   private boolean migration;
 
   /**
@@ -280,24 +294,30 @@ public abstract class AbstractYarnScheduler
    * YARN-3136 removed synchronized lock for this method for performance
    * purposes
    */
+  //ApplicationAttemptId currentAttempt：当前应用尝试的 ID
   public List<Container> getTransferredContainers(
       ApplicationAttemptId currentAttempt) {
+    //获取 ApplicationId
     ApplicationId appId = currentAttempt.getApplicationId();
     SchedulerApplication<T> app = applications.get(appId);
     List<Container> containerList = new ArrayList<Container>();
     if (app == null) {
       return containerList;
     }
+    //获取当前尝试需要转移的容器
     Collection<RMContainer> liveContainers = app.getCurrentAppAttempt()
         .pullContainersToTransfer();
     ContainerId amContainerId = null;
     // For UAM, amContainer would be null
+    //获取 Application Master（AM）容器 ID
     if (rmContext.getRMApps().get(appId).getCurrentAppAttempt()
         .getMasterContainer() != null) {
       amContainerId = rmContext.getRMApps().get(appId).getCurrentAppAttempt()
           .getMasterContainer().getId();
     }
     for (RMContainer rmContainer : liveContainers) {
+      //如果 rmContainer 是 AM 容器，则跳过
+      //否则，将其 Container 添加到 containerList
       if (!rmContainer.getContainerId().equals(amContainerId)) {
         containerList.add(rmContainer.getContainer());
       }
@@ -375,11 +395,17 @@ public abstract class AbstractYarnScheduler
     return skipNodeInterval;
   }
 
+  //处理某个 Container 在 SchedulerNode 上成功启动的情况。其主要功能包括：
+  //查找该 Container 所属的 ApplicationAttempt（应用尝试）。
+  //如果 ApplicationAttempt 不存在，认为是未知应用，并触发清理事件，要求 NodeManager 释放该 Container。
+  //如果 ApplicationAttempt 存在，调用 SchedulerApplicationAttempt 和 SchedulerNode 进行状态更新，标记该 Container 已在节点上启动
+
   protected void containerLaunchedOnNode(
       ContainerId containerId, SchedulerNode node) {
     readLock.lock();
     try {
       // Get the application for the finished container
+      //查找 containerId 所属的 ApplicationAttempt（应用尝试）
       SchedulerApplicationAttempt application =
           getCurrentAttemptForContainer(containerId);
       if (application == null) {
@@ -390,23 +416,33 @@ public abstract class AbstractYarnScheduler
             new RMNodeCleanContainerEvent(node.getNodeID(), containerId));
         return;
       }
-
+      //调用 SchedulerApplicationAttempt 的 containerLaunchedOnNode 方法，更新应用尝试的调度状态，记录 Container 已成功在 node 上启动
       application.containerLaunchedOnNode(containerId, node.getNodeID());
       node.containerStarted(containerId);
     } finally {
       readLock.unlock();
     }
   }
-
+  //处理 YARN 容器资源扩展（Container Resource Increase）事件。
+  // 当 NodeManager（NM）报告某个 Container 资源已成功增加时，调度器需要：
+  //确保该 Container 仍属于有效的 ApplicationAttempt。
+  //确保 Container 存在于调度器的管理状态中。
+  //更新 RMContainer 的资源信息，使 YARN 资源管理器（RM）的视图与 NodeManager 保持一致。
+  //如果 Container 或 ApplicationAttempt 不存在，触发清理逻辑，让 NodeManager 释放该 Container
+  //ContainerId containerId：需要更新资源的 Container ID。
+  //SchedulerNode node：该 Container 运行的 SchedulerNode，即 YARN 资源调度器管理的物理节点
+  //Container increasedContainerReportedByNM：NodeManager（NM）报告的 Container 新资源信息
   protected void containerIncreasedOnNode(ContainerId containerId,
       SchedulerNode node, Container increasedContainerReportedByNM) {
     /*
      * No lock is required, as this method is protected by scheduler's writeLock
      */
     // Get the application for the finished container
+    //获取 ApplicationAttempt
     SchedulerApplicationAttempt application = getCurrentAttemptForContainer(
         containerId);
     if (application == null) {
+      //如果 ApplicationAttempt 为空，说明 Container 属于未知或已完成的应用，触发清理事件并返回
       LOG.info("Unknown application " + containerId.getApplicationAttemptId()
           .getApplicationId() + " increased container " + containerId
           + " on node: " + node);
@@ -422,6 +458,7 @@ public abstract class AbstractYarnScheduler
           new RMNodeCleanContainerEvent(node.getNodeID(), containerId));
       return;
     }
+    //通过 RMContainerNMDoneChangeResourceEvent 更新 RMContainer 的资源，使其与 NM 报告的资源一致
     rmContainer.handle(new RMContainerNMDoneChangeResourceEvent(containerId,
         increasedContainerReportedByNM.getResource()));
 
@@ -512,18 +549,21 @@ public abstract class AbstractYarnScheduler
           container.getContainerId()));
     }
   }
-
+  // 用于在 ResourceManager（RM）恢复模式 下，从 NodeManager（NM） 端恢复 Container，确保 YARN 集群的 高可用性（HA）。
+  // 当 RM 重启时，NodeManager 会报告其当前运行的 Container 状态，RM 需要处理这些信息，决定哪些 Container 可以继续运行，哪些需要被清理
   public void recoverContainersOnNode(List<NMContainerStatus> containerReports,
       RMNode nm) {
     writeLock.lock();
     try {
+      //如果 RM 未开启工作保留恢复模式，则跳过恢复
       if (!rmContext.isWorkPreservingRecoveryEnabled()
           || containerReports == null || (containerReports != null
           && containerReports.isEmpty())) {
         return;
       }
-
+      //遍历 NodeManager 上报的 Container
       for (NMContainerStatus container : containerReports) {
+        //获取 ApplicationId 并检查应用是否存在
         ApplicationId appId =
             container.getContainerId().getApplicationAttemptId()
                 .getApplicationId();
@@ -534,7 +574,7 @@ public abstract class AbstractYarnScheduler
           killOrphanContainerOnNode(nm, container);
           continue;
         }
-
+        //检查 SchedulerApplication 是否存在
         SchedulerApplication<T> schedulerApp = applications.get(appId);
         if (schedulerApp == null) {
           LOG.info("Skip recovering container  " + container
@@ -545,9 +585,10 @@ public abstract class AbstractYarnScheduler
         }
 
         LOG.info("Recovering container " + container);
+        //获取 SchedulerApplicationAttempt
         SchedulerApplicationAttempt schedulerAttempt =
             schedulerApp.getCurrentAppAttempt();
-
+        //判断是否需要恢复 Container
         if (!rmApp.getApplicationSubmissionContext()
             .getKeepContainersAcrossApplicationAttempts()) {
           // Do not recover containers for stopped attempt or previous attempt.
@@ -560,7 +601,7 @@ public abstract class AbstractYarnScheduler
             continue;
           }
         }
-
+        //获取 Queue 信息
         Queue queue = schedulerApp.getQueue();
         //To make sure we don't face ambiguity, CS queues should be referenced
         //by their full queue names
@@ -568,6 +609,7 @@ public abstract class AbstractYarnScheduler
             ((CSQueue)queue).getQueuePath() : queue.getQueueName();
 
         // create container
+        //创建 RMContainer，表示恢复的 Container
         RMContainer rmContainer = recoverAndCreateContainer(container, nm,
             queueName);
 
@@ -576,10 +618,12 @@ public abstract class AbstractYarnScheduler
             new RMContainerRecoverEvent(container.getContainerId(), container));
 
         // recover scheduler node
+        //恢复 Container 在 SchedulerNode 上的调度状态
         SchedulerNode schedulerNode = nodeTracker.getNode(nm.getNodeID());
         schedulerNode.recoverContainer(rmContainer);
 
         // recover queue: update headroom etc.
+        //恢复调度队列
         Queue queueToRecover = schedulerAttempt.getQueue();
         queueToRecover.recoverContainer(getClusterResource(), schedulerAttempt,
             rmContainer);
@@ -595,6 +639,7 @@ public abstract class AbstractYarnScheduler
         }
         // set master container for the current running AMContainer for this
         // attempt.
+        //标注是否是AM
         RMAppAttempt appAttempt = rmApp.getCurrentAppAttempt();
         if (appAttempt != null) {
           Container masterContainer = appAttempt.getMasterContainer();
@@ -606,7 +651,7 @@ public abstract class AbstractYarnScheduler
             ((RMContainerImpl) rmContainer).setAMContainer(true);
           }
         }
-
+        //检查 Container 是否已经被 Application 释放
         if (schedulerAttempt.getPendingRelease().remove(
             container.getContainerId())) {
           // release the container
@@ -623,7 +668,7 @@ public abstract class AbstractYarnScheduler
       writeLock.unlock();
     }
   }
-
+  //恢复容器
   private RMContainer recoverAndCreateContainer(NMContainerStatus status,
       RMNode node, String queueName) {
     Container container =
@@ -650,6 +695,8 @@ public abstract class AbstractYarnScheduler
    * AM, then RMContainer will not have resource request to recover.
    * @param rmContainer rmContainer
    */
+  // 恢复 ResourceRequest（资源请求），当 Container 在 AM（Application Master）提取资源之前被抢占（preempted） 时，
+  // 调度器会将该资源请求重新添加回 SchedulerApplicationAttempt，以便后续继续调度
   private void recoverResourceRequestForContainer(RMContainer rmContainer) {
     ContainerRequest containerRequest = rmContainer.getContainerRequest();
 
@@ -701,27 +748,33 @@ public abstract class AbstractYarnScheduler
       }
     }
   }
-
+  //completedContainer 处理 RMContainer 的完成事件。它负责：
+  //释放 Container，确保 ResourceManager（RM）更新状态。
+  //更新调度信息，释放 SchedulerNode 上的资源。
+  //处理 Opportunistic 和 Guaranteed 类型 Container 的不同逻辑。
+  //恢复 ResourceRequest，如果 Container 在 ACQUIRED 状态被杀死，需要重新申请资源
   @VisibleForTesting
   @Private
   // clean up a completed container
   public void completedContainer(RMContainer rmContainer,
       ContainerStatus containerStatus, RMContainerEventType event) {
-
+    //处理 RMContainer 为空的情况
     if (rmContainer == null) {
       LOG.info("Container " + containerStatus.getContainerId()
           + " completed with event " + event
           + ", but corresponding RMContainer doesn't exist.");
       return;
     }
-
+    //如果 Container 是 GUARANTEED（保证调度）
     if (rmContainer.getExecutionType() == ExecutionType.GUARANTEED) {
       completedContainerInternal(rmContainer, containerStatus, event);
       completeOustandingUpdatesWhichAreReserved(
           rmContainer, containerStatus, event);
     } else {
+      //处理 Opportunistic 类型 Container
       ContainerId containerId = rmContainer.getContainerId();
       // Inform the container
+      //触发 RMContainerFinishedEvent
       rmContainer.handle(
           new RMContainerFinishedEvent(containerId, containerStatus, event));
       SchedulerApplicationAttempt schedulerAttempt =
@@ -734,7 +787,7 @@ public abstract class AbstractYarnScheduler
       }
       LOG.debug("Completed container: {} in state: {} event:{}",
           rmContainer.getContainerId(), rmContainer.getState(), event);
-
+      //释放 SchedulerNode 资源
       SchedulerNode node = getSchedulerNode(rmContainer.getNodeId());
       if (node != null) {
         node.releaseContainer(rmContainer.getContainerId(), false);
@@ -745,6 +798,7 @@ public abstract class AbstractYarnScheduler
     // for regular containers and RM itself for AM container) will not know what
     // happened. Simply add the ResourceRequest back again so that requester
     // doesn't need to do anything conditionally.
+    //处理 ACQUIRED 状态下的 Container
     recoverResourceRequestForContainer(rmContainer);
   }
 
@@ -753,16 +807,25 @@ public abstract class AbstractYarnScheduler
   // associated temp containers. These are removed when the app completes,
   // but removing them when the actual container completes would allow the
   // scheduler to reallocate those resources sooner.
+  //用于 优化调度器的资源回收。
+  //当 Container 运行过程中 存在未完成的调度更新，该方法会 检查并回收 这些临时 Container。
+  //目的：加速资源回收，使调度器能够 更快重新分配资源，而不是等到整个 Application 结束后才清理这些容器
+
   private void completeOustandingUpdatesWhichAreReserved(
       RMContainer rmContainer, ContainerStatus containerStatus,
       RMContainerEventType event) {
+    //获取 SchedulerNode
     N schedulerNode = getSchedulerNode(rmContainer.getNodeId());
+    //检查 SchedulerNode 是否有保留的 Container
     if (schedulerNode != null &&
         schedulerNode.getReservedContainer() != null) {
       RMContainer resContainer = schedulerNode.getReservedContainer();
+      //调度键（SchedulerKey） 是调度系统用来识别 Container 的唯一标识
+      //如果 SchedulerKey 存在，说明 Container 确实处于等待更新的状态
       if (resContainer.getReservedSchedulerKey() != null) {
         ContainerId containerToUpdate = resContainer
             .getReservedSchedulerKey().getContainerToUpdate();
+        //如果 Container 正处于调度更新状态，那么 containerToUpdate 将指向它
         if (containerToUpdate != null &&
             containerToUpdate.equals(containerStatus.getContainerId())) {
           completedContainerInternal(resContainer,
@@ -778,9 +841,12 @@ public abstract class AbstractYarnScheduler
   // clean up a completed container
   protected abstract void completedContainerInternal(RMContainer rmContainer,
       ContainerStatus containerStatus, RMContainerEventType event);
-
+  //用于 释放容器。它会检查容器是否存在，并处理释放请求。该方法的主要功能是：
+  //如果容器存在，释放该容器并更新其状态。
+  //如果容器不存在，它会根据容器是否在恢复过程中来决定是否将容器添加到待处理的释放列表中，或者记录释放失败的日志。
   protected void releaseContainers(List<ContainerId> containers,
       SchedulerApplicationAttempt attempt) {
+    //遍历传入的容器ID列表，对每一个容器进行处理
     for (ContainerId containerId : containers) {
       RMContainer rmContainer = getRMContainer(containerId);
       if (rmContainer == null) {
@@ -1203,7 +1269,9 @@ public abstract class AbstractYarnScheduler
     // Process new container information
     // NOTICE: it is possible to not find the NodeID as a node can be
     // decommissioned at the same time. Skip updates if node is null.
+    //获取调度器中的对应节点信息
     SchedulerNode schedulerNode = getNode(nm.getNodeID());
+    //更新新容器的信息，返回已完成的容器状态
     List<ContainerStatus> completedContainers = updateNewContainerInfo(nm,
         schedulerNode);
 
@@ -1322,7 +1390,7 @@ public abstract class AbstractYarnScheduler
 
   /**
    * Normalize a list of resource requests.
-   *
+   * 规范化资源请求
    * @param asks resource requests
    */
   protected void normalizeResourceRequests(List<ResourceRequest> asks) {
@@ -1343,9 +1411,16 @@ public abstract class AbstractYarnScheduler
           getNormalizedResource(ask.getCapability(), maxAllocation));
     }
   }
+  //处理应用程序提交的容器更新请求，这些更新包括：
+  //提升（Promotion）：从 0 资源增加到目标资源（相当于创建新容器）。
+  //资源增加（Increase）：已有容器的资源增加。
+  //降级（Demotion）：从原始资源减少到 0（相当于释放容器）。
+  //资源减少（Decrease）：已有容器的资源减少。
+  //该方法根据更新请求的类型，调用不同的方法进行处理。
 
   protected void handleContainerUpdates(
       SchedulerApplicationAttempt appAttempt, ContainerUpdates updates) {
+    //处理提升（Promotion）请求
     List<UpdateContainerRequest> promotionRequests =
         updates.getPromotionRequests();
     if (promotionRequests != null && !promotionRequests.isEmpty()) {
@@ -1354,12 +1429,14 @@ public abstract class AbstractYarnScheduler
       // 0 resources to target resources.
       handleIncreaseRequests(appAttempt, promotionRequests);
     }
+    //处理资源增加（Increase）请求
     List<UpdateContainerRequest> increaseRequests =
         updates.getIncreaseRequests();
     if (increaseRequests != null && !increaseRequests.isEmpty()) {
       LOG.info("Resource increase requests : " + increaseRequests);
       handleIncreaseRequests(appAttempt, increaseRequests);
     }
+    //处理降级（Demotion）请求
     List<UpdateContainerRequest> demotionRequests =
         updates.getDemotionRequests();
     if (demotionRequests != null && !demotionRequests.isEmpty()) {
@@ -1368,6 +1445,7 @@ public abstract class AbstractYarnScheduler
       // to 0 resources
       handleDecreaseRequests(appAttempt, demotionRequests);
     }
+    //处理资源减少（Decrease）请求
     List<UpdateContainerRequest> decreaseRequests =
         updates.getDecreaseRequests();
     if (decreaseRequests != null && !decreaseRequests.isEmpty()) {
@@ -1375,11 +1453,13 @@ public abstract class AbstractYarnScheduler
       handleDecreaseRequests(appAttempt, decreaseRequests);
     }
   }
-
+  //处理 资源增加（Increase）请求，即应用程序希望某些正在运行的容器（RMContainer）增加 CPU、内存等资源
   private void handleIncreaseRequests(
       SchedulerApplicationAttempt applicationAttempt,
       List<UpdateContainerRequest> updateContainerRequests) {
+    //遍历所有 资源增加请求
     for (UpdateContainerRequest uReq : updateContainerRequests) {
+      //获取 对应的容器对象
       RMContainer rmContainer =
           rmContext.getScheduler().getRMContainer(uReq.getContainerId());
       // Check if this is a container update
@@ -1388,13 +1468,15 @@ public abstract class AbstractYarnScheduler
         // Check if this is an executionType change request
         // If so, fix the rr to make it look like a normal rr
         // with relaxLocality=false and numContainers=1
+        //获取该容器所在的 调度节点（SchedulerNode）
         SchedulerNode schedulerNode = rmContext.getScheduler()
             .getSchedulerNode(rmContainer.getContainer().getNodeId());
 
         // Add only if no outstanding promote requests exist.
+        //检查是否已经有未完成的资源增加请求
         if (!applicationAttempt.getUpdateContext()
             .checkAndAddToOutstandingIncreases(
-                rmContainer, schedulerNode, uReq)) {
+                rmContainer, schedulerNode, uReq)) { //如果 已经有一个增加请求，则不允许重复请求，返回 false，否则，将该请求加入待处理的增加请求列表，返回 true
           applicationAttempt.addToUpdateContainerErrors(
               UpdateContainerError.newInstance(
               RMServerUtils.UPDATE_OUTSTANDING_ERROR, uReq));
@@ -1542,6 +1624,7 @@ public abstract class AbstractYarnScheduler
    *
    * @return a Resource object with the minimum allocation for the scheduler
    */
+  //获取容器的最小分配值
   public Resource getMinimumAllocation() {
     Resource ret = ResourceUtils.getResourceTypesMinimumAllocation();
     LOG.info("Minimum allocation = " + ret);
@@ -1553,7 +1636,7 @@ public abstract class AbstractYarnScheduler
    *
    * @return a Resource object with the maximum allocation for the scheduler
    */
-
+  //获取容器的最大分配值
   public Resource getMaximumAllocation() {
     Resource ret = ResourceUtils.getResourceTypesMaximumAllocation();
     LOG.info("Maximum allocation = " + ret);

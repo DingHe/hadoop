@@ -30,16 +30,18 @@ import org.apache.hadoop.util.Preconditions;
  * {@link INode} with additional fields including id, name, permission,
  * access time and modification time.
  */
+//Inode类只定义了parent字段，其他字段通过get方法来获取，并且留给子类来定义，此类定义了这些字段。
 @InterfaceAudience.Private
 public abstract class INodeWithAdditionalFields extends INode
     implements LinkedElement {
   // Note: this format is used both in-memory and on-disk.  Changes will be
   // incompatible.
+  //位字段的顺序是从低位到高位依次排列，USER 字段在最高位，MODE 在最低位
   enum PermissionStatusFormat implements LongBitFormat.Enum {
-    MODE(null, 16),
-    GROUP(MODE.BITS, 24),
-    USER(GROUP.BITS, 24);
-
+    MODE(null, 16),//表示文件的权限模式，占 16 位，如 rwx（读取、写入、执行权限）
+    GROUP(MODE.BITS, 24), //表示文件所属的用户组，占 24 位，用于存储用户组的序列号（映射到用户组名）
+    USER(GROUP.BITS, 24); //表示文件的所属用户，占 24 位，用于存储用户的序列号（映射到用户名）
+    //每个枚举常量都包含一个 LongBitFormat 对象，封装了该字段在 long 类型中的偏移量、长度、最小值等信息
     final LongBitFormat BITS;
 
     private PermissionStatusFormat(LongBitFormat previous, int length) {
@@ -65,9 +67,11 @@ public abstract class INodeWithAdditionalFields extends INode
     /** Encode the {@link PermissionStatus} to a long. */
     static long toLong(PermissionStatus ps) {
       long permission = 0L;
+      //获取用户名对应的序列号，确保大于 0
       final int user = SerialNumberManager.USER.getSerialNumber(
           ps.getUserName());
       assert user != 0;
+      //将其编码到 permission 中
       permission = USER.BITS.combine(user, permission);
       // ideally should assert on group but inodes are created with null
       // group and then updated only when added to a directory.
@@ -121,6 +125,7 @@ public abstract class INodeWithAdditionalFields extends INode
   private LinkedElement next = null;
   /** An array {@link Feature}s. */
   private static final Feature[] EMPTY_FEATURE = new Feature[0];
+  //Inode节点的特性，例如AclFeature
   protected Feature[] features = EMPTY_FEATURE;
 
   private INodeWithAdditionalFields(INode parent, long id, byte[] name,
@@ -292,7 +297,7 @@ public abstract class INodeWithAdditionalFields extends INode
   public final void setAccessTime(long accessTime) {
     this.accessTime = accessTime;
   }
-
+  //增加特性
   protected void addFeature(Feature f) {
     int size = features.length;
     Feature[] arr = new Feature[size + 1];
@@ -341,7 +346,7 @@ public abstract class INodeWithAdditionalFields extends INode
     throw new IllegalStateException(
         "Feature " + f.getClass().getSimpleName() + " not found.");
   }
-
+  //根据特征类，超着对应的特征
   protected <T extends Feature> T getFeature(Class<? extends Feature> clazz) {
     Preconditions.checkArgument(clazz != null);
     final int size = features.length;

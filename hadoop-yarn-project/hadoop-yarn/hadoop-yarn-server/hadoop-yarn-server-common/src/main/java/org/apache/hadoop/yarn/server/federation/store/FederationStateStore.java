@@ -32,6 +32,8 @@ import org.slf4j.LoggerFactory;
  * {@link FederationReservationHomeSubClusterStore}.
  *
  */
+//管理和协调联邦集群的状态。它提供了与联邦集群状态存储相关的多个方法，支持存储、加载、检查版本等操作。该接口继承了多个其他接口，涉及到应用程序、成员状态、策略、预定等信息的管理。
+// 它主要用于确保集群的不同子系统之间的一致性和协调性，尤其是在多集群（或联邦集群）环境下
 public interface FederationStateStore extends
     FederationApplicationHomeSubClusterStore, FederationMembershipStateStore,
     FederationPolicyStore, FederationReservationHomeSubClusterStore,
@@ -45,6 +47,7 @@ public interface FederationStateStore extends
    * @param conf the cluster configuration
    * @throws YarnException if initialization fails
    */
+  //集群配置对象，用于初始化联邦状态存储
   void init(Configuration conf) throws YarnException;
 
   /**
@@ -56,14 +59,14 @@ public interface FederationStateStore extends
 
   /**
    * Get the {@link Version} of the underlying federation state store client.
-   *
+   * 返回当前 FederationStateStore 的版本信息（Version）
    * @return the {@link Version} of the underlying federation store client
    */
   Version getCurrentVersion();
 
   /**
    * Load the version information from the federation state store.
-   *
+   * 从联邦状态存储中加载版本信息。返回存储中的 Version
    * @return the {@link Version} of the federation state store
    * @throws Exception an exception occurred in load version.
    */
@@ -71,7 +74,7 @@ public interface FederationStateStore extends
 
   /**
    * Store the Version information in federation state store.
-   *
+   * 用于将版本信息存储到联邦状态存储中。如果存储过程中发生异常，抛出 Exception
    * @throws Exception an exception occurred in store version.
    */
   void storeVersion() throws Exception;
@@ -104,7 +107,7 @@ public interface FederationStateStore extends
 
   /**
    * We will clear the data in stateStore through the deleteStateStore method.
-   *
+   * 清除联邦状态存储中的所有数据。通常，这个方法会在需要重置或删除存储状态时调用
    * @throws Exception an exception occurred in delete store.
    */
   void deleteStateStore() throws Exception;

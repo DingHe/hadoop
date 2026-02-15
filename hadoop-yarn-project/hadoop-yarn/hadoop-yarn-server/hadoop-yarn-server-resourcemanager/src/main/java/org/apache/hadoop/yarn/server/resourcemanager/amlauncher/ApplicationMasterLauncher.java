@@ -34,14 +34,19 @@ import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
 
-
+//用于启动和清理 Application Master (AM)。它通过线程池和队列机制异步处理与 AM 启动相关的事件。此类的主要功能包括：
+//启动 Application Master。
+//在 AM 启动或清理后进行必要的资源回收和清理工作。
+//处理与 AM 启动相关的事件，如启动和清理。
 public class ApplicationMasterLauncher extends AbstractService implements
     EventHandler<AMLauncherEvent> {
   private static final Logger LOG = LoggerFactory.getLogger(
       ApplicationMasterLauncher.class);
+  //用于并发处理与 Application Master 启动相关的任务
   private ThreadPoolExecutor launcherPool;
+  //自定义的线程 (LauncherThread)，它会从 masterEvents 队列中获取任务并提交到 launcherPool 执行。它负责处理 AM 启动和清理的事件
   private LauncherThread launcherHandlingThread;
-  
+  //阻塞队列 (BlockingQueue)，用于存放待处理的事件。这些事件通常与 AM 的启动和清理相关
   private final BlockingQueue<Runnable> masterEvents
     = new LinkedBlockingQueue<Runnable>();
   
@@ -79,7 +84,8 @@ public class ApplicationMasterLauncher extends AbstractService implements
     launcherHandlingThread.start();
     super.serviceStart();
   }
-  
+  //application：RMAppAttempt 类型，表示要启动或清理的 Application Master 尝试
+  //event：AMLauncherEventType 枚举类型，表示事件类型（如启动或清理）
   protected Runnable createRunnableLauncher(RMAppAttempt application, 
       AMLauncherEventType event) {
     Runnable launcher =

@@ -39,12 +39,20 @@ import org.apache.hadoop.util.ReflectionUtils;
  * This InputSplit contains a set of child InputSplits. Any InputSplit inserted
  * into this collection must have a public default constructor.
  */
+//代码是 Hadoop MapReduce 库中用于连接（Join）操作的一个关键类：CompositeInputSplit
+// 作用是作为 多个 InputSplit 的容器，将多个数据源的输入分块（Split）逻辑上组合成一个单一的 Split。
+// 这个类主要用在 Hadoop MapReduce Join 框架 (mapreduce.lib.join) 中，特别是 Reduce-Side Join 或 CompositeInputFormat 的场景。
+// 核心功能包括：
+// 逻辑分组： 允许一个 Map Task 处理来自多个不同底层文件或数据源的输入分块。
+// 聚合元数据： 它计算所有内部 Split 的总长度，并聚合所有 Split 的位置信息（主机名），以便于 MapReduce 调度器进行数据本地性优化。
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public class CompositeInputSplit extends InputSplit implements Writable {
-
+  // 当前已添加到 splits 数组中的子 InputSplit 的数量。作为添加 Split 时的计数器和索引。
   private int fill = 0;
+  // 所有已添加子 InputSplit 的总长度（字节数）。用于快速返回 getLength() 的结果。
   private long totsize = 0L;
+  // 存储所有被组合在一起的子 InputSplit 对象的数组。
   private InputSplit[] splits;
   private Configuration conf = new Configuration();
 

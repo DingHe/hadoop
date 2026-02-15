@@ -25,12 +25,22 @@ import static org.apache.hadoop.util.Time.monotonicNow;
  * The parameter bandwidthPerSec specifies the total bandwidth shared by
  * threads.
  */
+//HDFS 内部用于限制数据传输速率的工具类
+//对数据传输进行流控（throttle），防止 I/O 过载，保证 HDFS 传输带宽在设定范围内
+  //线程安全，可以被多个线程共享，适用于并发数据传输场景
+  //动态调整带宽，支持 设置新的带宽值，并在新的时间周期内生效
 public class DataTransferThrottler {
+  //流控时间周期（毫秒），数据传输速率限制在这个时间窗口内生效（默认 500ms）
   private final long period;          // period over which bw is imposed
+  //最大时间扩展周期（period * 3），如果 period 过期但 throttle() 没执行，会扩展 period 以适应长时间不活动的情况
   private final long periodExtension; // Max period over which bw accumulates.
+  //每个周期允许传输的字节数，由 带宽（B/s） 计算得出：bytesPerPeriod = (bandwidthPerSec * period) / 1000
   private long bytesPerPeriod;  // total number of bytes can be sent in each period
+  //前流控周期的开始时间（使用 monotonicNow() 获取）
   private long curPeriodStart;  // current period starting time
+  //当前周期内剩余可传输字节数，每次传输数据时会减少，当小于 0 需要等待
   private long curReserve;      // remaining bytes can be sent in the period
+  //当前周期已经使用的字节数，防止超过带宽限制。
   private long bytesAlreadyUsed;
 
   /** Constructor 
@@ -56,6 +66,7 @@ public class DataTransferThrottler {
   /**
    * @return current throttle bandwidth in bytes per second.
    */
+  //获取当前限速带宽
   public synchronized long getBandwidth() {
     return bytesPerPeriod*1000/period;
   }
@@ -64,6 +75,7 @@ public class DataTransferThrottler {
    * Sets throttle bandwidth. This takes affect latest by the end of current
    * period.
    */
+  //设定带宽
   public synchronized void setBandwidth(long bytesPerSecond) {
     if ( bytesPerSecond <= 0 ) {
       throw new IllegalArgumentException("" + bytesPerSecond);
@@ -78,6 +90,7 @@ public class DataTransferThrottler {
    * @param numOfBytes
    *     number of bytes sent/received since last time throttle was called
    */
+  //限制数据传输速率
   public synchronized void throttle(long numOfBytes) {
     throttle(numOfBytes, null);
   }
@@ -91,21 +104,26 @@ public class DataTransferThrottler {
    * @param canceler
    *     optional canceler to check for abort of throttle
    */
+  //核心限速逻辑，控制当前线程数据传输速率，防止超出设定的带宽上限
+  //计算 剩余可传输字节数，如果超出限制，则 阻塞线程等待
+  //numOfBytes 传输的字节数
   public synchronized void throttle(long numOfBytes, Canceler canceler) {
+    //若 numOfBytes <= 0，直接返回，不执行限速逻辑
     if ( numOfBytes <= 0 ) {
       return;
     }
-
+    //减少当前可用带宽 curReserve，增加已使用带宽 bytesAlreadyUsed
     curReserve -= numOfBytes;
     bytesAlreadyUsed += numOfBytes;
-
+    //如果 curReserve 变为负数，说明当前传输速率超出了限制，需要等待
     while (curReserve <= 0) {
+      //如果 Canceler 被触发（canceler.isCancelled() 返回 true），直接返回，不再等待
       if (canceler != null && canceler.isCancelled()) {
         return;
       }
       long now = monotonicNow();
       long curPeriodEnd = curPeriodStart + period;
-
+      //now < curPeriodEnd：当前仍在本周期内，等待 curPeriodEnd - now 毫秒，让 curReserve 重新恢复
       if ( now < curPeriodEnd ) {
         // Wait for next period so that curReserve can be increased.
         try {

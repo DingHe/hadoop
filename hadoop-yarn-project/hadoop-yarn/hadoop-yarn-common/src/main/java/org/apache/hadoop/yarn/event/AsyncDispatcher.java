@@ -52,6 +52,8 @@ import org.apache.hadoop.classification.VisibleForTesting;
  * does that. Potentially there could be multiple channels for each event type
  * class and a thread pool can be used to dispatch the events.
  */
+//事件调度器。其主要职责是异步地分发事件（Event）到相应的事件处理器。
+// 该类通过将事件分派工作放到单独的线程中，避免了阻塞操作，并提升了系统的响应能力
 @SuppressWarnings("rawtypes")
 @Public
 @Evolving
@@ -61,18 +63,24 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
       LoggerFactory.getLogger(AsyncDispatcher.class);
   private static final Marker FATAL =
       MarkerFactory.getMarker("FATAL");
-
+  //用于存放事件的队列
   private final BlockingQueue<Event> eventQueue;
+  //记录上次日志打印时事件队列的大小，用于打印队列大小日志
   private volatile int lastEventQueueSizeLogged = 0;
+  //记录上次打印事件详细信息时队列的大小
   private volatile int lastEventDetailsQueueSizeLogged = 0;
+  //指示调度器是否已经停止。如果为 true，表示调度器已经停止，不再处理新事件
   private volatile boolean stopped = false;
 
   //Configuration for control the details queue event printing.
+  //配置项，用于控制打印事件队列详细信息的间隔
   private int detailsInterval;
+  //指示是否触发打印事件队列的详细信息
   private boolean printTrigger = false;
 
   // Configuration flag for enabling/disabling draining dispatcher's events on
   // stop functionality.
+  //配置项，控制在停止时是否排空（drain）事件队列。默认为 false，即不排空队列
   private volatile boolean drainEventsOnStop = false;
 
   // Indicates all the remaining dispatcher's events on stop have been drained
@@ -80,28 +88,35 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
   // Race condition happens if dispatcher thread sets drained to true between
   // handler setting drained to false and enqueueing event. YARN-3878 decided
   // to ignore it because of its tiny impact. Also see YARN-5436.
+  //指示事件队列是否已经被排空。在某些情况下，停止调度器时需要确保事件队列被排空，避免遗留事件未被处理
   private volatile boolean drained = true;
+  //用于在排空事件队列时进行同步
   private final Object waitForDrained = new Object();
 
   // For drainEventsOnStop enabled only, block newly coming events into the
   // queue while stopping.
+  //在停止调度器时，是否阻塞新的事件加入队列
   private volatile boolean blockNewEvents = false;
+  //用于处理事件的实例。GenericEventHandler 用于默认的事件处理逻辑
   private final EventHandler<Event> handlerInstance = new GenericEventHandler();
-
+  //事件处理的线程，负责从 eventQueue 中取出事件并将其分发给相应的处理器
   private Thread eventHandlingThread;
+  //存储每种事件类型对应的事件处理器。每种事件类型（通过枚举类表示）都有一个对应的处理器
   protected final Map<Class<? extends Enum>, EventHandler> eventDispatchers;
+  //指示当事件调度发生异常时是否退出调度器。默认为 true，表示发生异常时退出
   private boolean exitOnDispatchException = true;
-
+  //存储每种事件类型的指标信息，便于收集和监控不同类型事件的处理性能
   private Map<Class<? extends Enum>,
       EventTypeMetrics> eventTypeMetricsMap;
-
+  //用于获取时间。默认为 MonotonicClock，提供单调递增的时间
   private Clock clock = new MonotonicClock();
-
+  //用于打印事件详细信息的线程池
   private ThreadPoolExecutor printEventDetailsExecutor;
 
   /**
    * The thread name for dispatcher.
    */
+  //调度器线程的名称
   private String dispatcherThreadName = "AsyncDispatcher event handler";
 
   public AsyncDispatcher() {
@@ -124,7 +139,7 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
     this();
     dispatcherThreadName = dispatcherName;
   }
-
+  //不断从队列中取出事件，然后派发
   Runnable createThread() {
     return new Runnable() {
       @Override
@@ -203,7 +218,7 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
          conf.getTimeDuration(YarnConfiguration.YARN_DISPATCHER_PRINT_THREAD_POOL_KEEP_ALIVE_TIME,
          YarnConfiguration.DEFAULT_YARN_DISPATCHER_PRINT_THREAD_POOL_KEEP_ALIVE_TIME,
          TimeUnit.SECONDS);
-
+    //配置打印详细信息的线程
     printEventDetailsExecutor = new ThreadPoolExecutor(
         numCorePoolSizeThreads, numMaximumPoolSizeThreads, keepAliveTime, TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(), threadFactory);
@@ -255,7 +270,7 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
     // stop all the components
     super.serviceStop();
   }
-
+  //根据事件类型，取出对应的处理器处理事件
   @SuppressWarnings("unchecked")
   protected void dispatch(Event event) {
     //all events go thru this loop
@@ -285,7 +300,7 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
       }
     }
   }
-
+  //注册事件处理器
   @SuppressWarnings("unchecked")
   @Override
   public void register(Class<? extends Enum> eventType,
@@ -314,8 +329,9 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
   public EventHandler<Event> getEventHandler() {
     return handlerInstance;
   }
-
+  //实现了 EventHandler<Event> 接口，负责事件的异步处理，并管理事件队列
   class GenericEventHandler implements EventHandler<Event> {
+    //该方法用于统计事件队列中不同类型的事件数量，并打印日志
     private void printEventQueueDetails() {
       Iterator<Event> iterator = eventQueue.iterator();
       Map<Enum, Long> counterMap = new HashMap<>();
@@ -332,7 +348,9 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
                 + ", Event record counter: " + num);
       }
     }
+    //用于处理新事件并将其放入事件队列
     public void handle(Event event) {
+      //如果 blockNewEvents 为 true，则直接返回，不处理新事件
       if (blockNewEvents) {
         return;
       }
@@ -340,11 +358,13 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
 
       /* all this method does is enqueue all the events onto the queue */
       int qSize = eventQueue.size();
+      //日志记录：每 1000 个事件打印一次队列大小
       if (qSize != 0 && qSize % 1000 == 0
           && lastEventQueueSizeLogged != qSize) {
         lastEventQueueSizeLogged = qSize;
         LOG.info("Size of event-queue is " + qSize);
       }
+      //如果 qSize 达到 detailsInterval，则提交异步任务 printEventQueueDetails
       if (qSize != 0 && qSize % detailsInterval == 0
               && lastEventDetailsQueueSizeLogged != qSize) {
         lastEventDetailsQueueSizeLogged = qSize;
@@ -356,6 +376,7 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
         LOG.warn("Very low remaining capacity in the event-queue: "
             + remCapacity);
       }
+      //将事件放入队列
       try {
         eventQueue.put(event);
       } catch (InterruptedException e) {
@@ -375,7 +396,10 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
    * are interested in the event.
    * @param <T> the type of event these multiple handlers are interested in.
    */
+  //用于多路复用事件，即将同一个事件发送给多个事件处理器
+    //核心功能是将接收到的事件转发给多个处理器。这样，多个组件或模块都可以监听并响应同一个事件
   static class MultiListenerHandler implements EventHandler<Event> {
+    //存储所有注册的事件处理器 EventHandler<Event> 列表
     List<EventHandler<Event>> listofHandlers;
 
     public MultiListenerHandler() {

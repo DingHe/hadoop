@@ -67,6 +67,7 @@ import org.apache.hadoop.util.Preconditions;
  */
 @InterfaceAudience.Private
 public class BlockPoolSliceStorage extends Storage {
+  //垃圾回收目录的名称。这个目录用于存储被删除的文件或块，类似于回收站
   static final String TRASH_ROOT_DIR = "trash";
 
   /**
@@ -79,22 +80,23 @@ public class BlockPoolSliceStorage extends Storage {
    *   2. If the marker file is absent, then a regular upgrade may be in
    *      progress. Do not delete the 'previous' directory.
    */
+  //动升级过程中的标记文件。如果该文件存在，表示正在进行滚动升级。如果文件不存在，则意味着常规升级可能正在进行
   static final String ROLLING_UPGRADE_MARKER_FILE = "RollingUpgradeInProgress";
-
+  //匹配特定格式的块池 ID
   private static final String BLOCK_POOL_ID_PATTERN_BASE =
       Pattern.quote(File.separator) +
       "BP-\\d+-\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}-\\d+" +
       Pattern.quote(File.separator);
-
+  //匹配包含块池 ID 的路径。通过该模式，可以解析路径中的块池部分
   private static final Pattern BLOCK_POOL_PATH_PATTERN = Pattern.compile(
       "^(.*)(" + BLOCK_POOL_ID_PATTERN_BASE + ")(.*)$");
-
+  //该正则表达式用于匹配带有块池 ID 和 "current" 目录的路径，表示当前有效的块池数据路径
   private static final Pattern BLOCK_POOL_CURRENT_PATH_PATTERN = Pattern.compile(
       "^(.*)(" + BLOCK_POOL_ID_PATTERN_BASE + ")(" + STORAGE_DIR_CURRENT + ")(.*)$");
-
+  //该正则表达式用于匹配包含块池 ID 和垃圾回收目录路径的模式，指向存放已删除块的目录
   private static final Pattern BLOCK_POOL_TRASH_PATH_PATTERN = Pattern.compile(
       "^(.*)(" + BLOCK_POOL_ID_PATTERN_BASE + ")(" + TRASH_ROOT_DIR + ")(.*)$");
-
+  //标识一个数据节点上的特定块池
   private String blockpoolID = ""; // id of the blockpool
   private Daemon trashCleaner;
 
@@ -107,7 +109,9 @@ public class BlockPoolSliceStorage extends Storage {
    * These maps are used as an optimization to avoid one filesystem operation
    * per storage on each heartbeat response.
    */
+  //带有滚动升级文件的存储目录
   private static Set<String> storagesWithRollingUpgradeMarker;
+  //不带有滚动升级文件的存储目录
   private static Set<String> storagesWithoutRollingUpgradeMarker;
 
   BlockPoolSliceStorage(int namespaceID, String bpID, long cTime,
@@ -132,16 +136,17 @@ public class BlockPoolSliceStorage extends Storage {
   }
 
   // Expose visibility for VolumeBuilder#commit().
+  //增加存储目录
   public void addStorageDir(StorageDirectory sd) {
     super.addStorageDir(sd);
   }
 
   /**
    * Load one storage directory. Recover from previous transitions if required.
-   * @param nsInfo  namespace information
-   * @param location  the root path of the storage directory
-   * @param startOpt  startup option
-   * @param callables list of callable storage directory
+   * @param nsInfo  namespace information 命名空间信息（NamespaceInfo 类型）。包含有关命名空间的详细信息，如块池 ID、命名空间 ID 和创建时间（CTime）
+   * @param location  the root path of the storage directory 存储目录的根路径（StorageLocation 类型）。这是数据节点用于存储块池的物理目录位置
+   * @param startOpt  startup option 指定启动时的操作模式，如常规启动、恢复、格式化等。不同的启动选项会影响存储目录的加载方式
+   * @param callables list of callable storage directory 包含了可并行执行的任务，每个任务都负责处理一个存储目录。这些任务通常在加载存储目录时被调用，用于执行恢复或过渡操作
    * @param conf configuration
    * @return
    * @throws IOException
@@ -150,9 +155,11 @@ public class BlockPoolSliceStorage extends Storage {
       StorageLocation location, StartupOption startOpt,
       List<Callable<StorageDirectory>> callables, Configuration conf)
           throws IOException {
+    //创建一个新的 StorageDirectory 对象，该对象表示一个存储目录。使用命名空间信息中的块池 ID 和存储路径来初始化存储目录
     StorageDirectory sd = new StorageDirectory(
         nsInfo.getBlockPoolID(), null, true, location);
     try {
+      //分析存储目录状态
       StorageState curState = sd.analyzeStorage(startOpt, this, true);
       // sd is locked but not opened
       switch (curState) {
@@ -178,13 +185,16 @@ public class BlockPoolSliceStorage extends Storage {
       // Each storage directory is treated individually.
       // During startup some of them can upgrade or roll back
       // while others could be up-to-date for the regular startup.
+      //处理存储目录的过渡操作
       if (!doTransition(sd, nsInfo, startOpt, callables, conf)) {
 
         // 3. Check CTime and update successfully loaded storage.
+        //校验 CTime 和更新存储信息
         if (getCTime() != nsInfo.getCTime()) {
           throw new IOException("Datanode CTime (=" + getCTime()
               + ") is not equal to namenode CTime (=" + nsInfo.getCTime() + ")");
         }
+        //设置服务布局版本和写入属性
         setServiceLayoutVersion(getServiceLayoutVersion());
         writeProperties(sd);
       }
@@ -359,24 +369,32 @@ public class BlockPoolSliceStorage extends Storage {
    * Regular startup if:
    * this.LV = LAYOUT_VERSION && this.cTime = namenode.cTime
    * 
-   * @param sd storage directory @{literal <SD>/current/<bpid>}
-   * @param nsInfo namespace info
-   * @param startOpt startup option
-   * @param callables list of callable storage directory
+   * @param sd storage directory @{literal <SD>/current/<bpid>} 存储目录（StorageDirectory 类型）。这是要处理的存储目录，通常是 /<SD>/current/<bpid> 路径
+   * @param nsInfo namespace info 命名空间信息（NamespaceInfo 类型）。包含有关命名空间的详细信息，如命名空间 ID 和块池 ID
+   * @param startOpt startup option  启动选项（StartupOption 类型）。用于指示启动时的操作模式，如常规启动、回滚、升级等
+   * @param callables list of callable storage directory 储目录处理过程中需要调用的任务，通常用于恢复或过渡操作
    * @param conf configuration
    * @return true if the new properties has been written.
    */
+  //根据不同的启动选项（回滚、升级、常规启动等）执行相应的操作。
+  // 通过检查当前布局版本、创建时间以及命名空间和块池的兼容性，它决定是否需要进行回滚、恢复、升级或执行常规启动。
+  // 该方法确保数据节点在启动过程中能够正确处理存储目录的过渡状态，并在需要时执行必要的操作，如恢复文件、执行升级等
   private boolean doTransition(StorageDirectory sd, NamespaceInfo nsInfo,
       StartupOption startOpt, List<Callable<StorageDirectory>> callables,
       Configuration conf) throws IOException {
+    //检查存储目录的类型是否为 PROVIDED。如果是 PROVIDED 存储类型，则直接返回 false，表示不需要进行过渡操作，直接执行常规启动
     if (sd.getStorageLocation().getStorageType() == StorageType.PROVIDED) {
       return false; // regular startup for PROVIDED storage directories
     }
+    //如果启动选项是回滚（ROLLBACK），且存储目录的 previous 目录存在，则首先检查垃圾回收根目录（trash）是否存在。
+    // 如果存在，则抛出异常。然后调用 doRollback() 方法执行回滚操作
     if (startOpt == StartupOption.ROLLBACK && sd.getPreviousDir().exists()) {
       Preconditions.checkState(!getTrashRootDir(sd).exists(),
           sd.getPreviousDir() + " and " + getTrashRootDir(sd) + " should not " +
           " both be present.");
       doRollback(sd, nsInfo); // rollback if applicable
+      //如果回滚选项为 ROLLBACK 且 previous 目录不存在，则恢复所有来自垃圾回收目录（trash）的文件。
+      // 这是因为在滚动升级回滚时，这些文件可能会被保留。恢复的文件数量会记录在日志中
     } else if (startOpt == StartupOption.ROLLBACK &&
         !sd.getPreviousDir().exists()) {
       // Restore all the files in the trash. The restored files are retained
@@ -385,6 +403,7 @@ public class BlockPoolSliceStorage extends Storage {
       int restored = restoreBlockFilesFromTrash(getTrashRootDir(sd));
       LOG.info("Restored {} block files from trash.", restored);
     }
+    //读取存储属性和检查版本可升级性
     readProperties(sd);
     checkVersionUpgradable(this.layoutVersion);
     assert this.layoutVersion >= DataNodeLayoutVersion.getCurrentLayoutVersion()
@@ -401,6 +420,8 @@ public class BlockPoolSliceStorage extends Storage {
           + nsInfo.getBlockPoolID() + "; datanode blockpoolID = "
           + blockpoolID);
     }
+    //如果当前的数据节点布局版本（layoutVersion）与最新的布局版本一致，并且数据节点的创建时间（cTime）与命名空间中的 CTime 一致，
+    // 则说明是常规启动，直接返回 false
     if (this.layoutVersion == DataNodeLayoutVersion.getCurrentLayoutVersion()
         && this.cTime == nsInfo.getCTime()) {
       return false; // regular startup
@@ -411,6 +432,7 @@ public class BlockPoolSliceStorage extends Storage {
           "before the layout upgrade. These blocks will be moved to " +
           "the previous directory during the upgrade", restored);
     }
+    //如果数据节点的布局版本大于当前的最大布局版本，则首先恢复垃圾回收目录中的文件。恢复的文件会被移到升级过程中使用的 previous 目录中
     if (this.layoutVersion > DataNodeLayoutVersion.getCurrentLayoutVersion()
         || this.cTime < nsInfo.getCTime()) {
       doUpgrade(sd, nsInfo, callables, conf); // upgrade

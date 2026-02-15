@@ -39,17 +39,17 @@ import org.apache.hadoop.thirdparty.com.google.common.base.Joiner;
 
 /**
  * Common class for storage information.
- * 
+ *  存储并管理 HDFS 节点的关键信息（布局版本、命名空间 ID、集群 ID、创建时间）
  * TODO namespaceID should be long and computed as hash(address + port)
  */
 @InterfaceAudience.Private
 public class StorageInfo {
-  public int   layoutVersion;   // layout version of the storage data
-  public int   namespaceID;     // id of the file system
-  public String clusterID;      // id of the cluster
-  public long  cTime;           // creation time of the file system state
+  public int   layoutVersion;   // layout version of the storage data 布局版本，表示当前 HDFS 的数据格式版本，控制兼容性检查和升级
+  public int   namespaceID;     // id of the file system 命名空间 ID，文件系统的唯一标识，在格式化时生成且不会更改
+  public String clusterID;      // id of the cluster 集群 ID，标识 HDFS 集群，支持集群间的联合（Federation）
+  public long  cTime;           // creation time of the file system state 创建时间，记录文件系统的创建时间，升级期间会被修改
 
-  protected final NodeType storageType; // Type of the node using this storage 
+  protected final NodeType storageType; // Type of the node using this storage  节点类型，表示该存储信息属于 NameNode 还是 DataNode
   
   protected static final String STORAGE_FILE_VERSION    = "VERSION";
 
@@ -92,14 +92,15 @@ public class StorageInfo {
    * Modified during upgrades.
    */
   public long   getCTime()        { return cTime; }
-  
+  //设置存储的Namespace相关的信息
   public void   setStorageInfo(StorageInfo from) {
     layoutVersion = from.layoutVersion;
     clusterID = from.clusterID;
     namespaceID = from.namespaceID;
     cTime = from.cTime;
   }
-
+  //参数：map，布局特性映射表，记录 HDFS 各布局版本的支持特性
+  //判断layoutVersion版本是否支持NameNode联邦
   public boolean versionSupportsFederation(
       Map<Integer, SortedSet<LayoutFeature>> map) {
     return LayoutVersion.supports(map, LayoutVersion.Feature.FEDERATION,
@@ -141,7 +142,7 @@ public class StorageInfo {
     return in.split(":")[3];
   }
   
-  /**
+  /**从版本文件读取属性信息，然后设置到sd目录
    * Read properties from the VERSION file in the given storage directory.
    */
   public void readProperties(StorageDirectory sd) throws IOException {

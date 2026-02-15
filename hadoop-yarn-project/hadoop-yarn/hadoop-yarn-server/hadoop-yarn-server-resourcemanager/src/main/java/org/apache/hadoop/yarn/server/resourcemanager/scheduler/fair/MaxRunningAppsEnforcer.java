@@ -36,6 +36,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerApplicat
  * Handles tracking and enforcement for user and queue maxRunningApps
  * constraints
  */
+//跟踪用户和队列最大运行应用的约束
 public class MaxRunningAppsEnforcer {
   private static final Logger LOG = LoggerFactory.getLogger(
       MaxRunningAppsEnforcer.class);

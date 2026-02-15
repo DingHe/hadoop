@@ -40,15 +40,20 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainer;
 import org.apache.hadoop.yarn.util.resource.Resources;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.ActiveUsersManager;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerApplicationAttempt;
-
+// FSParentQueue 类是 YARN 中公平调度器（Fair Scheduler）的一部分，负责管理一个父级队列。
+// 它继承自 FSQueue 类，并主要用于管理子队列、资源分配和调度策略。
+// 作为父队列，它控制着所有子队列的调度和资源分配。
+// 该类通过维持多个子队列、计算各自的公平资源份额以及处理队列之间的资源需求，确保整个调度过程的平衡
 @Private
 @Unstable
 public class FSParentQueue extends FSQueue {
   private static final Logger LOG = LoggerFactory.getLogger(
       FSParentQueue.class.getName());
-
+   //存储该父队列的所有子队列
   private final List<FSQueue> childQueues = new ArrayList<>();
+  //表示当前队列的资源需求。它通过累积子队列的需求进行计算
   private Resource demand = Resources.createResource(0);
+  //表示当前队列中正在运行的应用程序的数量
   private int runnableApps;
 
   private ReadWriteLock rwLock = new ReentrantReadWriteLock();

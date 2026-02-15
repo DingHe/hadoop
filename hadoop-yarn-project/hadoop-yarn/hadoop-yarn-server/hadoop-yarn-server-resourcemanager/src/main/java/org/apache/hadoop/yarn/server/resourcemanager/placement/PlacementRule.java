@@ -29,6 +29,9 @@ import org.apache.hadoop.yarn.server.resourcemanager.scheduler.ResourceScheduler
 /**
  * Abstract base for all Placement Rules.
  */
+//用于应用程序调度规则的抽象基类。它的作用是定义和实现应用程序调度到特定队列的规则。
+// YARN 资源管理器（ResourceManager）根据这些规则决定应用程序应该被调度到哪个队列。
+// 该类为所有具体的调度规则提供了一个统一的接口，允许在不同的调度场景下进行灵活的配置和扩展
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
 public abstract class PlacementRule {
@@ -38,6 +41,8 @@ public abstract class PlacementRule {
    * not pollute this abstract class with implementation specific references.
    * @param initArg initialization arguments.
    */
+  //默认实现（空方法），它的作用是为具体实现类提供一个初始化配置的接口。
+  // 具体规则类可以根据自己的需要重写这个方法，来根据传入的配置参数设置相应的属性
   public void setConfig(Object initArg) {
     // Default is a noop
   }
@@ -46,6 +51,7 @@ public abstract class PlacementRule {
    * Return the name of the rule.
    * @return The name of the rule, the fully qualified class name.
    */
+  //返回当前规则的名称，即当前类的完全限定名（包括包名）
   public String getName() {
     return this.getClass().getName();
   }
@@ -58,6 +64,7 @@ public abstract class PlacementRule {
    * the rule.
    * @throws IOException for any errors
    */
+  //具体的规则实现类需要提供该方法的具体实现。在这个方法中，规则类会根据传入的 ResourceScheduler 配置资源调度器并完成初始化
   public abstract boolean initialize(ResourceScheduler scheduler)
       throws IOException;
 
@@ -78,6 +85,8 @@ public abstract class PlacementRule {
    * @return The queue name wrapped in {@link ApplicationPlacementContext} or
    * <code>null</code> if no queue was resolved
    */
+  //返回一个 ApplicationPlacementContext 对象，封装了应用程序应该被调度到的队列名称。
+  // 如果返回 null，表示该规则没有确定队列，接下来会执行下一个调度规则
   public abstract ApplicationPlacementContext getPlacementForApp(
       ApplicationSubmissionContext asc, String user) throws YarnException;
 

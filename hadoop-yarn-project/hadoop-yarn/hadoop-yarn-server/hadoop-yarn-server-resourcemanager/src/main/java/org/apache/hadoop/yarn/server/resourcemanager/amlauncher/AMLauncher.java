@@ -73,18 +73,24 @@ import org.apache.hadoop.classification.VisibleForTesting;
 /**
  * The launch of the AM itself.
  */
+//AMLauncher类负责在YARN ResourceManager中启动和清理应用程序的Application Master (AM)容器。
+// 它会创建AM的容器启动请求并通过NodeManager启动容器，还会在AM容器清理时发送清理请求。
+// 该类实现了Runnable接口，允许在独立线程中执行启动和清理操作。它是YARN中的一个核心组件，用于管理Application Master容器的生命周期
 public class AMLauncher implements Runnable {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(AMLauncher.class);
-
+  //用于与容器管理器（Container Manager）进行通信的代理。通过它发送请求来启动或停止容器
   private ContainerManagementProtocol containerMgrProxy;
-
+  //表示当前正在启动或清理的应用程序尝试（RMAppAttempt）。它包含关于当前应用程序执行的详细信息
   private final RMAppAttempt application;
   private final Configuration conf;
+  //表示事件的类型（启动或清理）。这个属性决定了该AMLauncher对象执行启动还是清理操作
   private final AMLauncherEventType eventType;
   private final RMContext rmContext;
+  //当前应用程序的Application Master容器，包含容器的详细信息
   private final Container masterContainer;
+  //指示是否启用Timeline Service V2，用于跟踪和管理作业运行的时间线数据
   private boolean timelineServiceV2Enabled;
 
   @SuppressWarnings("rawtypes")
@@ -104,11 +110,12 @@ public class AMLauncher implements Runnable {
 
   private void connect() throws IOException {
     ContainerId masterContainerID = masterContainer.getId();
-
+    //获取NodeManager的通讯客户端
     containerMgrProxy = getContainerMgrProxy(masterContainerID);
   }
-
+  //主要作用是启动一个 Application Master (AM) 的容器，它通过 NodeManager (NM) 启动容器，并处理可能的错误情况
   private void launch() throws IOException, YarnException {
+    //用于初始化 containerMgrProxy，即与 NodeManager 进行 RPC 连接，确保可以发送启动容器的请求
     connect();
     ContainerId masterContainerID = masterContainer.getId();
     ApplicationSubmissionContext applicationContext =
@@ -117,7 +124,7 @@ public class AMLauncher implements Runnable {
         + " for AM " + application.getAppAttemptId());
     ContainerLaunchContext launchContext =
         createAMContainerLaunchContext(applicationContext, masterContainerID);
-
+    //创建 StartContainerRequest
     StartContainerRequest scRequest =
         StartContainerRequest.newInstance(launchContext,
           masterContainer.getContainerToken());
@@ -125,7 +132,7 @@ public class AMLauncher implements Runnable {
     list.add(scRequest);
     StartContainersRequest allRequests =
         StartContainersRequest.newInstance(list);
-
+    //调用 startContainers() 发送请求
     StartContainersResponse response =
         containerMgrProxy.startContainers(allRequests);
     if (response.getFailedRequests() != null
@@ -156,9 +163,11 @@ public class AMLauncher implements Runnable {
   }
 
   // Protected. For tests.
+  //用于获取一个与节点管理器（NodeManager）通信的代理对象，该代理对象实现了 ContainerManagementProtocol 接口
   protected ContainerManagementProtocol getContainerMgrProxy(
       final ContainerId containerId) {
-
+    //从 masterContainer 获取容器所属节点的 NodeId，然后基于主机和端口构建一个 InetSocketAddress 对象，
+    // 表示容器管理器（NodeManager）的连接地址
     final NodeId node = masterContainer.getNodeId();
     final InetSocketAddress containerManagerConnectAddress =
         NetUtils.createSocketAddrForHost(node.getHost(), node.getPort());
@@ -178,7 +187,7 @@ public class AMLauncher implements Runnable {
             containerId.getApplicationAttemptId(), node, user);
     currentUser.addToken(ConverterUtils.convertFromYarn(token,
         containerManagerConnectAddress));
-
+    //建并返回代理对象
     return NMProxy.createNMProxy(conf, ContainerManagementProtocol.class,
         currentUser, rpc, containerManagerConnectAddress);
   }

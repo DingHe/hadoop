@@ -29,45 +29,49 @@ import org.apache.hadoop.yarn.server.resourcemanager.reservation.ReservationSche
  * Context of the Queues in Scheduler.
  *
  */
+//用于管理调度器中的 所有队列，包括：
+//获取根队列
+//管理（增加、删除、获取）队列
+//重初始化队列
 @SuppressWarnings("rawtypes")
 @Private
 @Unstable
 public interface SchedulerQueueManager<T extends SchedulerQueue,
     E extends ReservationSchedulerConfiguration> {
 
-  /**
+  /**获取 根队列
    * Get the root queue.
    * @return root queue
    */
   T getRootQueue();
 
-  /**
+  /**获取 所有队列的映射表
    * Get all the queues.
    * @return a map contains all the queues as well as related queue names
    */
   Map<String, T> getQueues();
 
-  /**
+  /**移除指定名称的队列
    * Remove the queue from the existing queue.
    * @param queueName the queue name
    */
   void removeQueue(String queueName);
 
-  /**
+  /**向调度器中 添加新队列
    * Add a new queue to the existing queues.
    * @param queueName the queue name
    * @param queue the queue object
    */
   void addQueue(String queueName, T queue);
 
-  /**
+  /**根据 队列名称 获取 队列对象
    * Get a queue matching the specified queue name.
    * @param queueName the queue name
    * @return a queue object
    */
   T getQueue(String queueName);
 
-  /**
+  /**重新初始化队列，基于新的 ReservationSchedulerConfiguration 配置
    * Reinitialize the queues.
    * @param newConf the configuration
    * @throws IOException if fails to re-initialize queues

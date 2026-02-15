@@ -87,7 +87,6 @@ import org.apache.hadoop.thirdparty.com.google.common.cache.CacheLoader;
 import org.apache.hadoop.thirdparty.com.google.common.cache.LoadingCache;
 import org.apache.hadoop.thirdparty.com.google.common.cache.RemovalListener;
 import org.apache.hadoop.thirdparty.com.google.common.cache.RemovalNotification;
-import org.apache.hadoop.thirdparty.com.google.common.collect.Iterables;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -644,17 +643,17 @@ class DataStreamer extends Daemon {
     this.accessToken = t;
   }
 
-  protected void setPipeline(LocatedBlock lb) {
+  private void setPipeline(LocatedBlock lb) {
     setPipeline(lb.getLocations(), lb.getStorageTypes(), lb.getStorageIDs());
   }
 
-  protected void setPipeline(DatanodeInfo[] newNodes, StorageType[] newStorageTypes,
-                           String[] newStorageIDs) {
+  private void setPipeline(DatanodeInfo[] nodes, StorageType[] storageTypes,
+                           String[] storageIDs) {
     synchronized (nodesLock) {
-      this.nodes = newNodes;
+      this.nodes = nodes;
     }
-    this.storageTypes = newStorageTypes;
-    this.storageIDs = newStorageIDs;
+    this.storageTypes = storageTypes;
+    this.storageIDs = storageIDs;
   }
 
   /**
@@ -749,7 +748,7 @@ class DataStreamer extends Daemon {
 
         if (stage == BlockConstructionStage.PIPELINE_SETUP_CREATE) {
           LOG.debug("Allocating new block: {}", this);
-          setupPipelineForCreate();
+          setPipeline(nextBlockOutputStream());
           initDataStreaming();
         } else if (stage == BlockConstructionStage.PIPELINE_SETUP_APPEND) {
           LOG.debug("Append to block {}", block);
@@ -1608,11 +1607,8 @@ class DataStreamer extends Daemon {
    * it can be written to.
    * This happens when a file is appended or data streaming fails
    * It keeps on trying until a pipeline is setup
-   *
-   * Returns boolean whether pipeline was setup successfully or not.
-   * This boolean is used upstream on whether to continue creating pipeline or throw exception
    */
-  private boolean setupPipelineForAppendOrRecovery() throws IOException {
+  private void setupPipelineForAppendOrRecovery() throws IOException {
     // Check number of datanodes. Note that if there is no healthy datanode,
     // this must be internal error because we mark external error in striped
     // outputstream only when all the streamers are in the DATA_STREAMING stage
@@ -1622,45 +1618,32 @@ class DataStreamer extends Daemon {
       LOG.warn(msg);
       lastException.set(new IOException(msg));
       streamerClosed = true;
-      return false;
+      return;
     }
-    return setupPipelineInternal(nodes, storageTypes, storageIDs);
+    setupPipelineInternal(nodes, storageTypes, storageIDs);
   }
 
-  protected boolean setupPipelineInternal(DatanodeInfo[] datanodes,
+  protected void setupPipelineInternal(DatanodeInfo[] datanodes,
       StorageType[] nodeStorageTypes, String[] nodeStorageIDs)
       throws IOException {
     boolean success = false;
     long newGS = 0L;
-    boolean isCreateStage = BlockConstructionStage.PIPELINE_SETUP_CREATE == stage;
     while (!success && !streamerClosed && dfsClient.clientRunning) {
       if (!handleRestartingDatanode()) {
-        return false;
+        return;
       }
 
-      final boolean isRecovery = errorState.hasInternalError() && !isCreateStage;
-
-
+      final boolean isRecovery = errorState.hasInternalError();
       if (!handleBadDatanode()) {
-        return false;
+        return;
       }
 
       handleDatanodeReplacement();
-
-      // During create stage, min replication should still be satisfied.
-      if (isCreateStage && !(dfsClient.dtpReplaceDatanodeOnFailureReplication > 0 &&
-          nodes.length  >= dfsClient.dtpReplaceDatanodeOnFailureReplication)) {
-        return false;
-      }
 
       // get a new generation stamp and an access token
       final LocatedBlock lb = updateBlockForPipeline();
       newGS = lb.getBlock().getGenerationStamp();
       accessToken = lb.getBlockToken();
-
-      if (isCreateStage) {
-        block.setCurrentBlock(lb.getBlock());
-      }
 
       // set up the pipeline again with the remaining nodes
       success = createBlockOutputStream(nodes, storageTypes, storageIDs, newGS,
@@ -1674,7 +1657,6 @@ class DataStreamer extends Daemon {
     if (success) {
       updatePipeline(newGS);
     }
-    return success;
   }
 
   /**
@@ -1813,7 +1795,7 @@ class DataStreamer extends Daemon {
    * Must get block ID and the IDs of the destinations from the namenode.
    * Returns the list of target datanodes.
    */
-  protected void setupPipelineForCreate() throws IOException {
+  protected LocatedBlock nextBlockOutputStream() throws IOException {
     LocatedBlock lb;
     DatanodeInfo[] nodes;
     StorageType[] nextStorageTypes;
@@ -1824,7 +1806,6 @@ class DataStreamer extends Daemon {
     do {
       errorState.resetInternalError();
       lastException.clear();
-      streamerClosed = false;
 
       DatanodeInfo[] excluded = getExcludedNodes();
       lb = locateFollowingBlock(
@@ -1836,33 +1817,26 @@ class DataStreamer extends Daemon {
       nodes = lb.getLocations();
       nextStorageTypes = lb.getStorageTypes();
       nextStorageIDs = lb.getStorageIDs();
-      setPipeline(lb);
-      try {
-        // Connect to first DataNode in the list.
-        success = createBlockOutputStream(nodes, nextStorageTypes, nextStorageIDs, 0L, false)
-            || setupPipelineForAppendOrRecovery();
 
-      } catch(IOException ie) {
-        LOG.warn("Exception in setupPipelineForCreate " + this, ie);
-        success = false;
-      }
+      // Connect to first DataNode in the list.
+      success = createBlockOutputStream(nodes, nextStorageTypes, nextStorageIDs,
+          0L, false);
+
       if (!success) {
         LOG.warn("Abandoning " + block);
         dfsClient.namenode.abandonBlock(block.getCurrentBlock(),
             stat.getFileId(), src, dfsClient.clientName);
         block.setCurrentBlock(null);
-        final DatanodeInfo badNode = errorState.getBadNodeIndex() == -1
-              ? Iterables.getLast(failed)
-              : nodes[errorState.getBadNodeIndex()];
+        final DatanodeInfo badNode = nodes[errorState.getBadNodeIndex()];
         LOG.warn("Excluding datanode " + badNode);
         excludedNodes.put(badNode, badNode);
-        setPipeline(null, null, null);
       }
     } while (!success && --count >= 0);
 
     if (!success) {
       throw new IOException("Unable to create new block.");
     }
+    return lb;
   }
 
   // connects to the first datanode in the pipeline

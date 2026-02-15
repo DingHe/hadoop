@@ -45,23 +45,23 @@ import org.apache.hadoop.classification.InterfaceStability;
  * serializing/deserialing a string, coding/decoding a string, checking if a
  * byte array contains valid UTF8 code, calculating the length of an encoded
  * string.
- */
+ *///用于存储和操作 UTF-8 编码文本的实现,UTF-8 编码与解码,字节级序列化与反序列化,高效比较与搜索,无需将字节数组转换为字符串即可遍历字符
 @Stringable
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public class Text extends BinaryComparable
     implements WritableComparable<BinaryComparable> {
-
+   //UTF-8 编码器
   private static final ThreadLocal<CharsetEncoder> ENCODER_FACTORY =
     new ThreadLocal<CharsetEncoder>() {
       @Override
       protected CharsetEncoder initialValue() {
         return StandardCharsets.UTF_8.newEncoder().
-               onMalformedInput(CodingErrorAction.REPORT).
+               onMalformedInput(CodingErrorAction.REPORT).  //遇到无法编码或非法输入时抛出异常
                onUnmappableCharacter(CodingErrorAction.REPORT);
     }
   };
-
+ //UTF-8 解码器
   private static final ThreadLocal<CharsetDecoder> DECODER_FACTORY =
     new ThreadLocal<CharsetDecoder>() {
     @Override
@@ -78,9 +78,9 @@ public class Text extends BinaryComparable
 
   private static final byte[] EMPTY_BYTES = new byte[0];
 
-  private byte[] bytes = EMPTY_BYTES;
-  private int length = 0;
-  private int textLength = -1;
+  private byte[] bytes = EMPTY_BYTES; //定义一个空的字节数组，避免每次都创建新对象，提升性能。
+  private int length = 0;  //记录 bytes 数组中有效数据的长度。
+  private int textLength = -1; //缓存字符长度，延迟计算
 
   /**
    * Construct an empty text string.
@@ -159,7 +159,7 @@ public class Text extends BinaryComparable
    * @return the Unicode scalar value at position or -1
    *          if the position is invalid or points to a
    *          trailing byte
-   */
+   *///返回指定位置的 Unicode 码点，避免将整个字节数组解码为字符串
   public int charAt(int position) {
     if (position > this.length) return -1; // too long
     if (position < 0) return -1; // duh.
@@ -178,7 +178,7 @@ public class Text extends BinaryComparable
    * position is measured in bytes and the return value is in
    * terms of byte position in the buffer. The backing buffer is
    * not converted to a string for this operation.
-   *
+   * 在 Text 中查找目标字符串，返回首次匹配的字节索引，未找到返回 -1
    * @param what input what.
    * @param start input start.
    * @return byte position of the first occurrence of the search

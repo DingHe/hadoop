@@ -30,11 +30,14 @@ import org.apache.hadoop.yarn.util.resource.Resources;
 /**
  * Partition representation in RM.
  */
+//表示资源管理器节点标签的类。
+// 它继承自 AbstractLabel，并实现了 Comparable<RMNodeLabel> 接口，
+// 主要用于表示与节点标签相关的资源信息、标签的独占性（exclusive）、以及节点的集合
 public class RMNodeLabel extends AbstractLabel
     implements Comparable<RMNodeLabel> {
-  private boolean exclusive;
-  private NodeLabel nodeLabel;
-  private Set<NodeId> nodeIds;
+  private boolean exclusive; //表示该节点标签是否具有独占性（exclusive）
+  private NodeLabel nodeLabel;//表示与 RMNodeLabel 关联的具体节点标签（NodeLabel 实例）
+  private Set<NodeId> nodeIds;//表示与当前节点标签关联的节点 ID 集合
 
   public RMNodeLabel(NodeLabel nodeLabel) {
     this(nodeLabel.getName(), Resource.newInstance(0, 0), 0,

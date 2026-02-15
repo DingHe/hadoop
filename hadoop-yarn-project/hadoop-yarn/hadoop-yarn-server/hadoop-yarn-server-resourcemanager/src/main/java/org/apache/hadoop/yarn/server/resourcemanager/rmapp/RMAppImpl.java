@@ -112,7 +112,10 @@ import org.apache.hadoop.yarn.util.Times;
 import org.apache.hadoop.yarn.util.resource.Resources;
 
 import org.apache.hadoop.classification.VisibleForTesting;
-
+//用于表示一个应用程序的实现类。它是 RMApp 接口的具体实现，负责管理和跟踪一个应用程序的生命周期，
+// 包括应用程序的状态、尝试、节点信息、资源请求等。它处理与应用程序相关的事件，执行状态转换，协调调度器、资源管理、日志聚合等工作，
+// 并为应用程序提供必要的管理功能。
+// 此外，它还支持应用程序的恢复操作，能够在故障恢复时恢复应用程序的状态
 @SuppressWarnings({ "rawtypes", "unchecked" })
 public class RMAppImpl implements RMApp, Recoverable {
 
@@ -144,6 +147,7 @@ public class RMAppImpl implements RMApp, Recoverable {
   private final int maxAppAttempts;
   private final ReadLock readLock;
   private final WriteLock writeLock;
+  //记录该应用的应用尝试
   private final Map<ApplicationAttemptId, RMAppAttempt> attempts
       = new LinkedHashMap<ApplicationAttemptId, RMAppAttempt>();
   private final long submitTime;
@@ -981,35 +985,44 @@ public class RMAppImpl implements RMApp, Recoverable {
   }
 
   private void createNewAttempt() {
+    //创建新的应用尝试id
     ApplicationAttemptId appAttemptId =
         ApplicationAttemptId.newInstance(applicationId, nextAttemptId++);
     createNewAttempt(appAttemptId);
   }
-
+  //创建一个新的应用尝试（RMAppAttempt）。如果之前有尝试（currentAttempt），
+  // 它会继承之前尝试的一些状态（例如黑名单管理器）。如果没有，则根据特定条件初始化新的黑名单管理器。
+  // 然后，它会创建一个新的 RMAppAttemptImpl 对象，并将其加入到 attempts 集合中，更新 currentAttempt 为当前的应用尝试
   private void createNewAttempt(ApplicationAttemptId appAttemptId) {
     BlacklistManager currentAMBlacklistManager;
+    //如果 currentAttempt 不为空，说明应用有前一个尝试。此时，当前应用尝试的黑名单管理器将继承之前的尝试
     if (currentAttempt != null) {
       // Transfer over the blacklist from the previous app-attempt.
       currentAMBlacklistManager = currentAttempt.getAMBlacklistManager();
     } else {
+      //表示启用 AM 黑名单，并且当前应用是一个管理式 AM
       if (amBlacklistingEnabled && !submissionContext.getUnmanagedAM()) {
         currentAMBlacklistManager = new SimpleBlacklistManager(
             RMServerUtils.getApplicableNodeCountForAM(rmContext, conf,
                 getAMResourceRequests()),
             blacklistDisableThreshold);
       } else {
+        //表示禁用了黑名单功能
         currentAMBlacklistManager = new DisabledBlacklistManager();
       }
     }
+    //创建新的 RMAppAttempt 对象
     RMAppAttempt attempt =
         new RMAppAttemptImpl(appAttemptId, rmContext, scheduler, masterService,
           submissionContext, conf, amReqs, this, currentAMBlacklistManager);
     attempts.put(appAttemptId, attempt);
     currentAttempt = attempt;
   }
-
+  //transferStateFromPreviousAttempt  指示是否从之前的尝试转移状态。如果为 true，则会从前一个尝试中转移状态。如果为 false，则表示这是一个全新的尝试，不需要从前一个尝试中转移状态
+  //
   private void
       createAndStartNewAttempt(boolean transferStateFromPreviousAttempt) {
+    //创建一个新的应用尝试实例。它会初始化新的尝试，并为其分配必要的资源和状态
     createNewAttempt();
     handler.handle(new RMAppStartAttemptEvent(currentAttempt.getAppAttemptId(),
       transferStateFromPreviousAttempt));
@@ -1189,7 +1202,7 @@ public class RMAppImpl implements RMApp, Recoverable {
       app.sendATSCreateEvent();
     }
   }
-
+  //创建新的app尝试
   private static final class StartAppAttemptTransition extends RMAppTransition {
     @Override
     public void transition(RMAppImpl app, RMAppEvent event) {

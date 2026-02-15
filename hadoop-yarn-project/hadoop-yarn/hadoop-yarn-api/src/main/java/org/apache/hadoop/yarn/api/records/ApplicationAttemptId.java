@@ -33,6 +33,9 @@ import org.apache.hadoop.yarn.util.Records;
  * to temporal failures of the <code>ApplicationMaster</code> such as hardware
  * failures, connectivity issues etc. on the node on which it was scheduled.</p>
  */
+//代表某个 ApplicationMaster 的特定尝试（attempt），与 ApplicationId 关联。
+//由于 ApplicationMaster 可能因为硬件故障、网络连接问题等原因失败，因此 YARN 允许它进行多次尝试，每次尝试都有唯一的 ApplicationAttemptId。
+//该类提供了生成、解析、比较 ApplicationAttemptId 的方法，确保 YARN 任务调度和管理的唯一性和可追踪性
 @Public
 @Stable
 public abstract class ApplicationAttemptId implements

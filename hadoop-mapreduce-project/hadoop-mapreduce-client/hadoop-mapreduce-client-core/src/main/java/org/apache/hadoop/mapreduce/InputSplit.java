@@ -38,7 +38,7 @@ import org.apache.hadoop.mapreduce.RecordReader;
  * 
  * @see InputFormat
  * @see RecordReader
- */
+ *///描述 MapReduce 作业中每个 Mapper 需要处理的输入数据片段（Split）
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public abstract class InputSplit {
@@ -47,7 +47,7 @@ public abstract class InputSplit {
    * @return the number of bytes in the split
    * @throws IOException
    * @throws InterruptedException
-   */
+   *///获取切片的大小，即当前 InputSplit 对象所代表的数据量（以字节为单位）
   public abstract long getLength() throws IOException, InterruptedException;
 
   /**
@@ -57,7 +57,7 @@ public abstract class InputSplit {
    * @return a new array of the node nodes.
    * @throws IOException
    * @throws InterruptedException
-   */
+   *///获取存储该数据切片的节点信息（通常是 HDFS DataNode 节点）
   public abstract 
     String[] getLocations() throws IOException, InterruptedException;
   
@@ -69,7 +69,7 @@ public abstract class InputSplit {
    *    data is stored at each location. A null value indicates that all the
    *    locations have the data stored on disk.
    * @throws IOException
-   */
+   *///获取切片的详细存储信息，包括数据在每个节点上的存储形式（如磁盘、内存、缓存）
   @Evolving
   public SplitLocationInfo[] getLocationInfo() throws IOException {
     return null;

@@ -34,15 +34,20 @@ import org.apache.hadoop.io.IOUtils;
  * a single <code>long</code> value. The file is updated atomically
  * and durably (i.e fsynced). 
  */
+//于在磁盘上持久化存储一个 long 类型的值。该类通过文件系统来存储和读取该值，
+// 确保文件更新操作是原子性的，并且对文件的写入是持久化的（即文件会被 fsync 操作同步）。
+// 它通过文件来实现该 long 值的持久化存储，并在程序启动时加载该值。该类支持对存储值的读取与写入，保证数据一致性和持久性
 @InterfaceAudience.Private
 public class PersistentLongFile {
   private static final Logger LOG = LoggerFactory.getLogger(
       PersistentLongFile.class);
-
+  //表示存储 long 值的目标文件对象。该文件用于持久化存储值，PersistentLongFile 类会根据该文件来读取和更新存储的值
   private final File file;
+  // 默认值。如果文件不存在或者无法读取值时，将使用该默认值
   private final long defaultVal;
-  
+  //当前持久化的 long 值。这个值是类的核心数据，get() 方法用来读取当前的值，set() 方法用来更新该值
   private long value;
+  //表示当前 value 是否已经从文件中加载过。默认值为 false，当调用 get() 方法时，如果还没有加载过数据，会从文件中读取
   private boolean loaded = false;
   
   public PersistentLongFile(File file, long defaultVal) {

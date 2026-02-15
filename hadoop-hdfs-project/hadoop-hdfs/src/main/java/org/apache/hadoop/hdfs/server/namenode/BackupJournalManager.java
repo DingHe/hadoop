@@ -30,6 +30,7 @@ import org.apache.hadoop.hdfs.server.protocol.NamespaceInfo;
  * A JournalManager implementation that uses RPCs to log transactions
  * to a BackupNode.
  */
+//共享nfs的JournalManager实现类
 class BackupJournalManager implements JournalManager {
   private final NamenodeRegistration bnReg;
   private final JournalInfo journalInfo;

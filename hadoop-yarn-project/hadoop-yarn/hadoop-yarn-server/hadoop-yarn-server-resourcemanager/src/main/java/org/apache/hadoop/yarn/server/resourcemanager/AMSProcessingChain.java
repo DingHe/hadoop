@@ -37,11 +37,13 @@ import java.io.IOException;
 /**
  * This maintains a chain of {@link ApplicationMasterServiceProcessor}s.
  */
+// AMSProcessingChain 维护了一条 ApplicationMasterServiceProcessor 处理链（Chain of Responsibility 责任链模式）。
+// 它封装了多个 ApplicationMasterServiceProcessor 实例，并支持动态添加新的处理器。
 class AMSProcessingChain implements ApplicationMasterServiceProcessor {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(AMSProcessingChain.class);
-
+  //指向责任链中的第一个 ApplicationMasterServiceProcessor，即当前处理链的入口点
   private ApplicationMasterServiceProcessor head;
   private RMContext rmContext;
 
@@ -67,7 +69,7 @@ class AMSProcessingChain implements ApplicationMasterServiceProcessor {
     this.head.init(amsContext, null);
   }
 
-  /**
+  /** 要添加到处理链顶部的新处理器
    * Add an processor to the top of the chain.
    * @param processor ApplicationMasterServiceProcessor
    */
@@ -78,7 +80,8 @@ class AMSProcessingChain implements ApplicationMasterServiceProcessor {
     processor.init(this.rmContext, this.head);
     this.head = processor;
   }
-
+  //将请求传递给责任链中的第一个处理器
+  //head 处理该请求，可能会调用下一个处理器，直到责任链中的某个处理器完成最终处理
   @Override
   public void registerApplicationMaster(
       ApplicationAttemptId applicationAttemptId,
@@ -86,13 +89,15 @@ class AMSProcessingChain implements ApplicationMasterServiceProcessor {
       RegisterApplicationMasterResponse resp) throws IOException, YarnException {
     this.head.registerApplicationMaster(applicationAttemptId, request, resp);
   }
-
+  //将 allocate 请求传递给责任链的第一个处理器
+  //head 可能会处理资源请求，也可能会调用下一个处理器，直到请求得到最终处理
   @Override
   public void allocate(ApplicationAttemptId appAttemptId,
       AllocateRequest request, AllocateResponse response) throws YarnException {
     this.head.allocate(appAttemptId, request, response);
   }
-
+  //将 finishApplicationMaster 请求传递给责任链中的第一个处理器
+  //head 可能会完成必要的清理工作，也可能会继续传递请求，直到责任链中的某个处理器完成最终处理
   @Override
   public void finishApplicationMaster(
       ApplicationAttemptId applicationAttemptId,

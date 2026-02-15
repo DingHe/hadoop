@@ -31,7 +31,7 @@ import org.apache.hadoop.yarn.util.Records;
  */
 @Public
 @Stable
-public abstract class ContainerId implements Comparable<ContainerId>{
+public abstract class ContainerId implements Comparable<ContainerId> {
   public static final long CONTAINER_ID_BITMASK = 0xffffffffffL;
   private static final String CONTAINER_PREFIX = "container_";
   private static final String EPOCH_PREFIX = "e";

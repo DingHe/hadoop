@@ -105,38 +105,41 @@ import static org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot.CURRENT_S
  * to the disk.
  * @see org.apache.hadoop.hdfs.server.namenode.FSNamesystem
  **/
+//主要用于管理HDFS的命名空间
+//FSDirectory和FSNamesystem共同管理文件系统的状态，FSDirectory负责纯内存的数据结构操作，而FSNamesystem则负责将操作持久化到磁盘
 @InterfaceAudience.Private
 public class FSDirectory implements Closeable {
   static final Logger LOG = LoggerFactory.getLogger(FSDirectory.class);
-
+  //创建 HDFS 文件系统中的 根目录 ("/")，并为其设置基本属性和功能
+  //FSNamesystem namesystem：传入一个 FSNamesystem 对象，代表整个 HDFS 文件系统的命名空间管理类
   private static INodeDirectory createRoot(FSNamesystem namesystem) {
     final INodeDirectory r = new INodeDirectory(
         INodeId.ROOT_INODE_ID,
         INodeDirectory.ROOT_NAME,
         namesystem.createFsOwnerPermissions(new FsPermission((short) 0755)),
-        0L);
-    r.addDirectoryWithQuotaFeature(
+        0L);// 父目录ID，根目录没有父级，默认为0
+    r.addDirectoryWithQuotaFeature(//为当前目录添加配额管理功能，限制命名空间和存储空间
         new DirectoryWithQuotaFeature.Builder().
-            nameSpaceQuota(DirectoryWithQuotaFeature.DEFAULT_NAMESPACE_QUOTA).
-            storageSpaceQuota(DirectoryWithQuotaFeature.DEFAULT_STORAGE_SPACE_QUOTA).
+            nameSpaceQuota(DirectoryWithQuotaFeature.DEFAULT_NAMESPACE_QUOTA). //设置目录下允许的最大文件和目录数，使用默认值
+            storageSpaceQuota(DirectoryWithQuotaFeature.DEFAULT_STORAGE_SPACE_QUOTA).//设置目录下允许的最大存储空间，使用默认值
             build());
-    r.addSnapshottableFeature();
-    r.setSnapshotQuota(0);
+    r.addSnapshottableFeature();//为根目录添加 快照 功能，支持对文件系统进行快照操作，快照 (Snapshot) 是 HDFS 中的一项重要特性，允许用户捕获文件系统在某个时间点的状态，方便进行数据恢复或历史回溯
+    r.setSnapshotQuota(0);//设置快照配额为 0，表示当前目录没有快照数量限制
     return r;
   }
 
   @VisibleForTesting
-  static boolean CHECK_RESERVED_FILE_NAMES = true;
+  static boolean CHECK_RESERVED_FILE_NAMES = true;//当该值为 true 时，HDFS 会对路径中使用的保留文件名（如 .reserved、.inodes）进行检查，防止非法访问
   public final static String DOT_RESERVED_STRING =
-      HdfsConstants.DOT_RESERVED_STRING;
+      HdfsConstants.DOT_RESERVED_STRING; //引用 HdfsConstants 类中定义的 .reserved 字符串，表示一个保留路径，通常用于系统内部的特殊访问
   public final static String DOT_RESERVED_PATH_PREFIX =
-      HdfsConstants.DOT_RESERVED_PATH_PREFIX;
+      HdfsConstants.DOT_RESERVED_PATH_PREFIX; //.reserved 路径的前缀，用于标识内部路径，访问这些路径时需要特殊权限
   public final static byte[] DOT_RESERVED = 
-      DFSUtil.string2Bytes(DOT_RESERVED_STRING);
-  private final static String RAW_STRING = "raw";
+      DFSUtil.string2Bytes(DOT_RESERVED_STRING);//通过 DFSUtil.string2Bytes() 方法将 .reserved 字符串转换为 字节数组，用于路径匹配或序列化操作
+  private final static String RAW_STRING = "raw";//表示 raw 字符串，用于定义原始路径访问，raw 通常用于直接访问原始数据而不经过透明加密层。例如，HDFS 加密区（Encryption Zone, EZ）允许通过路径 /user/.reserved/raw 直接访问未经解密的数据
   private final static byte[] RAW = DFSUtil.string2Bytes(RAW_STRING);
   public final static String DOT_INODES_STRING =
-      HdfsConstants.DOT_INODES_STRING;
+      HdfsConstants.DOT_INODES_STRING;//.inodes 字符串，HDFS 内部使用的保留路径
   public final static byte[] DOT_INODES = 
       DFSUtil.string2Bytes(DOT_INODES_STRING);
   private final static byte[] DOT_DOT =
@@ -152,19 +155,29 @@ public class FSDirectory implements Closeable {
       new HdfsFileStatus.Builder()
         .isdir(true)
         .build();
-
+  //表示文件系统的根目录。根目录在初始化时会被创建，并具有一定的默认特性，如配额、快照支持等
   INodeDirectory rootDir;
+  //HDFS文件系统的核心，负责处理文件系统的各种操作，如文件的创建、删除、命名等
   private final FSNamesystem namesystem;
+  //布尔类型，用于在消费编辑日志时跳过配额检查。通常在恢复操作中使用
   private volatile boolean skipQuotaCheck = false; //skip while consuming edits
+  //表示路径组件（文件或目录名）的最大长度
   private final int maxComponentLength;
+  //表示目录中最大允许的条目数
   private final int maxDirItems;
+  //表示在列出目录内容时的最大限制
   private final int lsLimit;  // max list limit
+  //表示每次操作中内容统计的最大计数
   private final int contentCountLimit; // max content summary counts per run
+  //表示当列出内容时的延迟时间，单位是微秒
   private final long contentSleepMicroSec;
+  //用于存储和管理所有的INode（索引节点）。通过它可以查找、操作文件系统中的文件和目录
   private final INodeMap inodeMap; // Synchronized by dirLock
+  //表示尝试获取锁时的“yield”次数，通常用于锁竞争时的调度
   private long yieldCount = 0; // keep track of lock yield count.
+  //表示初始化配额检查时的线程数
   private int quotaInitThreads;
-
+  //表示每个inode（索引节点）允许的最大xattr（扩展属性）数目
   private final int inodeXAttrsLimit; //inode xattrs max limit
 
   // A set of directories that have been protected using the
@@ -172,49 +185,64 @@ public class FSDirectory implements Closeable {
   // be deleted unless they are empty.
   //
   // Each entry in this set must be a normalized path.
+  //存储被保护的目录，这些目录不能被删除，除非它们为空
   private volatile SortedSet<String> protectedDirectories;
+  //布尔类型，表示是否启用受保护子目录的功能
   private final boolean isProtectedSubDirectoriesEnable;
-
+  //布尔类型，表示是否启用权限检查
   private final boolean isPermissionEnabled;
+  //表示是否启用权限内容摘要的子访问功能
   private final boolean isPermissionContentSummarySubAccess;
   /**
    * Support for ACLs is controlled by a configuration flag. If the
    * configuration flag is false, then the NameNode will reject all
    * ACL-related operations.
    */
+  //表示是否启用ACL（访问控制列表）
   private final boolean aclsEnabled;
   /** Threshold to print a warning. */
+  //表示访问控制强制执行器的报告阈值
   private final long accessControlEnforcerReportingThresholdMs;
   /**
    * Support for POSIX ACL inheritance. Not final for testing purpose.
    */
+  //表示是否启用POSIX ACL继承
   private boolean posixAclInheritanceEnabled;
+  //表示是否启用xattrs（扩展属性）
   private final boolean xattrsEnabled;
+  //表示xattr的最大大小
   private final int xattrMaxSize;
 
   // precision of access times.
+  //表示访问时间的精度
   private final long accessTimePrecision;
   // whether quota by storage type is allowed
+  //表示是否启用按存储类型进行配额限制
   private final boolean quotaByStorageTypeEnabled;
-
+  //表示文件系统所有者的简短用户名
   private final String fsOwnerShortUserName;
+  //表示超级用户组的名称
   private final String supergroup;
+  //用于唯一标识一个inode
   private final INodeId inodeId;
-
+  //文件系统编辑日志，用于记录文件系统的变更
   private final FSEditLog editLog;
-
+  //存储保留状态的文件信息
   private HdfsFileStatus[] reservedStatuses;
-
+  //提供外部inode属性的接口
   private INodeAttributeProvider attributeProvider;
 
   // A HashSet of principals of users for whom the external attribute provider
   // will be bypassed
+  //存储那些绕过外部属性提供程序的用户列表
   private HashSet<String> usersToBypassExtAttrProvider = null;
 
   // If external inode attribute provider is configured, use the new
   // authorizeWithContext() API or not.
+  //表示是否使用带有上下文的权限检查API
   private boolean useAuthorizationWithContextAPI = false;
-
+  //主要用于在 HDFS 中设置 INodeAttributeProvider（INode 属性提供者），并根据该提供者是否支持新的授权 API 进行动态切换
+  //INodeAttributeProvider：用于提供对 HDFS 中 INode 属性的自定义处理（如访问控制、配额等）
   public void setINodeAttributeProvider(
       @Nullable INodeAttributeProvider provider) {
     attributeProvider = provider;
@@ -299,55 +327,55 @@ public class FSDirectory implements Closeable {
   }
 
   @VisibleForTesting
-  public final EncryptionZoneManager ezManager;
+  public final EncryptionZoneManager ezManager;//管理加密区域的功能
 
   /**
    * Caches frequently used file names used in {@link INode} to reuse 
    * byte[] objects and reduce heap usage.
    */
-  private final NameCache<ByteArray> nameCache;
+  private final NameCache<ByteArray> nameCache; //用于缓存频繁使用的文件名，以减少堆内存的使用
 
   // used to specify path resolution type. *_LINK will return symlinks instead
   // of throwing an unresolved exception
   public enum DirOp {
-    READ,
-    READ_LINK,
-    WRITE,  // disallows snapshot paths.
-    WRITE_LINK,
-    CREATE, // like write, but also blocks invalid path names.
-    CREATE_LINK;
+    READ, //表示对路径的读取。路径是正常解析的，直接读取文件或目录内容
+    READ_LINK, //表示解析符号链接（symlink）。如果遇到符号链接，系统会返回该链接指向的目标，而不是抛出未解析的异常
+    WRITE,  // disallows snapshot paths.//表示对路径进行写入操作。与 READ 操作不同，WRITE 操作还会有额外的限制，比如禁止对快照路径进行写入操作（即不允许在快照路径下进行写入）
+    WRITE_LINK, //表示创建或修改符号链接。它允许在符号链接的路径上进行写入操作，即可以创建新的符号链接或修改现有的符号链接
+    CREATE, // like write, but also blocks invalid path names.创建一个新的路径。与 WRITE 操作不同，CREATE 操作不仅会执行写操作，还会阻止创建无效的路径名
+    CREATE_LINK; //表示创建符号链接。与 CREATE 操作相似，但它专门用于创建符号链接，而不是普通文件或目录
   };
 
   FSDirectory(FSNamesystem ns, Configuration conf) throws IOException {
     this.inodeId = new INodeId();
-    rootDir = createRoot(ns);
-    inodeMap = INodeMap.newInstance(rootDir);
+    rootDir = createRoot(ns);  //设置根目录
+    inodeMap = INodeMap.newInstance(rootDir); //把根目录放入INodeMap缓存
     this.isPermissionEnabled = conf.getBoolean(
       DFSConfigKeys.DFS_PERMISSIONS_ENABLED_KEY,
-      DFSConfigKeys.DFS_PERMISSIONS_ENABLED_DEFAULT);
+      DFSConfigKeys.DFS_PERMISSIONS_ENABLED_DEFAULT); //是否启用 HDFS 文件权限检查，取决于 dfs.permissions.enabled 配置
     this.isPermissionContentSummarySubAccess = conf.getBoolean(
         DFSConfigKeys.DFS_PERMISSIONS_CONTENT_SUMMARY_SUBACCESS_KEY,
-        DFSConfigKeys.DFS_PERMISSIONS_CONTENT_SUMMARY_SUBACCESS_DEFAULT);
+        DFSConfigKeys.DFS_PERMISSIONS_CONTENT_SUMMARY_SUBACCESS_DEFAULT);//是否在计算内容摘要时进行子目录的访问权限检查，受 dfs.permissions.content-summary.subaccess 配置控制
     this.fsOwnerShortUserName =
-      UserGroupInformation.getCurrentUser().getShortUserName();
+      UserGroupInformation.getCurrentUser().getShortUserName();//获取当前文件系统所有者的短用户名（不含域名）
     this.supergroup = conf.get(
       DFSConfigKeys.DFS_PERMISSIONS_SUPERUSERGROUP_KEY,
-      DFSConfigKeys.DFS_PERMISSIONS_SUPERUSERGROUP_DEFAULT);
+      DFSConfigKeys.DFS_PERMISSIONS_SUPERUSERGROUP_DEFAULT);//HDFS 超级用户组名称，通常用于身份验证和授权
     this.aclsEnabled = conf.getBoolean(
         DFSConfigKeys.DFS_NAMENODE_ACLS_ENABLED_KEY,
-        DFSConfigKeys.DFS_NAMENODE_ACLS_ENABLED_DEFAULT);
+        DFSConfigKeys.DFS_NAMENODE_ACLS_ENABLED_DEFAULT);//是否启用访问控制列表（ACLs），由 dfs.namenode.acls.enabled 决定
     LOG.info("ACLs enabled? " + aclsEnabled);
     this.posixAclInheritanceEnabled = conf.getBoolean(
         DFSConfigKeys.DFS_NAMENODE_POSIX_ACL_INHERITANCE_ENABLED_KEY,
-        DFSConfigKeys.DFS_NAMENODE_POSIX_ACL_INHERITANCE_ENABLED_DEFAULT);
+        DFSConfigKeys.DFS_NAMENODE_POSIX_ACL_INHERITANCE_ENABLED_DEFAULT);//是否支持 POSIX ACL 继承，决定子目录是否继承父目录的 POSIX ACL
     LOG.info("POSIX ACL inheritance enabled? " + posixAclInheritanceEnabled);
     this.xattrsEnabled = conf.getBoolean(
         DFSConfigKeys.DFS_NAMENODE_XATTRS_ENABLED_KEY,
-        DFSConfigKeys.DFS_NAMENODE_XATTRS_ENABLED_DEFAULT);
+        DFSConfigKeys.DFS_NAMENODE_XATTRS_ENABLED_DEFAULT);//是否支持扩展属性（XAttrs），如存储自定义的文件元数据
     LOG.info("XAttrs enabled? " + xattrsEnabled);
     this.xattrMaxSize = (int) conf.getLongBytes(
         DFSConfigKeys.DFS_NAMENODE_MAX_XATTR_SIZE_KEY,
-        DFSConfigKeys.DFS_NAMENODE_MAX_XATTR_SIZE_DEFAULT);
+        DFSConfigKeys.DFS_NAMENODE_MAX_XATTR_SIZE_DEFAULT);//扩展属性的最大允许大小，受 dfs.namenode.max.xattr.size 控制
     Preconditions.checkArgument(xattrMaxSize > 0,
         "The maximum size of an xattr should be > 0: (%s).",
         DFSConfigKeys.DFS_NAMENODE_MAX_XATTR_SIZE_KEY);
@@ -359,42 +387,42 @@ public class FSDirectory implements Closeable {
 
     this.accessTimePrecision = conf.getLong(
         DFS_NAMENODE_ACCESSTIME_PRECISION_KEY,
-        DFS_NAMENODE_ACCESSTIME_PRECISION_DEFAULT);
+        DFS_NAMENODE_ACCESSTIME_PRECISION_DEFAULT);//设置访问时间精度，精确到毫秒级，减少访问时间更新频率
 
     this.quotaByStorageTypeEnabled =
         conf.getBoolean(DFS_QUOTA_BY_STORAGETYPE_ENABLED_KEY,
-                        DFS_QUOTA_BY_STORAGETYPE_ENABLED_DEFAULT);
+                        DFS_QUOTA_BY_STORAGETYPE_ENABLED_DEFAULT);//是否按存储类型（SSD、HDD）进行配额限制，受 dfs.quota.by.storagetype.enabled 控制
 
     int configuredLimit = conf.getInt(
         DFSConfigKeys.DFS_LIST_LIMIT, DFSConfigKeys.DFS_LIST_LIMIT_DEFAULT);
     this.lsLimit = configuredLimit>0 ?
-        configuredLimit : DFSConfigKeys.DFS_LIST_LIMIT_DEFAULT;
+        configuredLimit : DFSConfigKeys.DFS_LIST_LIMIT_DEFAULT;//限制每次列出目录项的最大数量，防止目录列表过大导致内存消耗
     this.contentCountLimit = conf.getInt(
         DFSConfigKeys.DFS_CONTENT_SUMMARY_LIMIT_KEY,
-        DFSConfigKeys.DFS_CONTENT_SUMMARY_LIMIT_DEFAULT);
+        DFSConfigKeys.DFS_CONTENT_SUMMARY_LIMIT_DEFAULT);//内容摘要操作的最大文件和目录数量，限制内容统计的粒度
     this.contentSleepMicroSec = conf.getLong(
         DFSConfigKeys.DFS_CONTENT_SUMMARY_SLEEP_MICROSEC_KEY,
-        DFSConfigKeys.DFS_CONTENT_SUMMARY_SLEEP_MICROSEC_DEFAULT);
+        DFSConfigKeys.DFS_CONTENT_SUMMARY_SLEEP_MICROSEC_DEFAULT);//在内容摘要计算中每次处理后的休眠时间，防止 NameNode 负载过高
     
     // filesystem limits
     this.maxComponentLength = (int) conf.getLongBytes(
         DFSConfigKeys.DFS_NAMENODE_MAX_COMPONENT_LENGTH_KEY,
-        DFSConfigKeys.DFS_NAMENODE_MAX_COMPONENT_LENGTH_DEFAULT);
+        DFSConfigKeys.DFS_NAMENODE_MAX_COMPONENT_LENGTH_DEFAULT);//路径组件（即目录或文件名）的最大长度限制，确保文件名合理性
     this.maxDirItems = conf.getInt(
         DFSConfigKeys.DFS_NAMENODE_MAX_DIRECTORY_ITEMS_KEY,
-        DFSConfigKeys.DFS_NAMENODE_MAX_DIRECTORY_ITEMS_DEFAULT);
+        DFSConfigKeys.DFS_NAMENODE_MAX_DIRECTORY_ITEMS_DEFAULT);//目录中允许的最大条目数，防止单个目录下文件或子目录过多
     this.inodeXAttrsLimit = conf.getInt(
         DFSConfigKeys.DFS_NAMENODE_MAX_XATTRS_PER_INODE_KEY,
-        DFSConfigKeys.DFS_NAMENODE_MAX_XATTRS_PER_INODE_DEFAULT);
+        DFSConfigKeys.DFS_NAMENODE_MAX_XATTRS_PER_INODE_DEFAULT);//每个 INode 上的最大扩展属性数，控制扩展属性的数量
 
-    this.protectedDirectories = parseProtectedDirectories(conf);
+    this.protectedDirectories = parseProtectedDirectories(conf);//受保护目录的集合，防止特定系统关键路径被修改或删除
     this.isProtectedSubDirectoriesEnable = conf.getBoolean(
         DFS_PROTECTED_SUBDIRECTORIES_ENABLE,
-        DFS_PROTECTED_SUBDIRECTORIES_ENABLE_DEFAULT);
+        DFS_PROTECTED_SUBDIRECTORIES_ENABLE_DEFAULT);//是否启用对受保护子目录的保护，避免重要子目录被误操作
 
     this.accessControlEnforcerReportingThresholdMs = conf.getLong(
         DFS_NAMENODE_ACCESS_CONTROL_ENFORCER_REPORTING_THRESHOLD_MS_KEY,
-        DFS_NAMENODE_ACCESS_CONTROL_ENFORCER_REPORTING_THRESHOLD_MS_DEFAULT);
+        DFS_NAMENODE_ACCESS_CONTROL_ENFORCER_REPORTING_THRESHOLD_MS_DEFAULT);//访问控制执行器报告的阈值，超过此时间会记录警告日志
 
     Preconditions.checkArgument(this.inodeXAttrsLimit >= 0,
         "Cannot set a negative limit on the number of xattrs per inode (%s).",
@@ -413,19 +441,20 @@ public class FSDirectory implements Closeable {
         DFSConfigKeys.DFS_NAMENODE_NAME_CACHE_THRESHOLD_DEFAULT);
     NameNode.LOG.info("Caching file names occurring more than " + threshold
         + " times");
-    nameCache = new NameCache<ByteArray>(threshold);
+    nameCache = new NameCache<ByteArray>(threshold);//缓存高频访问的文件名，优化文件名查找性能
     namesystem = ns;
-    this.editLog = ns.getEditLog();
-    ezManager = new EncryptionZoneManager(this, conf);
+    this.editLog = ns.getEditLog();//操作日志记录器，跟踪文件系统的修改操作，支持 HDFS 崩溃恢复
+    ezManager = new EncryptionZoneManager(this, conf);//管理加密区（Encryption Zone），支持 HDFS 数据加密
 
     this.quotaInitThreads = conf.getInt(
         DFSConfigKeys.DFS_NAMENODE_QUOTA_INIT_THREADS_KEY,
-        DFSConfigKeys.DFS_NAMENODE_QUOTA_INIT_THREADS_DEFAULT);
+        DFSConfigKeys.DFS_NAMENODE_QUOTA_INIT_THREADS_DEFAULT);//用于初始化配额的线程数，优化大规模文件系统的配额计算
 
     initUsersToBypassExtProvider(conf);
   }
-
+  //用于初始化一个用户列表，这些用户在访问文件时将 绕过外部属性提供程序（External Attribute Provider）
   private void initUsersToBypassExtProvider(Configuration conf) {
+    //获取绕过外部属性提供程序的用户列表
     String[] bypassUsers = conf.getTrimmedStrings(
         DFSConfigKeys.DFS_NAMENODE_INODE_ATTRIBUTES_PROVIDER_BYPASS_USERS_KEY,
         DFSConfigKeys.DFS_NAMENODE_INODE_ATTRIBUTES_PROVIDER_BYPASS_USERS_DEFAULT);
@@ -442,7 +471,7 @@ public class FSDirectory implements Closeable {
     }
   }
 
-  /**
+  /**如果用户配置为绕过外部属性提供程序，返回 true，否则返回 false
    * Check if a given user is configured to bypass external attribute provider.
    * @param user user principal
    * @return true if the user is to bypass external attribute provider
@@ -457,6 +486,8 @@ public class FSDirectory implements Closeable {
    * @param ugi
    * @return configured attributeProvider or null
    */
+  //根据当前用户的身份信息（UserGroupInformation 对象），返回适用的 INodeAttributeProvider 实例，
+  // 如果用户被配置为绕过外部属性提供程序，则返回 null
   private INodeAttributeProvider getUserFilteredAttributeProvider(
       UserGroupInformation ugi) {
     if (attributeProvider == null ||
@@ -468,7 +499,10 @@ public class FSDirectory implements Closeable {
 
   /**
    * Get HdfsFileStatuses of the reserved paths: .inodes and raw.
-   *
+   *获取 HDFS 文件系统的保留路径（如 .inodes 和 /raw）的状态信息
+   * 保留路径：HDFS 中具有特殊含义的路径，通常由系统内部使用，普通用户无法直接访问
+   * .inodes：HDFS 的内部 INode 视图路径，提供对底层元数据的访问
+   * raw：用于加密区（Encryption Zone），提供未经加密的数据访问
    * @return Array of HdfsFileStatus
    */
   HdfsFileStatus[] getReservedStatuses() {
@@ -527,7 +561,7 @@ public class FSDirectory implements Closeable {
   /**
    * Parse configuration setting dfs.namenode.protected.directories to
    * retrieve the set of protected directories.
-   *
+   * 解析 HDFS 配置项 dfs.namenode.protected.directories，将其中的 受保护目录 提取出来，返回一个排序后的集合
    * @param conf
    * @return a TreeSet
    */
@@ -570,7 +604,7 @@ public class FSDirectory implements Closeable {
   /**
    * Set directories that cannot be removed unless empty, even by an
    * administrator.
-   *
+   * 设置受保护的目录
    * @param protectedDirsString
    *          comma separated list of protected directories
    */
@@ -583,7 +617,7 @@ public class FSDirectory implements Closeable {
 
     return Joiner.on(",").skipNulls().join(protectedDirectories);
   }
-
+  //获取BlockManager
   BlockManager getBlockManager() {
     return getFSNamesystem().getBlockManager();
   }
@@ -593,6 +627,7 @@ public class FSDirectory implements Closeable {
   }
 
   /** @return the root directory inode. */
+  //获取root目录
   public INodeDirectory getRoot() {
     return rootDir;
   }
@@ -663,7 +698,7 @@ public class FSDirectory implements Closeable {
    */
   @Override
   public void close() throws IOException {}
-
+  //初始化文件名字缓存
   void markNameCacheInitialized() {
     writeLock();
     try {
@@ -701,9 +736,9 @@ public class FSDirectory implements Closeable {
    *           illegal character sequences.
    *
    * @param pc  A permission checker for traversal checks.  Pass null for
-   *            no permission checks.
-   * @param src The path to resolve.
-   * @param dirOp The {@link DirOp} that controls additional checks.
+   *            no permission checks. pc：FSPermissionChecker 对象，用于执行权限检查
+   * @param src The path to resolve. 待解析的路径（String 类型）
+   * @param dirOp The {@link DirOp} that controls additional checks. 表示路径解析时需要执行的操作类型（例如 READ、WRITE 等）
    * @return if the path indicates an inode, return path after replacing up to
    *        {@code <inodeid>} with the corresponding path of the inode, else
    *        the path in {@code src} as is. If the path refers to a path in
@@ -713,20 +748,26 @@ public class FSDirectory implements Closeable {
    * @throws ParentNotDirectoryException
    * @throws UnresolvedLinkException
    */
+  //解析路径并返回一个 INodesInPath 对象。它会检查路径的合法性，进行权限验证，以及确保路径中的所有父目录都是可遍历的目录。
+  // 如果路径涉及符号链接，或者在创建、修改操作中使用，会进行适当的处理
   @VisibleForTesting
   public INodesInPath resolvePath(FSPermissionChecker pc, String src,
       DirOp dirOp) throws UnresolvedLinkException, FileNotFoundException,
       AccessControlException, ParentNotDirectoryException {
+    //检查是否是创建操作（CREATE 或 CREATE_LINK），
+    // 如果是，调用 DFSUtil.isValidName(src) 检查路径是否合法。如果路径不合法，抛出 InvalidPathException
     boolean isCreate = (dirOp == DirOp.CREATE || dirOp == DirOp.CREATE_LINK);
     // prevent creation of new invalid paths
     if (isCreate && !DFSUtil.isValidName(src)) {
       throw new InvalidPathException("Invalid file name: " + src);
     }
-
+    //获取路径组件并解
     byte[][] components = INode.getPathComponents(src);
+    //检查路径是否为 "raw" 路径
     boolean isRaw = isReservedRawName(components);
     components = resolveComponents(components, this);
     INodesInPath iip = INodesInPath.resolve(rootDir, components, isRaw);
+    //如果启用了权限检查，并且路径是 raw 路径，则根据操作类型（READ、WRITE 等）进行权限检查。如果是写入操作，确保只有超级用户才能访问 raw 路径
     if (isPermissionEnabled && pc != null && isRaw) {
       switch(dirOp) {
       case READ_LINK:
@@ -740,6 +781,7 @@ public class FSDirectory implements Closeable {
     // verify all ancestors are dirs and traversable.  note that only
     // methods that create new namespace items have the signature to throw
     // PNDE
+    //验证路径的所有父目录是可遍历的目录
     try {
       checkTraverse(pc, iip, dirOp);
     } catch (ParentNotDirectoryException pnde) {
@@ -770,7 +812,11 @@ public class FSDirectory implements Closeable {
     components = resolveComponents(components, this);
     return INodesInPath.resolve(rootDir, components, isRaw);
   }
-
+  //pc：FSPermissionChecker 对象，用于执行权限检查
+  //src：待解析的路径（String 类型）
+  //fileId：文件的 inode ID（long 类型）
+  //解析路径并返回一个 INodesInPath 对象。它根据提供的文件 ID（fileId）解析路径，若文件 ID 为 GRANDFATHER_INODE_ID，则直接调用 resolvePath 方法处理路径。
+  // 如果文件 ID 有效，则使用该 inode 解析路径
   INodesInPath resolvePath(FSPermissionChecker pc, String src, long fileId)
       throws UnresolvedLinkException, FileNotFoundException,
       AccessControlException, ParentNotDirectoryException {
@@ -778,6 +824,8 @@ public class FSDirectory implements Closeable {
     // In this case, we have to try to resolve the path and hope it
     // hasn't changed or been deleted since the file was opened for write.
     INodesInPath iip;
+    //如果 fileId 是常量 GRANDFATHER_INODE_ID，表示该文件来自较旧的客户端，并且没有提供 inode ID。
+    // 在这种情况下，调用 resolvePath 方法并指定操作类型为 WRITE 来解析路径
     if (fileId == HdfsConstants.GRANDFATHER_INODE_ID) {
       iip = resolvePath(pc, src, DirOp.WRITE);
     } else {
@@ -850,7 +898,10 @@ public class FSDirectory implements Closeable {
    * This is an update of existing state of the filesystem and does not
    * throw QuotaExceededException.
    */
+  //主要目的是更新文件系统中每个目录的配额计数。它计算每个目录下的 inode 总数，并在文件系统中更新相应的状态。
+  // 此操作是对现有文件系统状态的更新，不会抛出 QuotaExceededException 异常
   void updateCountForQuota(int initThreads) {
+    //在进行配额更新时，需要获取写锁，以确保操作的线程安全，防止其他线程并发修改文件系统
     writeLock();
     try {
       int threads = (initThreads < 1) ? 1 : initThreads;
@@ -877,12 +928,20 @@ public class FSDirectory implements Closeable {
   /**
    * parallel initialization using fork-join.
    */
-  private static class InitQuotaTask extends RecursiveAction {
-    private final INodeDirectory dir;
-    private final QuotaCounts counts;
-    private final BlockStoragePolicySuite bsps;
-    private final byte blockStoragePolicyId;
+  //RecursiveAction 是 Java 并行框架中的一种任务类型，用于拆分任务以进行并行处理
+  //与 RecursiveTask 类似，但 RecursiveAction 不返回结果。它主要用于没有返回值的任务，通常用于执行副作用操作，例如排序、数组填充等
+  //继承 RecursiveAction：创建一个类继承 RecursiveAction 并实现 compute() 方法，在该方法中定义任务的递归逻辑
+  //分解任务：在 compute() 方法中，将大任务分解成小任务，并通过 fork() 方法启动子任务
+  //合并任务：任务拆分后，使用 join() 来合并任务的结果（如果有的话，尽管 RecursiveAction 本身不返回结果）
+  //使用 ForkJoinPool 执行任务：通过 ForkJoinPool 来执行并行任务
 
+  //负责递归地计算并更新文件系统中目录的配额使用情况
+  private static class InitQuotaTask extends RecursiveAction {
+    private final INodeDirectory dir;//正在计算配额使用情况的目录
+    private final QuotaCounts counts;//用于存储和更新配额使用情况（如已用空间、命名空间等）的对象
+    private final BlockStoragePolicySuite bsps;//一组用于计算配额的存储策略
+    private final byte blockStoragePolicyId;//用于计算配额的存储策略ID
+    //构造函数
     public InitQuotaTask(BlockStoragePolicySuite bsps,
         byte blockStoragePolicyId, INodeDirectory dir, QuotaCounts counts) {
       this.dir = dir;
@@ -893,12 +952,13 @@ public class FSDirectory implements Closeable {
 
     public void compute() {
       QuotaCounts myCounts =  new QuotaCounts.Builder().build();
+      //计算当前目录的配额使用情况
       dir.computeQuotaUsage4CurrentDirectory(bsps, blockStoragePolicyId,
           myCounts);
-
+      //获取当前目录的子节点列表
       ReadOnlyList<INode> children =
           dir.getChildrenList(CURRENT_STATE_ID);
-
+      //如果该目录有子节点，递归地对每个子节点进行配额计算。如果是目录类型，则创建新的 InitQuotaTask 任务；如果是文件或符号链接，则直接更新配额
       if (children.size() > 0) {
         List<InitQuotaTask> subtasks = new ArrayList<InitQuotaTask>();
         for (INode child : children) {
@@ -914,9 +974,9 @@ public class FSDirectory implements Closeable {
           }
         }
         // invoke and wait for completion
-        invokeAll(subtasks);
+        invokeAll(subtasks);//// 执行所有子任务
       }
-
+      //如果当前目录设置了配额，会检查计算出的使用情况是否超过了配额限制。如果超过，会记录警告日志
       if (dir.isQuotaSet()) {
         // check if quota is violated. It indicates a software bug.
         final QuotaCounts q = dir.getQuotaCounts();
@@ -951,6 +1011,7 @@ public class FSDirectory implements Closeable {
         if (LOG.isDebugEnabled()) {
           LOG.debug("Setting quota for " + dir + "\n" + myCounts);
         }
+        //更新目录的配额信息： 最后，更新目录的配额信息
         dir.getDirectoryWithQuotaFeature().setSpaceConsumed(nsConsumed,
             ssConsumed, tsConsumed);
       }
@@ -1341,10 +1402,10 @@ public class FSDirectory implements Closeable {
 
   /**
    * Add a child to the end of the path specified by INodesInPath.
-   * @param existing the INodesInPath containing all the ancestral INodes
-   * @param inode the new INode to add
-   * @param modes create modes
-   * @param checkQuota whether to check quota
+   * @param existing the INodesInPath containing all the ancestral INodes 包含所有祖先路径的 INodesInPath 实例。它提供了当前文件或目录的完整路径和每个路径部分的 INode
+   * @param inode the new INode to add 即将添加到路径中的新 INode。它代表一个文件或目录
+   * @param modes create modes 用于设置新 INode 的默认权限。当新文件或目录被添加时，它会继承一个权限模式
+   * @param checkQuota whether to check quota 决定是否检查目录的配额。当为 true 时，方法会检查配额（如目录下的子项数量、文件数量等）
    * @return an INodesInPath instance containing the new INode
    */
   @VisibleForTesting
@@ -1358,6 +1419,7 @@ public class FSDirectory implements Closeable {
     // editlog/fsimage during upgrade since /.reserved was a valid name in older
     // release. This may also be called when a user tries to create a file
     // or directory /.reserved.
+    //如果新 INode 的路径是根目录且文件名为保留文件名（如 /.reserved），则抛出异常，防止创建这些保留文件
     if (pos == 1 && existing.getINode(0) == rootDir && isReservedName(inode)) {
       throw new HadoopIllegalArgumentException(
           "File name \"" + inode.getLocalName() + "\" is reserved and cannot "
@@ -1365,6 +1427,7 @@ public class FSDirectory implements Closeable {
               + "existing file or directory to another name before upgrading "
               + "to the new release.");
     }
+    //获取父目录并检查配额
     final INodeDirectory parent = existing.getINode(pos - 1).asDirectory();
     // The filesystem limits are not really quotas, so this check may appear
     // odd. It's because a rename operation deletes the src, tries to add
@@ -1374,28 +1437,33 @@ public class FSDirectory implements Closeable {
     // to go "poof".  The fs limits must be bypassed for the same reason.
     if (checkQuota) {
       final String parentPath = existing.getPath();
+      //验证文件名长度和目录项数量
       verifyMaxComponentLength(inode.getLocalNameBytes(), parentPath);
       verifyMaxDirItems(parent, parentPath);
     }
     // always verify inode name
+    //验证新 INode 的名称是否合法
     verifyINodeName(inode.getLocalNameBytes());
 
     final boolean isSrcSetSp = inode.isSetStoragePolicy();
     final byte storagePolicyID = isSrcSetSp ?
         inode.getLocalStoragePolicyID() :
         parent.getStoragePolicyID();
+    //计算新 INode 对配额的影响（如存储空间占用），并更新配额计数。computeQuotaUsage 方法会基于存储策略和快照 ID 计算新 INode 的配额使用情况
     final QuotaCounts counts = inode
         .computeQuotaUsage(getBlockStoragePolicySuite(),
             storagePolicyID, false, Snapshot.CURRENT_STATE_ID);
     updateCount(existing, pos, counts, checkQuota);
 
     boolean isRename = (inode.getParent() != null);
+    //将新 INode 添加到父目录中。如果添加失败，则回滚配额更新，并返回 null
     final boolean added = parent.addChild(inode, true,
         existing.getLatestSnapshotId());
     if (!added) {
       updateCountNoQuotaCheck(existing, pos, counts.negation());
       return null;
     } else {
+      //如果 INode 不是重命名操作，则复制默认的 ACL（访问控制列表）。然后将新 INode 添加到 INode 映射表中
       if (!isRename) {
         copyINodeDefaultAcl(inode, modes);
       }
@@ -1718,17 +1786,20 @@ public class FSDirectory implements Closeable {
    *         the "raw" directory, return the non-raw pathname.
    * @throws FileNotFoundException if inodeid is invalid
    */
+  //pathComponents：以字节数组的形式表示的路径组件，每个组件是路径的一个部分。例如路径 /a/b/c 对应的 pathComponents 是 {{'a'}, {'b'}, {'c'}}
+  //byte[][]：解析后的路径组件数组，可能是原路径、替换后的实际路径，或者去除 /.reserved/raw 前缀的路径
   static byte[][] resolveComponents(byte[][] pathComponents,
       FSDirectory fsd) throws FileNotFoundException {
     final int nComponents = pathComponents.length;
+    //如果路径不是 /.reserved/ 开头的，直接返回原路径
     if (nComponents < 3 || !isReservedName(pathComponents)) {
       /* This is not a /.reserved/ path so do nothing. */
-    } else if (Arrays.equals(DOT_INODES, pathComponents[2])) {
+    } else if (Arrays.equals(DOT_INODES, pathComponents[2])) {//解析路径中的 inodeid，将其转换为实际的路径
       /* It's a /.reserved/.inodes path. */
       if (nComponents > 3) {
         pathComponents = resolveDotInodesPath(pathComponents, fsd);
       }
-    } else if (Arrays.equals(RAW, pathComponents[2])) {
+    } else if (Arrays.equals(RAW, pathComponents[2])) {//如果路径指向加密区域，返回原始加密数据路径
       /* It's /.reserved/raw so strip off the /.reserved/raw prefix. */
       if (nComponents == 3) {
         pathComponents = new byte[][]{INodeDirectory.ROOT_NAME};
@@ -1744,10 +1815,13 @@ public class FSDirectory implements Closeable {
     }
     return pathComponents;
   }
-
+  //pathComponents：路径的字节数组形式，表示解析的 /.reserved/.inodes 特殊路径
+  //byte[][]：解析后的路径，仍以字节数组的形式返回，表示 HDFS 中的实际路径
+  //法解析 /.reserved/.inodes/<inodeId> 路径，将 inodeId 转换为 HDFS 中的实际路径，并返回路径的字节数组形式
   private static byte[][] resolveDotInodesPath(
       byte[][] pathComponents, FSDirectory fsd)
       throws FileNotFoundException {
+    //提取路径中的 inodeId 并解析为 long 类型
     final String inodeId = DFSUtil.bytes2String(pathComponents[3]);
     final long id;
     try {
@@ -1756,9 +1830,11 @@ public class FSDirectory implements Closeable {
       throw new FileNotFoundException("Invalid inode path: " +
           DFSUtil.byteArray2PathString(pathComponents));
     }
+    //如果路径是 /.reserved/.inodes/16384，并且该 inodeId 对应的是 HDFS 根目录，则直接返回根路径 /
     if (id == INodeId.ROOT_INODE_ID && pathComponents.length == 4) {
       return new byte[][]{INodeDirectory.ROOT_NAME};
     }
+    //通过 inodeId 查找 inode
     INode inode = fsd.getInode(id);
     if (inode == null) {
       throw new FileNotFoundException(
@@ -1767,6 +1843,7 @@ public class FSDirectory implements Closeable {
     }
 
     // Handle single ".." for NFS lookup support.
+    //处理 ".." 父目录解析
     if ((pathComponents.length > 4)
         && Arrays.equals(pathComponents[4], DOT_DOT)) {
       INode parent = inode.getParent();
@@ -1776,10 +1853,11 @@ public class FSDirectory implements Closeable {
       }
       return parent.getPathComponents();
     }
+    //如果路径中有额外的子路径，保留 inode 解析的路径，并追加子路径
     return constructRemainingPath(
         inode.getPathComponents(), pathComponents, 4);
   }
-
+  //用于将 已解析路径 (components) 与 剩余路径 (extraComponents 从 startAt 开始) 拼接，生成完整的路径
   private static byte[][] constructRemainingPath(byte[][] components,
       byte[][] extraComponents, int startAt) {
     int remainder = extraComponents.length - startAt;
@@ -1903,22 +1981,26 @@ public class FSDirectory implements Closeable {
       FsAction access) throws AccessControlException {
     checkPermission(pc, iip, false, access, null, null, null);
   }
-
+  //检查路径的访问权限
   void checkTraverse(FSPermissionChecker pc, INodesInPath iip,
       boolean resolveLink) throws AccessControlException,
         UnresolvedPathException, ParentNotDirectoryException {
     FSPermissionChecker.checkTraverse(
         isPermissionEnabled ? pc : null, iip, resolveLink);
   }
-
+  //pc：FSPermissionChecker 对象，负责检查权限
+  //iip：INodesInPath 对象，表示路径中的 INode 列表
+  //dirOp：DirOp 枚举，表示目录操作类型（如读取、写入、创建等）
+  //检查用户是否有权限 访问或修改特定路径
   void checkTraverse(FSPermissionChecker pc, INodesInPath iip,
       DirOp dirOp) throws AccessControlException, UnresolvedPathException,
           ParentNotDirectoryException {
     final boolean resolveLink;
+    //如果操作是以下三种，不解析符号链接 (resolveLink = false)
     switch (dirOp) {
-      case READ_LINK:
-      case WRITE_LINK:
-      case CREATE_LINK:
+      case READ_LINK://读取符号链接路径
+      case WRITE_LINK://修改符号链接
+      case CREATE_LINK://创建符号链接
         resolveLink = false;
         break;
       default:
@@ -1926,6 +2008,7 @@ public class FSDirectory implements Closeable {
         break;
     }
     checkTraverse(pc, iip, resolveLink);
+    //只有 读取操作 (READ、READ_LINK) 允许访问快照路径
     boolean allowSnapshot = (dirOp == DirOp.READ || dirOp == DirOp.READ_LINK);
     if (!allowSnapshot && iip.isSnapshot()) {
       throw new SnapshotAccessControlException(

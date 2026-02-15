@@ -73,26 +73,36 @@ import org.apache.hadoop.yarn.server.api.records.NodeStatus;
 import org.apache.hadoop.yarn.server.utils.BuilderUtils;
 import org.apache.hadoop.yarn.util.YarnVersionInfo;
 import org.apache.hadoop.yarn.util.resource.Resources;
-
+// 负责管理和监控每个节点（Node）的资源和容器（Container）。
+// 它处理来自 ResourceManager 的请求，启动、停止、更新容器，维护资源使用情况，
+// 并周期性地向 ResourceManager 发送心跳信号以报告节点的健康状态和资源状态
 @Private
 public class NodeManager implements ContainerManagementProtocol {
   private static final Logger LOG =
       LoggerFactory.getLogger(NodeManager.class);
   private static final RecordFactory recordFactory = RecordFactoryProvider.getRecordFactory(null);
-  
+  //容器管理器的地址，包含主机名和端口号
   final private String containerManagerAddress;
+  //节点的 HTTP 地址，通常用于与客户端进行交互
   final private String nodeHttpAddress;
+  //节点所在的机架名称
   final private String rackName;
+  //节点的唯一标识符，包含主机名和端口号
   final private NodeId nodeId;
+  //节点的资源能力（如 CPU、内存）
   final private Resource capability;
+  //与该节点关联的 ResourceManager 实例
   final private ResourceManager resourceManager;
+  //当前节点上可用的资源量
   Resource available = recordFactory.newRecordInstance(Resource.class);
+  //当前节点上已用的资源量
   Resource used = recordFactory.newRecordInstance(Resource.class);
-
+  //与 ResourceManager 通信的服务，用于注册节点和发送心跳等
   final ResourceTrackerService resourceTrackerService;
+  //存储每个应用程序的容器列表
   final Map<ApplicationId, List<Container>> containers = 
     new HashMap<ApplicationId, List<Container>>();
-  
+  //存储每个容器的状态
   final Map<Container, ContainerStatus> containerStatusMap =
       new HashMap<Container, ContainerStatus>();
   
@@ -144,7 +154,7 @@ public class NodeManager implements ContainerManagementProtocol {
   }
   
   int responseID = 0;
-  
+  //返回该节点所有容器的状态
   private List<ContainerStatus> getContainerStatuses(Map<ApplicationId, List<Container>> containers) {
     List<ContainerStatus> containerStatuses = new ArrayList<ContainerStatus>();
     for (List<Container> appContainers : containers.values()) {
@@ -154,11 +164,14 @@ public class NodeManager implements ContainerManagementProtocol {
     }
     return containerStatuses;
   }
+  //向 ResourceManager 发送一个心跳请求，定期报告当前节点的状态，包括节点上运行的容器的状态
   public void heartbeat() throws IOException, YarnException {
     NodeStatus nodeStatus = 
       org.apache.hadoop.yarn.server.resourcemanager.NodeManager.createNodeStatus(
-          nodeId, getContainerStatuses(containers));
+          nodeId,
+          getContainerStatuses(containers));//返回该节点上所有容器的状态
     nodeStatus.setResponseId(responseID);
+    //创建并发送心跳请求
     NodeHeartbeatRequest request = recordFactory
         .newRecordInstance(NodeHeartbeatRequest.class);
     request.setNodeStatus(nodeStatus);
@@ -166,13 +179,14 @@ public class NodeManager implements ContainerManagementProtocol {
         .nodeHeartbeat(request);
     responseID = response.getResponseId();
   }
-
+  //主要目的是启动容器。它接收一个包含多个容器启动请求的对象，并处理这些请求，最终启动相应的容器并更新节点的资源使用情况
   @Override
   synchronized public StartContainersResponse startContainers(
       StartContainersRequest requests) 
   throws YarnException {
-
+    //遍历每个容器启动请求
     for (StartContainerRequest request : requests.getStartContainerRequests()) {
+      //从请求中提取 containerToken
       Token containerToken = request.getContainerToken();
       ContainerTokenIdentifier tokenId = null;
 
@@ -181,11 +195,11 @@ public class NodeManager implements ContainerManagementProtocol {
       } catch (IOException e) {
         throw RPCUtil.getRemoteException(e);
       }
-
+      //获取容器的 ID 和对应的应用 ID
       ContainerId containerID = tokenId.getContainerID();
       ApplicationId applicationId =
           containerID.getApplicationAttemptId().getApplicationId();
-
+      //获取该应用的容器列表 applicationContainers，如果没有则创建一个新的列表，并将其添加到 containers map 中
       List<Container> applicationContainers = containers.get(applicationId);
       if (applicationContainers == null) {
         applicationContainers = new ArrayList<Container>();
@@ -193,23 +207,25 @@ public class NodeManager implements ContainerManagementProtocol {
       }
 
       // Sanity check
+      //检查容器是否已经存在
       for (Container container : applicationContainers) {
         if (container.getId().compareTo(containerID) == 0) {
           throw new IllegalStateException("Container " + containerID
               + " already setup on node " + containerManagerAddress);
         }
       }
-
+      //创建新的容器对象
       Container container =
           BuilderUtils.newContainer(containerID, this.nodeId, nodeHttpAddress,
             tokenId.getResource(), null, null // DKDC - Doesn't matter
             );
-
+      //创建容器状态对象:
       ContainerStatus containerStatus =
           BuilderUtils.newContainerStatus(container.getId(),
             ContainerState.NEW, "", -1000, container.getResource());
       applicationContainers.add(container);
       containerStatusMap.put(container, containerStatus);
+      //更新资源使用情况
       Resources.subtractFrom(available, tokenId.getResource());
       Resources.addTo(used, tokenId.getResource());
 
@@ -232,11 +248,13 @@ public class NodeManager implements ContainerManagementProtocol {
         resourceManager.getResourceScheduler().getNodeReport(
             this.nodeId).getUsedResource().getMemorySize());
   }
-  
+  //主要目的是停止一个或多个容器。它接收一个请求对象，包含要停止的容器 ID 列表。方法会逐一处理这些容器，更新容器状态，移除容器，释放资源，并记录日志
   @Override
   synchronized public StopContainersResponse stopContainers(StopContainersRequest request) 
   throws YarnException {
+    //遍历容器 ID 列表
     for (ContainerId containerID : request.getContainerIds()) {
+      //获取应用 ID
       String applicationId =
           String.valueOf(containerID.getApplicationAttemptId()
             .getApplicationId().getId());
@@ -246,12 +264,14 @@ public class NodeManager implements ContainerManagementProtocol {
       for (Container c : applicationContainers) {
         if (c.getId().compareTo(containerID) == 0) {
           ContainerStatus containerStatus = containerStatusMap.get(c);
+          //将容器状态标记为 COMPLETE
           containerStatus.setState(ContainerState.COMPLETE);
           containerStatusMap.put(c, containerStatus);
         }
       }
 
       // Send a heartbeat
+      //发送心跳
       try {
         heartbeat();
       } catch (IOException ioe) {
@@ -259,6 +279,7 @@ public class NodeManager implements ContainerManagementProtocol {
       }
 
       // Remove container and update status
+      //移除容器并更新资源
       int ctr = 0;
       Container container = null;
       for (Iterator<Container> i = applicationContainers.iterator(); i
@@ -274,7 +295,7 @@ public class NodeManager implements ContainerManagementProtocol {
         throw new IllegalStateException("Container " + containerID
             + " stopped " + ctr + " times!");
       }
-
+      //释放资源并更新节点资源
       Resources.addTo(available, container.getResource());
       Resources.subtractFrom(used, container.getResource());
 
@@ -320,7 +341,7 @@ public class NodeManager implements ContainerManagementProtocol {
       request) throws YarnException, IOException {
     return null;
   }
-
+  //创建节点的状态
   public static org.apache.hadoop.yarn.server.api.records.NodeStatus
   createNodeStatus(NodeId nodeId, List<ContainerStatus> containers) {
     RecordFactory recordFactory = RecordFactoryProvider.getRecordFactory(null);

@@ -31,11 +31,12 @@ import java.util.Map;
  * resources in the cluster.
  * </p>
  */
+//表示集群中计算资源的利用率。它提供了一种方式来跟踪计算资源（如 物理内存、虚拟内存和 CPU）的使用情况，还支持**自定义资源（custom resources）**的扩展
 @Public
 @Unstable
 public abstract class ResourceUtilization implements
     Comparable<ResourceUtilization> {
-
+  //存储自定义资源的利用率，如 GPU、TPU、网络带宽等
   private Map<String, Float> customResources
       = new HashMap<>();
 
@@ -52,10 +53,10 @@ public abstract class ResourceUtilization implements
       float cpu, Map<String, Float> customResources) {
     ResourceUtilization utilization =
         Records.newRecord(ResourceUtilization.class);
-    utilization.setPhysicalMemory(pmem);
-    utilization.setVirtualMemory(vmem);
-    utilization.setCPU(cpu);
-    utilization.setCustomResources(customResources);
+    utilization.setPhysicalMemory(pmem);//物理内存（MB）
+    utilization.setVirtualMemory(vmem);//虚拟内存（MB）。
+    utilization.setCPU(cpu);//CPU 使用率（核数或百分比）。
+    utilization.setCustomResources(customResources);//自定义资源利用率（如 GPU 使用率、磁盘 I/O 速率）
     return utilization;
   }
 

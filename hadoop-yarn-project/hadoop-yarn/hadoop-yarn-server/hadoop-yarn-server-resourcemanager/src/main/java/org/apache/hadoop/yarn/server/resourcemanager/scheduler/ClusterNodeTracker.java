@@ -49,6 +49,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * - tracks the state of all cluster {@link SchedulerNode}s
  * - provides convenience methods to filter and sort nodes
  */
+//ClusterNodeTracker 是 YARN 资源管理器（ResourceManager）中的一个关键组件，它主要用于：
+// 跟踪集群中所有SchedulerNode（调度节点）的状态；
+// 提供便捷的方法来对节点进行筛选和排序；
+// 维护集群资源信息，包括总资源容量、最大可分配资源等。
+// 它的主要作用是维护 YARN 集群中所有计算节点的状态，并提供高效的查询和更新方法，以便调度器能够合理分配资源。
+
 @InterfaceAudience.Private
 public class ClusterNodeTracker<N extends SchedulerNode> {
   private static final Logger LOG =
@@ -57,34 +63,44 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
   private ReadWriteLock readWriteLock = new ReentrantReadWriteLock(true);
   private Lock readLock = readWriteLock.readLock();
   private Lock writeLock = readWriteLock.writeLock();
-
+  //存储集群中的所有调度节点（SchedulerNode），NodeId 作为键
   private HashMap<NodeId, N> nodes = new HashMap<>();
+  //存储节点名到 SchedulerNode 的映射，方便通过名称快速查找
   private Map<String, N> nodeNameToNodeMap = new HashMap<>();
+  //按机架（rack）分类存储 SchedulerNode，便于机架级别的调度优化
   private Map<String, List<N>> nodesPerRack = new HashMap<>();
+  //按标签（label）分类存储 SchedulerNode，便于基于标签的资源调度
   private Map<String, List<N>> nodesPerLabel = new HashMap<>();
-
+  //当前集群的总资源容量，随节点增加/删除而更新
   private Resource clusterCapacity = Resources.createResource(0, 0);
+  //缓存的集群资源信息，主要用于避免频繁计算
   private volatile Resource staleClusterCapacity =
       Resources.clone(Resources.none());
 
   // Max allocation
+  //存储集群中最大可分配资源值，如最大 CPU 和内存，也就是单个节点的资源上限
   private final long[] maxAllocation;
+  //用户配置的最大资源分配值
   private Resource configuredMaxAllocation;
+  //是否强制使用 configuredMaxAllocation 作为最大资源分配值
   private boolean forceConfiguredMaxAllocation = true;
+  //等待最大资源分配生效的时间
   private long configuredMaxAllocationWaitTime;
+  //是否已经报告过最大资源分配值
   private boolean reportedMaxAllocation = false;
 
   public ClusterNodeTracker() {
     maxAllocation = new long[ResourceUtils.getNumberOfCountableResourceTypes()];
     Arrays.fill(maxAllocation, -1);
   }
-
+  //向 ClusterNodeTracker 添加一个新的 SchedulerNode，并更新资源信息
   public void addNode(N node) {
     writeLock.lock();
     try {
+      //将节点添加到 nodes 和 nodeNameToNodeMap，以便通过 NodeId 和名称快速查找
       nodes.put(node.getNodeID(), node);
       nodeNameToNodeMap.put(node.getNodeName(), node);
-
+      //按标签存储节点，更新 nodesPerLabel
       List<N> nodesPerLabels = nodesPerLabel.get(node.getPartition());
 
       if (nodesPerLabels == null) {
@@ -96,6 +112,7 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       nodesPerLabel.put(node.getPartition(), nodesPerLabels);
 
       // Update nodes per rack as well
+      //按机架存储节点，更新 nodesPerRack
       String rackName = node.getRackName();
       List<N> nodesList = nodesPerRack.get(rackName);
       if (nodesList == null) {
@@ -105,17 +122,19 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       nodesList.add(node);
 
       // Update cluster capacity
+      //更新集群的总资源容量，并更新 ClusterMetrics 统计信息
       Resources.addTo(clusterCapacity, node.getTotalResource());
       staleClusterCapacity = Resources.clone(clusterCapacity);
       ClusterMetrics.getMetrics().incrCapability(node.getTotalResource());
 
       // Update maximumAllocation
+      //更新最大资源分配 maxAllocation，如果新节点的资源比当前最大值大，则更新 maxAllocation
       updateMaxResources(node, true);
     } finally {
       writeLock.unlock();
     }
   }
-
+  //检查节点是否存在
   public boolean exists(NodeId nodeId) {
     readLock.lock();
     try {
@@ -124,7 +143,7 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       readLock.unlock();
     }
   }
-
+  //获取 NodeId 对应的 SchedulerNode
   public N getNode(NodeId nodeId) {
     readLock.lock();
     try {
@@ -133,7 +152,7 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       readLock.unlock();
     }
   }
-
+  //获取 NodeId 对应的 SchedulerNodeReport（节点状态报告）
   public SchedulerNodeReport getNodeReport(NodeId nodeId) {
     readLock.lock();
     try {
@@ -143,7 +162,7 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       readLock.unlock();
     }
   }
-
+  //返回当前集群中节点的总数
   public int nodeCount() {
     readLock.lock();
     try {
@@ -152,7 +171,7 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       readLock.unlock();
     }
   }
-
+  //返回指定 rack 上的节点数
   public int nodeCount(String rackName) {
     readLock.lock();
     String rName = rackName == null ? "NULL" : rackName;
@@ -163,11 +182,11 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       readLock.unlock();
     }
   }
-
+  //获取集群的资源容量
   public Resource getClusterCapacity() {
     return staleClusterCapacity;
   }
-
+  //从 ClusterNodeTracker 移除一个 SchedulerNode，并更新资源信息
   public N removeNode(NodeId nodeId) {
     writeLock.lock();
     try {
@@ -213,7 +232,7 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       writeLock.unlock();
     }
   }
-
+  //设置集群的最大可分配资源
   public void setConfiguredMaxAllocation(Resource resource) {
     writeLock.lock();
     try {
@@ -233,7 +252,7 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       writeLock.unlock();
     }
   }
-
+  //获取当前集群允许的最大资源分配
   public Resource getMaxAllowedAllocation() {
     readLock.lock();
     try {
@@ -272,8 +291,12 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       writeLock.unlock();
     }
   }
-
+  // 更新集群中可用资源的最大分配值 (maxAllocation)。
+  // 当新的 SchedulerNode 加入或移除时，该方法调整 maxAllocation 数组，以确保资源管理器能正确计算最大可用资源
+  //node：类型为 SchedulerNode，表示当前需要被添加或移除的节点
+  //add：布尔值，true 表示新增节点，false 表示移除节点
   private void updateMaxResources(SchedulerNode node, boolean add) {
+    //获取节点资源
     Resource totalResource = node.getTotalResource();
     ResourceInformation[] totalResources;
 
@@ -290,6 +313,7 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
     writeLock.lock();
 
     try {
+      //处理新增节点
       if (add) { // added node
         // If we add a node, we must have a max allocation for all resource
         // types
@@ -297,15 +321,17 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
 
         for (int i = 0; i < maxAllocation.length; i++) {
           long value = totalResources[i].getValue();
-
+          //如果当前节点的资源值大于 maxAllocation[i]，则更新 maxAllocation[i]
           if (value > maxAllocation[i]) {
             maxAllocation[i] = value;
           }
         }
-      } else {  // removed node
+      } else {  // removed node  处理移除节点
         boolean recalculate = false;
 
         for (int i = 0; i < maxAllocation.length; i++) {
+          //如果 totalResources[i] 的值 恰好等于 maxAllocation[i]，说明当前节点提供了最大资源
+          //将 maxAllocation[i] 置为 -1，表示需要重新计算最大分配资源
           if (totalResources[i].getValue() == maxAllocation[i]) {
             // No need to set reportedMaxAllocation to false here because we
             // will recalculate before we release the lock.
@@ -326,7 +352,7 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
       writeLock.unlock();
     }
   }
-
+  //获取所有的集群节点
   public List<N> getAllNodes() {
     return getNodes(null);
   }
@@ -395,6 +421,7 @@ public class ClusterNodeTracker<N extends SchedulerNode> {
    * @param comparator the comparator to sort the nodes with
    * @return sorted set of nodes in the form of a TreeSet
    */
+  //根据comparator排序所有的集群节点
   public TreeSet<N> sortedNodeSet(Comparator<N> comparator) {
     TreeSet<N> sortedSet = new TreeSet<>(comparator);
     readLock.lock();

@@ -34,6 +34,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.recovery.Recoverable;
  * {@link YarnScheduler}. 
  *
  */
+//主要功能是与调度器的初始化、资源分配、节点管理等相关的操作
 @LimitedPrivate("yarn")
 @Evolving
 public interface ResourceScheduler extends YarnScheduler, Recoverable {
@@ -46,7 +47,7 @@ public interface ResourceScheduler extends YarnScheduler, Recoverable {
    */
   void setRMContext(RMContext rmContext);
 
-  /**
+  /** 重新初始化 ResourceScheduler。该方法通常用于重新配置调度器，或者在 ResourceManager 重启时使用
    * Re-initialize the <code>ResourceScheduler</code>.
    * @param conf configuration
    * @param rmContext RMContext.
@@ -54,14 +55,14 @@ public interface ResourceScheduler extends YarnScheduler, Recoverable {
    */
   void reinitialize(Configuration conf, RMContext rmContext) throws IOException;
 
-  /**
+  /** 获取集群中可用的节点 ID，基于指定的资源名称
    * Get the {@link NodeId} available in the cluster by resource name.
    * @param resourceName resource name
    * @return the number of available {@link NodeId} by resource name.
    */
   List<NodeId> getNodeIds(String resourceName);
 
-  /**
+  /** 尝试在指定节点上为应用程序分配资源。此方法忽略 numAllocations，只尝试分配一个容器
    * Attempts to allocate a SchedulerRequest on a Node.
    * NOTE: This ignores the numAllocations in the resource sizing and tries
    *       to allocate a SINGLE container only.
@@ -73,7 +74,7 @@ public interface ResourceScheduler extends YarnScheduler, Recoverable {
   boolean attemptAllocationOnNode(SchedulerApplicationAttempt appAttempt,
       SchedulingRequest schedulingRequest, SchedulerNode schedulerNode);
 
-  /**
+  /** 重置调度器的指标。通常在特定的条件下，如重启、重新初始化等，需要重置调度器的相关统计数据和度量指标
    * Reset scheduler metrics.
    */
   void resetSchedulerMetrics();

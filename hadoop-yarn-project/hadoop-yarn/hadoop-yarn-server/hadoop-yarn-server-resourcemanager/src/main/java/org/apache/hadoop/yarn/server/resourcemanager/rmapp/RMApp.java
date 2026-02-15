@@ -53,36 +53,43 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNode;
  * look at {@link RMAppImpl} for its implementation. This interface
  * exposes methods to access various updates in application status/report.
  */
+//管理和跟踪应用程序的接口。它代表一个正在执行的应用程序，并提供各种方法来访问应用程序的状态、信息和配置。
+// 此类允许访问应用程序的多个状态和报告，处理与应用程序相关的事件，并提供有关应用程序的详细信息，尤其是应用程序的启动、运行、完成等过程中的各种信息
 public interface RMApp extends EventHandler<RMAppEvent> {
 
   /**
    * The application id for this {@link RMApp}.
    * @return the {@link ApplicationId} for this {@link RMApp}.
    */
+  //返回应用程序的唯一标识符 ApplicationId，用于标识当前应用
   ApplicationId getApplicationId();
   
   /**
    * The application submission context for this {@link RMApp}
    * @return the {@link ApplicationSubmissionContext} for this {@link RMApp}
    */
+  //返回应用程序提交时的上下文
   ApplicationSubmissionContext getApplicationSubmissionContext();
 
   /**
    * The current state of the {@link RMApp}.
    * @return the current state {@link RMAppState} for this application.
    */
+  //返回应用程序的当前状态
   RMAppState getState();
 
   /**
    * The user who submitted this application.
    * @return the user who submitted the application.
    */
+  //返回提交该应用程序的用户名称
   String getUser();
 
   /**
    * Progress of application.
    * @return the progress of the {@link RMApp}.
    */
+  //返回应用程序的执行进度，值在 0 到 1 之间
   float getProgress();
 
   /**
@@ -92,6 +99,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * @param appAttemptId the application attempt id
    * @return  the {@link RMAppAttempt} corresponding to the {@link ApplicationAttemptId}.
    */
+  //根据应用程序尝试 ID 返回对应的应用程序尝试对象 RMAppAttempt
   RMAppAttempt getRMAppAttempt(ApplicationAttemptId appAttemptId);
 
   /**
@@ -100,6 +108,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * This method returns the queue to which an application was submitted.
    * @return the queue to which the application was submitted to.
    */
+  //返回应用程序提交到的队列名称
   String getQueue();
   
   /**
@@ -107,6 +116,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * {@link ApplicationSubmissionContext}.
    * @param name the new queue name
    */
+  //设置应用程序所属的队列名称
   void setQueue(String name);
 
   /**
@@ -114,6 +124,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * ApplicationSubmissionContext#setApplicationName(String)}.
    * @return the name of the application.
    */
+  //返回应用程序的名称
   String getName();
 
   /**
@@ -121,6 +132,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * This method returns the current {@link RMAppAttempt}.
    * @return the current {@link RMAppAttempt}
    */
+  //返回当前正在执行的应用程序尝试
   RMAppAttempt getCurrentAppAttempt();
 
   /**
@@ -128,6 +140,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * This method returns the all {@link RMAppAttempt}s for the RMApp.
    * @return all {@link RMAppAttempt}s for the RMApp.
    */
+  //返回所有的应用程序尝试
   Map<ApplicationAttemptId, RMAppAttempt> getAppAttempts();
 
   /**
@@ -148,6 +161,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * @param allowAccess whether to allow full access to the report
    * @return the {@link ApplicationReport} detailing the status of the application.
    */
+  //创建并返回应用程序的详细报告 ApplicationReport，包括各种应用程序状态、诊断信息等
   ApplicationReport createAndGetApplicationReport(String clientUserName,
       boolean allowAccess);
   
@@ -161,24 +175,28 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * as the corresponding value.
    * @return the number of nodes added to the {@link Map}
    */
+  //获取已更新的节点信息，并返回被更新的节点数
   int pullRMNodeUpdates(Map<RMNode, NodeUpdateType> updatedNodes);
 
   /**
    * The finish time of the {@link RMApp}
    * @return the finish time of the application.,
    */
+  //返回应用程序的完成时间
   long getFinishTime();
 
   /**
    * the start time of the application.
    * @return the start time of the application.
    */
+  //返回应用程序的启动时间
   long getStartTime();
 
   /**
    * the submit time of the application.
    * @return the submit time of the application.
    */
+  //返回应用程序的提交时间
   long getSubmitTime();
 
   /**
@@ -187,12 +205,14 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * this new field is to prevent potential backwards compatibility issues.
    * @return the launch time of the application.
    */
+  //返回应用程序的启动时间（与 getStartTime() 类似）
   long getLaunchTime();
 
   /**
    * The tracking url for the application master.
    * @return the tracking url for the application master.
    */
+  //返回应用程序的追踪 URL，供用户查看应用程序的状态和日志
   String getTrackingUrl();
 
   /**
@@ -203,6 +223,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * address, RM ID, version and collector token. Return null if the timeline
    * service v.2 is not enabled.
    */
+  //返回应用程序的收集器数据，仅在启用 Timeline Service v2 时可用
   @InterfaceAudience.Private
   @InterfaceStability.Unstable
   AppCollectorData getCollectorData();
@@ -214,6 +235,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * @return collector info, including collector address and collector token.
    * Return null if the timeline service v.2 is not enabled.
    */
+  //返回应用程序的收集器信息，仅在启用 Timeline Service v2 时可用
   @InterfaceAudience.Private
   @InterfaceStability.Unstable
   CollectorInfo getCollectorInfo();
@@ -221,12 +243,14 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * The original tracking url for the application master.
    * @return the original tracking url for the application master.
    */
+  //返回应用程序的原始追踪 URL
   String getOriginalTrackingUrl();
 
   /**
    * the diagnostics information for the application master.
    * @return the diagnostics information for the application master.
    */
+  //返回应用程序的诊断信息
   StringBuilder getDiagnostics();
 
   /**
@@ -235,30 +259,35 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * @return the final finish state of the AM as set in
    * {@link FinishApplicationMasterRequest#setFinalApplicationStatus(FinalApplicationStatus)}.
    */
+  //返回应用程序最终的状态，如成功、失败等
   FinalApplicationStatus getFinalApplicationStatus();
 
   /**
    * The number of max attempts of the application.
    * @return the number of max attempts of the application.
    */
+  //返回应用程序最大尝试次数
   int getMaxAppAttempts();
 
   /**
    * Returns the application type
    * @return the application type.
    */
+  //返回应用程序的类型
   String getApplicationType();
 
   /**
    * Get tags for the application
    * @return tags corresponding to the application
    */
+  //返回与应用程序相关的标签
   Set<String> getApplicationTags();
 
   /**
    * Check whether this application's state has been saved to the state store.
    * @return the flag indicating whether the applications's state is stored.
    */
+  //检查应用程序是否已将最终状态存储
   boolean isAppFinalStateStored();
   
   
@@ -267,6 +296,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * @return the set of nodes that ran any containers from this {@link RMApp}
    * Add more node on which containers for this {@link RMApp} ran
    */
+  //返回应用程序运行的节点集
   Set<NodeId> getRanNodes();
 
   /**
@@ -274,6 +304,7 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * current state of the {@link RMApp}.
    * @return the external user-facing state of ApplicationMaster.
    */
+  //生成用户可见的应用程序状态
   YarnApplicationState createApplicationState();
   
   /**
@@ -281,32 +312,35 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    * 
    * @return metrics
    */
+  //返回应用程序的指标
   RMAppMetrics getRMAppMetrics();
-
+  //返回应用程序的预留 ID
   ReservationId getReservationId();
-  
+  //返回应用程序的 AM 资源请求
   List<ResourceRequest> getAMResourceRequests();
-
+  //返回应用程序的日志汇总报告
   Map<NodeId, LogAggregationReport> getLogAggregationReportsForApp();
-
+  //返回应用程序的日志汇总状态
   LogAggregationStatus getLogAggregationStatusForAppReport();
 
   /**
    * Return the node label expression of the AM container.
    * @return the node label expression.
    */
+  //返回 AM 容器的节点标签表达式
   String getAmNodeLabelExpression();
-
+  //返回应用程序的节点标签表达式
   String getAppNodeLabelExpression();
-
+  //返回调用者上下文信息
   CallerContext getCallerContext();
-
+  //返回应用程序的超时信息
   Map<ApplicationTimeoutType, Long> getApplicationTimeouts();
 
   /**
    * Get priority of the application.
    * @return priority
    */
+  //返回应用程序的优先级
   Priority getApplicationPriority();
 
   /**
@@ -314,19 +348,22 @@ public interface RMApp extends EventHandler<RMAppEvent> {
    *
    * @return True/False to confirm whether app is in final states
    */
+  //检查应用程序是否已进入完成状态
   boolean isAppInCompletedStates();
 
   /**
    * Get the application -&gt; queue placement context
    * @return ApplicationPlacementContext
    */
+  //返回应用程序的队列和调度信息
   ApplicationPlacementContext getApplicationPlacementContext();
 
   /**
    * Get the application scheduling environment variables.
    * @return Map of envs related to application scheduling preferences.
    */
+  //返回应用程序调度环境变量
   Map<String, String> getApplicationSchedulingEnvs();
-
+  //返回应用程序提交者的真实用户名
   String getRealUser();
 }

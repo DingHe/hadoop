@@ -82,19 +82,27 @@ import org.apache.hadoop.thirdparty.protobuf.TextFormat;
  * Each such journal is entirely independent despite being hosted by
  * the same JVM.
  */
+//Journal 类是 Apache Hadoop HDFS 中用于管理和处理日志的一个类，
+// 具体来说，它主要负责处理 JournalNode 的日志操作。一个 JournalNode 可以管理多个集群的日志，每个日志是独立的。
+// 该类负责处理日志的写入、管理事务ID（Transaction ID）、存储管理、日志同步等操作，是 HDFS 日志管理系统的一部分
 public class Journal implements Closeable {
   static final Logger LOG = LoggerFactory.getLogger(Journal.class);
 
 
   // Current writing state
+  //当前正在写入的日志段的输出流，用于记录正在进行的事务
   private EditLogOutputStream curSegment;
+  //当前日志段的事务ID，表示正在写入的日志的事务ID
   private long curSegmentTxId = HdfsServerConstants.INVALID_TXID;
+  //当前日志段的布局版本
   private int curSegmentLayoutVersion = 0;
+  //下一个将要写入的事务ID，用于确保事务的顺序
   private long nextTxId = HdfsServerConstants.INVALID_TXID;
+  //已经写入的最高事务ID，用来跟踪当前已完成的事务
   private long highestWrittenTxId = 0;
-  
+  //日志的唯一标识符
   private final String journalId;
-  
+  //管理日志存储的对象，负责将日志数据存储到磁盘或其他存储介质
   private final JNStorage storage;
 
   /**
@@ -103,6 +111,7 @@ public class Journal implements Closeable {
    * by epoch number. In order to make such a promise, the epoch
    * number of that writer is stored persistently on disk.
    */
+  //用于存储最后一次承诺的写入者的纪元（epoch），确保只有最新的写入者可以操作日志
   private PersistentLongFile lastPromisedEpoch;
 
   /**
@@ -114,6 +123,7 @@ public class Journal implements Closeable {
    * layer that would re-order IPCs or cause a stale retry from an old
    * request to resurface and confuse things.
    */
+  //当前写入者的IPC序列号，用于确保每个请求的顺序
   private long currentEpochIpcSerial = -1;
   
   /**
@@ -122,6 +132,7 @@ public class Journal implements Closeable {
    * beginning of a segment. See the the 'testNewerVersionOfSegmentWins'
    * test case.
    */
+  //最后一个实际写入事务的写入者的纪元（epoch），用来区分日志段
   private PersistentLongFile lastWriterEpoch;
   
   /**
@@ -130,18 +141,19 @@ public class Journal implements Closeable {
    * during the recovery procedures, and as a visibility mark
    * for clients reading in-progress logs.
    */
+  //最后提交的事务ID，作为恢复过程中事务的可见性标记
   private BestEffortLongFile committedTxnId;
   
   public static final String LAST_PROMISED_FILENAME = "last-promised-epoch";
   public static final String LAST_WRITER_EPOCH = "last-writer-epoch";
   private static final String COMMITTED_TXID_FILENAME = "committed-txid";
-  
+  //负责管理日志文件
   private final FileJournalManager fjm;
-
+  //用于缓存日志的缓存系统，提高读写效率
   private JournaledEditsCache cache;
-
+  //监控和统计日志操作的度量对象
   private final JournalMetrics metrics;
-
+  //记录上一次写入日志的时间戳
   private long lastJournalTimestamp = 0;
 
   private Configuration conf = null;
@@ -149,11 +161,13 @@ public class Journal implements Closeable {
   // This variable tracks, have we tried to start journalsyncer
   // with nameServiceId. This will help not to start the journalsyncer
   // on each rpc call, if it has failed to start
+  //标记是否尝试启动了与名字服务ID相关的日志同步器
   private boolean triedJournalSyncerStartedwithnsId = false;
 
   /**
    * Time threshold for sync calls, beyond which a warning should be logged to the console.
    */
+  //定义一个同步调用的时间阈值，超过此时间会记录警告日志
   private static final int WARN_SYNC_MILLIS_THRESHOLD = 1000;
 
   Journal(Configuration conf, File logDir, String journalId,
@@ -173,6 +187,7 @@ public class Journal implements Closeable {
     
     EditLogFile latest = scanStorageForLatestEdits();
     if (latest != null) {
+      //更新已经写入的最高事务ID，用来跟踪当前已完成的事务
       updateHighestWrittenTxId(latest.getLastTxId());
     }
   }
@@ -215,19 +230,22 @@ public class Journal implements Closeable {
   /**
    * Scan the local storage directory, and return the segment containing
    * the highest transaction.
-   * @return the EditLogFile with the highest transactions, or null
+   * @return the EditLogFile with the highest transactions, or null 包含最新事务的编辑日志文件，如果没有有效的编辑日志文件就为null
    * if no files exist.
    */
   private synchronized EditLogFile scanStorageForLatestEdits() throws IOException {
+    //获取当前日志存储目录，若该目录不存在，说明没有日志文件，直接返回 null
     if (!fjm.getStorageDirectory().getCurrentDir().exists()) {
       return null;
     }
-    
+    //取所有的编辑日志文件，其中参数 0 表示从第一个事务开始扫描
     LOG.info("Scanning storage " + fjm);
     List<EditLogFile> files = fjm.getLogFiles(0);
     
     while (!files.isEmpty()) {
       EditLogFile latestLog = files.remove(files.size() - 1);
+      //Long.MAX_VALUE：扫描日志中的所有事务
+      //false：表示只读取元数据，不进行修复或截断操作
       latestLog.scanLog(Long.MAX_VALUE, false);
       LOG.info("Latest log is " + latestLog + " ; journal id: " + journalId);
       if (latestLog.getLastTxId() == HdfsServerConstants.INVALID_TXID) {
@@ -1094,6 +1112,8 @@ public class Journal implements Closeable {
   /**
    * Persist data for recovering the given segment from disk.
    */
+  //将给定的 Paxos 数据持久化到磁盘中，确保数据能够用于后续的恢复。该方法将 PersistedRecoveryPaxosData 类型的数据写入到文件，
+  // 并将文件写入操作确保为原子性操作，最后进行文件的同步处理以保证数据的持久化
   private void persistPaxosData(long segmentTxId,
       PersistedRecoveryPaxosData newData) throws IOException {
     File f = storage.getPaxosFile(segmentTxId);

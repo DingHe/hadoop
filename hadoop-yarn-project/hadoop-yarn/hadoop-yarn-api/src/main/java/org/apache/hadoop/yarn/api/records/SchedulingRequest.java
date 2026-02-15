@@ -36,6 +36,8 @@ import org.apache.hadoop.yarn.util.Records;
  *
  * The size specification of the allocation is in {@code ResourceSizing}.
  */
+//代表应用程序向 YARN 资源管理器（ResourceManager）提出的调度请求。
+// 它与 ResourceRequest 类似，但提供了更丰富的信息，如分配标签和放置约束（PlacementConstraints），以满足更复杂的资源分配需求
 @Public
 @Unstable
 public abstract class SchedulingRequest {
@@ -47,10 +49,12 @@ public abstract class SchedulingRequest {
       Set<String> allocationTags, ResourceSizing resourceSizing,
       PlacementConstraint placementConstraintExpression) {
     return SchedulingRequest.newBuilder()
-        .allocationRequestId(allocationRequestId).priority(priority)
-        .executionType(executionType).allocationTags(allocationTags)
-        .resourceSizing(resourceSizing)
-        .placementConstraintExpression(placementConstraintExpression).build();
+        .allocationRequestId(allocationRequestId)//分配请求 ID，用于唯一标识一次资源请求。
+        .priority(priority)//请求的优先级，YARN 会优先满足高优先级请求
+        .executionType(executionType)//执行类型，指定资源是 GUARANTEED 还是 OPPORTUNISTIC（抢占式）
+        .allocationTags(allocationTags)//分配标签，标记该资源的用途，如 Spark、HBase 等
+        .resourceSizing(resourceSizing)//资源需求大小，描述分配资源的规格（如 CPU、内存、实例数量）
+        .placementConstraintExpression(placementConstraintExpression).build();//放置约束，用于指定资源的亲和性或反亲和性规则
   }
 
   @Public

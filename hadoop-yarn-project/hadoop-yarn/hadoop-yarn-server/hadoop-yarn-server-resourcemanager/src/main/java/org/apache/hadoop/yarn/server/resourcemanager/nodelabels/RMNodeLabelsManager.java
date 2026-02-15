@@ -45,9 +45,18 @@ import org.apache.hadoop.yarn.util.resource.Resources;
 
 import org.apache.hadoop.thirdparty.com.google.common.collect.ImmutableSet;
 
+//用于管理节点标签（Node Labels）的组件。节点标签是 YARN 提供的一种资源分配机制，可以用来对集群中的节点进行分类，从而实现资源的精细化管理。
+// 例如，可以通过节点标签将特定类型的作业调度到特定的节点上。
+//该类继承自 CommonNodeLabelsManager，扩展了基本的节点标签管理功能，提供了额外的机制：
+//管理队列 (Queue) 对标签的访问权限，确保资源调度时不会违反标签约束。
+//更新节点标签映射关系，确保节点状态变更时，其标签信息能正确传播到调度器。
+//确保删除标签时不会影响仍在使用该标签的队列，避免潜在的调度冲突。
+//提供并发安全的资源更新，以确保资源管理的正确性
 public class RMNodeLabelsManager extends CommonNodeLabelsManager {
   protected static class Queue {
+    //该队列可以访问的节点标签集合，确保某些任务只能被调度到特定标签的节点上
     protected Set<String> accessibleNodeLabels;
+    //队列所管理的资源总量
     protected Resource resource;
 
     protected Queue() {
@@ -56,7 +65,7 @@ public class RMNodeLabelsManager extends CommonNodeLabelsManager {
       resource = Resource.newInstance(0, 0);
     }
   }
-
+  //存储了 YARN 资源调度队列 (Queue) 及其关联的 Queue 对象，包括可访问的节点标签信息
   ConcurrentMap<String, Queue> queueCollections =
       new ConcurrentHashMap<String, Queue>();
   private YarnAuthorizationProvider authorizer;
@@ -67,7 +76,8 @@ public class RMNodeLabelsManager extends CommonNodeLabelsManager {
     super.serviceInit(conf);
     authorizer = YarnAuthorizationProvider.getInstance(conf);
   }
-
+  // 用于将标签添加到节点，并在更新后同步资源映射
+  // addedLabelsToNode：一个 Map<NodeId, Set<String>>，表示要添加的节点标签映射关系
   @Override
   public void addLabelsToNode(Map<NodeId, Set<String>> addedLabelsToNode)
       throws IOException {
@@ -423,9 +433,18 @@ public class RMNodeLabelsManager extends CommonNodeLabelsManager {
   }
 
   @SuppressWarnings("unchecked")
+  //用于更新节点标签变更后对资源的影响，并通知资源管理器（RM，Resource Manager）进行调度调整。其主要功能包括：
+  //获取所有受影响的节点（包括变更前和变更后的节点）。
+  //根据标签变更调整资源分配：
+  //如果一个节点的标签被移除或更改，则从相应的 Queue 和 RMNodeLabel 资源集合中移除该节点的资源。
+  //如果一个节点的标签被添加或修改，则更新 Queue 和 RMNodeLabel 资源信息，并添加新的资源。
+  //将新的节点标签映射提交给调度器，以便资源调度能够基于最新的标签分布进行决策
+  //before：更新前的节点信息快照，包含 Host（主机）及其上的 Node（节点）数据。
+  //after：更新后的节点信息快照。
   private void updateResourceMappings(Map<String, Host> before,
       Map<String, Host> after) {
     // Get NMs in before only
+    //计算受影响的所有节点，最终 allNMs 包含了所有可能受影响的节点
     Set<NodeId> allNMs = new HashSet<NodeId>();
     for (Entry<String, Host> entry : before.entrySet()) {
       allNMs.addAll(entry.getValue().nms.keySet());
@@ -439,31 +458,40 @@ public class RMNodeLabelsManager extends CommonNodeLabelsManager {
         new HashMap<NodeId, Set<String>>();
 
     // traverse all nms
+    //遍历所有受影响的节点，处理资源变更
     for (NodeId nodeId : allNMs) {
       Node oldNM;
+      //获取 before 中的 NodeId 对应的 Node（如果存在
       if ((oldNM = getNMInNodeSet(nodeId, before, true)) != null) {
+        //获取 oldLabels（旧的标签集合）
         Set<String> oldLabels = getLabelsByNode(nodeId, before);
         // no label in the past
         if (oldLabels.isEmpty()) {
           // update labels
+          //若该节点以前没有标签
+          //从 NO_LABEL（默认无标签）对应的 RMNodeLabel 中移除该节点资源
           RMNodeLabel label = labelCollections.get(NO_LABEL);
           label.removeNode(oldNM.resource);
 
           // update queues, all queue can access this node
+          //从所有队列中扣除该节点的资源，因为无标签节点可被所有队列访问
           for (Queue q : queueCollections.values()) {
             Resources.subtractFrom(q.resource, oldNM.resource);
           }
         } else {
           // update labels
           for (String labelName : oldLabels) {
+            //如果节点以前有标签
             RMNodeLabel label = labelCollections.get(labelName);
             if (null == label) {
               continue;
             }
+            //从原有标签的 RMNodeLabel 资源集合中移除节点
             label.removeNode(oldNM.resource);
           }
 
           // update queues, only queue can access this node will be subtract
+          //仅从可使用该标签的 Queue 里移除资源
           for (Queue q : queueCollections.values()) {
             if (isNodeUsableByQueue(oldLabels, q)) {
               Resources.subtractFrom(q.resource, oldNM.resource);
@@ -471,31 +499,39 @@ public class RMNodeLabelsManager extends CommonNodeLabelsManager {
           }
         }
       }
-
+      //处理新节点（变更后的资源添加）
       Node newNM;
+      //获取 after 中 NodeId 对应的新 Node（如果存在）
       if ((newNM = getNMInNodeSet(nodeId, after, true)) != null) {
+        //获取 newLabels（新标签集合）
         Set<String> newLabels = getLabelsByNode(nodeId, after);
-        
+        //记录 节点新标签映射
         newNodeToLabelsMap.put(nodeId, ImmutableSet.copyOf(newLabels));
         
         // no label in the past
         if (newLabels.isEmpty()) {
+          //如果新节点没有标签
           // update labels
+          //将该节点资源加入到 NO_LABEL（无标签）的 RMNodeLabel 资源集合
           RMNodeLabel label = labelCollections.get(NO_LABEL);
           label.addNode(newNM.resource);
 
           // update queues, all queue can access this node
+          //增加所有队列的资源，因为无标签节点对所有队列可用
           for (Queue q : queueCollections.values()) {
             Resources.addTo(q.resource, newNM.resource);
           }
         } else {
           // update labels
+          //如果新节点有标签
           for (String labelName : newLabels) {
+            //将该节点资源加入到相应标签的 RMNodeLabel 资源集合
             RMNodeLabel label = labelCollections.get(labelName);
             label.addNode(newNM.resource);
           }
 
           // update queues, only queue can access this node will be subtract
+          //仅为可以使用该标签的 Queue 增加资源
           for (Queue q : queueCollections.values()) {
             if (isNodeUsableByQueue(newLabels, q)) {
               Resources.addTo(q.resource, newNM.resource);
@@ -506,6 +542,7 @@ public class RMNodeLabelsManager extends CommonNodeLabelsManager {
     }
     
     // Notify RM
+    //通知 YARN 资源管理器
     if (rmContext != null && rmContext.getDispatcher() != null) {
       rmContext.getDispatcher().getEventHandler().handle(
           new NodeLabelsUpdateSchedulerEvent(newNodeToLabelsMap));

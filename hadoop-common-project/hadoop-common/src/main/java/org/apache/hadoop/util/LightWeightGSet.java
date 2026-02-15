@@ -51,14 +51,17 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
   /**
    * Elements of {@link LightWeightGSet}.
    */
+  //定义在 LightWeightGSet 集合中存储的元素。它规定了每个元素必须实现的基本操作，以便这些元素能够在集合的哈希桶中形成链表结构，从而解决哈希冲突
   public interface LinkedElement {
     /**
      * Set the next element.
      * @param next inputNext.
      */
+    //设置当前元素的下一个元素，使得当前元素能够指向链表中的下一个元素
     void setNext(LinkedElement next);
 
     /** @return Get the next element. */
+    //返回当前元素的下一个元素
     LinkedElement getNext();
   }
 
@@ -69,6 +72,7 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
    * An internal array of entries, which are the rows of the hash table.
    * The size must be a power of two.
    */
+  //内部数组，用于存储集合中的元素，数组长度必须是 2 的幂
   protected LinkedElement[] entries;
   /** A mask for computing the array index from the hash value of an element. */
   protected int hash_mask;

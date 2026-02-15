@@ -60,21 +60,26 @@ import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.SERVICE_SHUTDOW
  * {@link CommonConfigurationKeysPublic#SERVICE_SHUTDOWN_TIMEOUT_DEFAULT}
  * seconds.
  */
+// 用于管理 Java 虚拟机 (JVM) 关闭时执行的钩子（shutdown hooks）。
+// 由于 JVM 默认以非确定性的顺序或并行执行这些钩子，该类提供了一个统一的管理方式，确保按照设定的优先级顺序执行钩子（优先级高的先执行）。
+// 此外，它支持设置钩子的执行超时时间，确保某些钩子不会无限执行，影响系统关闭进程
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public final class ShutdownHookManager {
-
+   //单例模式的 ShutdownHookManager 实例，确保整个系统只有一个管理类
   private static final ShutdownHookManager MGR = new ShutdownHookManager();
 
   private static final Logger LOG =
       LoggerFactory.getLogger(ShutdownHookManager.class);
 
   /** Minimum shutdown timeout: {@value} second(s). */
+  //最小的钩子执行超时时间，防止设置的超时时间过短导致无法正常执行钩子
   public static final long TIMEOUT_MINIMUM = 1;
 
   /** The default time unit used: seconds. */
+  //默认使用的时间单位，即秒
   public static final TimeUnit TIME_UNIT_DEFAULT = TimeUnit.SECONDS;
-
+  //用于以单线程方式顺序执行所有注册的钩子，确保钩子按照优先级顺序执行
   private static final ExecutorService EXECUTOR =
       HadoopExecutors.newSingleThreadExecutor(new ThreadFactoryBuilder()
           .setDaemon(true)
@@ -83,6 +88,7 @@ public final class ShutdownHookManager {
 
   static {
     try {
+      //添加关闭的钩子
       Runtime.getRuntime().addShutdownHook(
         new Thread() {
           @Override
@@ -197,10 +203,10 @@ public final class ShutdownHookManager {
   @InterfaceAudience.Private
   @VisibleForTesting
   static class HookEntry {
-    private final Runnable hook;
-    private final int priority;
-    private final long timeout;
-    private final TimeUnit unit;
+    private final Runnable hook;  //shutdownHook 逻辑封装为 Runnable，在 JVM 关闭时执行
+    private final int priority;  //shutdownHook 的优先级，数值越大，优先级越高，越早执行
+    private final long timeout;  //该 shutdownHook 的超时时间，超时后将被取消
+    private final TimeUnit unit;  //超时时间的单位，例如 SECONDS、MILLISECONDS
 
     HookEntry(Runnable hook, int priority) {
       this(hook, priority,
@@ -247,10 +253,10 @@ public final class ShutdownHookManager {
       return unit;
     }
   }
-
+  //存储所有注册的 HookEntry，即待执行的钩子列表
   private final Set<HookEntry> hooks =
       Collections.synchronizedSet(new HashSet<>());
-
+  //指示 JVM 是否已进入关闭过程，防止在关闭过程中继续注册或移除钩子
   private AtomicBoolean shutdownInProgress = new AtomicBoolean(false);
 
   //private to constructor to ensure singularity
@@ -265,6 +271,7 @@ public final class ShutdownHookManager {
    *
    * @return the list of shutdownHooks in order of execution.
    */
+  //按照优先级排序hooks
   @InterfaceAudience.Private
   @VisibleForTesting
   List<HookEntry> getShutdownHooksInOrder() {
@@ -291,6 +298,7 @@ public final class ShutdownHookManager {
    * @param shutdownHook shutdownHook <code>Runnable</code>
    * @param priority priority of the shutdownHook.
    */
+  //添加钩子
   @InterfaceAudience.Public
   @InterfaceStability.Stable
   public void addShutdownHook(Runnable shutdownHook, int priority) {
@@ -316,6 +324,7 @@ public final class ShutdownHookManager {
    * @param timeout timeout of the shutdownHook
    * @param unit unit of the timeout <code>TimeUnit</code>
    */
+  //添加钩子
   @InterfaceAudience.Public
   @InterfaceStability.Stable
   public void addShutdownHook(Runnable shutdownHook, int priority, long timeout,
@@ -337,6 +346,7 @@ public final class ShutdownHookManager {
    * @return TRUE if the shutdownHook was registered and removed,
    * FALSE otherwise.
    */
+  //移除钩子
   @InterfaceAudience.Public
   @InterfaceStability.Stable
   public boolean removeShutdownHook(Runnable shutdownHook) {
@@ -355,6 +365,7 @@ public final class ShutdownHookManager {
    * @param shutdownHook shutdownHook to check if registered.
    * @return TRUE/FALSE depending if the shutdownHook is is registered.
    */
+  //判断是否存在钩子
   @InterfaceAudience.Public
   @InterfaceStability.Stable
   public boolean hasShutdownHook(Runnable shutdownHook) {

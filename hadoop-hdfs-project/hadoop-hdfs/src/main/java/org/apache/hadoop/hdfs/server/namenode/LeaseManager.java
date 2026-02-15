@@ -83,7 +83,11 @@ public class LeaseManager {
   public static final Logger LOG = LoggerFactory.getLogger(LeaseManager.class
       .getName());
   private final FSNamesystem fsnamesystem;
+  //软限制时间，表示租约的 正常续约间隔
+  //如果超过软限制时间但未达到硬限制，系统会视为异常情况，可能会向客户端发出警告或尝试回收部分资源
   private long softLimit = HdfsConstants.LEASE_SOFTLIMIT_PERIOD;
+  //硬限制时间，表示租约的 最长有效期
+  //如果租约超过硬限制没有更新，HDFS 会强制回收该租约，释放所有与之关联的文件锁，防止资源被长期占用
   private long hardLimit;
   static final int INODE_FILTER_WORKER_COUNT_MAX = 4;
   static final int INODE_FILTER_WORKER_TASK_MIN = 512;
@@ -93,9 +97,10 @@ public class LeaseManager {
   //
   // Used for handling lock-leases
   // Mapping: leaseHolder -> Lease
-  //
+  //保存租约所有者和租约的映射关系
   private final HashMap<String, Lease> leases = new HashMap<>();
   // INodeID -> Lease
+  //保存租约对象和租约的映射关系
   private final TreeMap<Long, Lease> leasesById = new TreeMap<>();
 
   private Daemon lmthread;
@@ -345,22 +350,22 @@ public class LeaseManager {
     return leasesById.size();
   }
 
-  /**
+  /**添加租约
    * Adds (or re-adds) the lease for the specified file.
    */
   synchronized Lease addLease(String holder, long inodeId) {
     Lease lease = getLease(holder);
-    if (lease == null) {
+    if (lease == null) {//如果不存在，则构造组合
       lease = new Lease(holder);
       leases.put(holder, lease);
-    } else {
+    } else { //续约
       renewLease(lease);
     }
     leasesById.put(inodeId, lease);
     lease.files.add(inodeId);
     return lease;
   }
-
+  //删除租约
   synchronized void removeLease(long inodeId) {
     final Lease lease = leasesById.get(inodeId);
     if (lease != null) {
@@ -443,9 +448,11 @@ public class LeaseManager {
    * checks in.  If the client dies and allows its lease to
    * expire, all the corresponding locks can be released.
    *************************************************************/
+  //一个客户端打开的所有文件组成一条记录，就是租约
   class Lease {
-    private final String holder;
-    private long lastUpdate;
+    private final String holder;//表示持有该租约（Lease）的客户端的唯一标识符（通常是客户端的 ID 或名称）
+    private long lastUpdate;//记录该租约最近一次被续约（renew）的时间戳，单位通常是毫秒（取决于 monotonicNow() 方法的返回值），用于判断租约是否已经过期（包括软限制和硬限制）
+    //存储该租约下所有被锁定的文件的 inodeId（文件在 HDFS 文件系统中的唯一标识）
     private final HashSet<Long> files = new HashSet<>();
 
     /** Only LeaseManager object can create a lease */

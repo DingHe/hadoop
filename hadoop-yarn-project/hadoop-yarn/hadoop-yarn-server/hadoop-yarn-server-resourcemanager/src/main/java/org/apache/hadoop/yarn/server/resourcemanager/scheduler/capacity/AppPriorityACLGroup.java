@@ -25,10 +25,14 @@ import org.apache.hadoop.yarn.api.records.Priority;
  * PriorityACLGroup will hold all ACL related information per priority.
  *
  */
+//用于存储与优先级相关的访问控制列表（ACL）信息。
+// 每个 AppPriorityACLGroup 实例都代表一个优先级组，包含最大优先级、默认优先级以及该优先级下的访问控制列表
 public class AppPriorityACLGroup implements Comparable<AppPriorityACLGroup> {
-
+  //表示该优先级组的最大优先级。应用程序提交时，可以根据该优先级组的最大优先级来判断是否允许提交
   private Priority maxPriority = null;
+  //表示该优先级组的默认优先级。对于没有明确指定优先级的应用程序，会使用该优先级作为应用的优先级
   private Priority defaultPriority = null;
+  //表示与该优先级组关联的访问控制列表。该 ACL 用于定义哪些用户或用户组能够在该优先级下提交应用程序
   private AccessControlList aclList = null;
 
   public AppPriorityACLGroup(Priority maxPriority, Priority defaultPriority,

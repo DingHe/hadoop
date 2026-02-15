@@ -47,6 +47,8 @@ public interface InterQJournalProtocol {
    *        segment
    * @return a list of edit log segments since the given transaction ID.
    */
+  //获取 JournalNode 存储的编辑日志（Edit Log）清单，用于 NameNode 读取 JournalNode 维护的事务日志
+  //
   GetEditLogManifestResponseProto getEditLogManifestFromJournal(
       String jid, String nameServiceId, long sinceTxId, boolean inProgressOk)
       throws IOException;

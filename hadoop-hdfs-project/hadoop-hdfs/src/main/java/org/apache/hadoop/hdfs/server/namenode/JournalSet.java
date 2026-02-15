@@ -59,11 +59,13 @@ public class JournalSet implements JournalManager {
 
   // we want local logs to be ordered earlier in the collection, and true
   // is considered larger than false, so reverse the comparator
+  //专门用于排序编辑日志流。该比较器将本地日志优先级设置为更高，因为在日志集合中，本地日志被认为更重要，true 会被视为比 false 更大
   private static final Comparator<EditLogInputStream>
       LOCAL_LOG_PREFERENCE_COMPARATOR = Comparator
       .comparing(EditLogInputStream::isLocalLog)
       .reversed();
 
+  //用于根据编辑日志流的 firstTxId（第一个事务ID）和 lastTxId（最后一个事务ID）对日志流进行排序。此比较器确保按照事务ID的顺序对编辑日志进行排序
   public static final Comparator<EditLogInputStream>
       EDIT_LOG_INPUT_STREAM_COMPARATOR = Comparator
       .comparing(EditLogInputStream::getFirstTxId)
@@ -72,16 +74,17 @@ public class JournalSet implements JournalManager {
   /**
    * Container for a JournalManager paired with its currently
    * active stream.
-   * 
+   * 封装 JournalManager 对象及其当前活动的日志流。
+   * 这个类的主要作用是管理与 JournalManager 相关的日志流的生命周期（如启动、关闭、终止、检查等）
    * If a Journal gets disabled due to an error writing to its
    * stream, then the stream will be aborted and set to null.
    */
   static class JournalAndStream implements CheckableNameNodeResource {
-    private JournalManager journal;
-    private boolean disabled = false;
-    private EditLogOutputStream stream;
-    private final boolean required;
-    private final boolean shared;
+    private JournalManager journal;//存储一个 JournalManager 实例，该实例用于管理日志操作（例如启动和关闭日志流）
+    private boolean disabled = false;//表示日志流是否被禁用。如果在写入日志时发生错误，disabled 会被设置为 true，并且该日志流会被中止（即流会被设为 null）
+    private EditLogOutputStream stream;//当前活动的日志流。它用于实际的日志写入操作。如果为 null，表示没有活动日志流
+    private final boolean required;//指示该日志是否是必需的。如果为 true，表示该日志流在系统中是必需的
+    private final boolean shared;//指示该日志流是否是共享的。如果为 true，表示多个组件或线程可以共享该日志流
     
     public JournalAndStream(JournalManager manager, boolean required,
         boolean shared) {
@@ -89,7 +92,7 @@ public class JournalSet implements JournalManager {
       this.required = required;
       this.shared = shared;
     }
-
+    //启动一个新的日志段。在调用此方法之前，stream 必须是 null，因此使用 Preconditions.checkState() 进行检查，确保 stream 未被初始化
     public void startLogSegment(long txId, int layoutVersion) throws IOException {
       Preconditions.checkState(stream == null);
       disabled = false;
@@ -368,6 +371,8 @@ public class JournalSet implements JournalManager {
    * iteratively applied on all the journals. For example see
    * {@link JournalSet#mapJournalsAndReportErrors}.
    */
+  //用于封装可以迭代应用于所有日志（journals）上的操作。实现该接口的类或对象定义了如何在每个 JournalAndStream 实例上执行某个操作。
+  // 通过这种方式，操作可以被统一处理并应用到所有的日志上
   private interface JournalClosure {
     /**
      * The operation on JournalAndStream.
@@ -436,13 +441,16 @@ public class JournalSet implements JournalManager {
    * An implementation of EditLogOutputStream that applies a requested method on
    * all the journals that are currently active.
    */
+  //JournalSetOutputStream 是 EditLogOutputStream 的一个实现，
+  // 它会将指定的方法应用到所有当前活动的日志流（JournalAndStream）。
+  // 该类继承自 EditLogOutputStream，并实现了相关的日志操作方法
   private class JournalSetOutputStream extends EditLogOutputStream {
 
     JournalSetOutputStream() throws IOException {
       super();
     }
 
-    /**
+    /** 获取上次写入日志的事务 ID (txId)
      * Get the last txId journalled in the stream.
      * The txId is recorded when FSEditLogOp is written to the journal.
      * JournalSet tracks the txId uniformly for all underlying streams.
@@ -451,7 +459,7 @@ public class JournalSet implements JournalManager {
     public long getLastJournalledTxId() {
       return lastJournalledTxId;
     }
-
+   //将 FSEditLogOp 操作写入所有活动的日志流
     @Override
     public void write(final FSEditLogOp op)
         throws IOException {
@@ -468,7 +476,7 @@ public class JournalSet implements JournalManager {
         op + ", lastJournalledTxId=" + lastJournalledTxId;
       lastJournalledTxId = op.txid;
     }
-
+    //将原始字节数据写入所有活动的日志流
     @Override
     public void writeRaw(final byte[] data, final int offset, final int length)
         throws IOException {
@@ -481,7 +489,7 @@ public class JournalSet implements JournalManager {
         }
       }, "write bytes");
     }
-
+   //在所有活动的日志流中创建新的日志段
     @Override
     public void create(final int layoutVersion) throws IOException {
       mapJournalsAndReportErrors(new JournalClosure() {

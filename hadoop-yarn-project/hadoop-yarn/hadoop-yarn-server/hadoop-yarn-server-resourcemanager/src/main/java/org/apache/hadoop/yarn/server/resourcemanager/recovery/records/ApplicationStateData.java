@@ -38,6 +38,8 @@ import org.apache.hadoop.yarn.util.Records;
  * Contains all the state data that needs to be stored persistently 
  * for an Application
  */
+//用于持久化存储应用程序状态的关键类。它记录了一个应用程序（Application）在 RM 中的所有必要状态信息，
+// 如提交时间、启动时间、用户信息、提交上下文、应用状态、诊断信息、启动时间、完成时间等。该类是一个抽象类，具体的存储实现可能由子类完成
 @Public
 @Unstable
 public abstract class ApplicationStateData {
@@ -50,15 +52,15 @@ public abstract class ApplicationStateData {
       String diagnostics, long launchTime, long finishTime,
       CallerContext callerContext) {
     ApplicationStateData appState = Records.newRecord(ApplicationStateData.class);
-    appState.setSubmitTime(submitTime);
-    appState.setStartTime(startTime);
-    appState.setUser(user);
-    appState.setApplicationSubmissionContext(submissionContext);
-    appState.setState(state);
-    appState.setDiagnostics(diagnostics);
-    appState.setLaunchTime(launchTime);
-    appState.setFinishTime(finishTime);
-    appState.setCallerContext(callerContext);
+    appState.setSubmitTime(submitTime); //应用程序提交时间
+    appState.setStartTime(startTime); //应用程序开始执行的时间
+    appState.setUser(user); //提交该应用程序的用户
+    appState.setApplicationSubmissionContext(submissionContext); //应用程序提交上下文（ApplicationSubmissionContext），包含了应用程序的基本信息
+    appState.setState(state); //应用程序当前的状态（RMAppState）
+    appState.setDiagnostics(diagnostics); //应用程序的诊断信息，通常用于记录错误或警告
+    appState.setLaunchTime(launchTime); //应用程序启动的时间
+    appState.setFinishTime(finishTime); //应用程序结束的时间
+    appState.setCallerContext(callerContext); //调用上下文（CallerContext），用于追踪应用程序的调用来源
     return appState;
   }
 

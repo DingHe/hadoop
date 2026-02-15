@@ -29,6 +29,7 @@ import java.util.Map;
 /**
  * Contains various scheduling metrics to be reported by UI and CLI.
  */
+//表示一个应用程序的资源使用情况报告，它包含了该应用在 YARN 集群中分配和使用的资源信息，适用于 UI 和命令行界面（CLI）的报告展示
 @Public
 @Stable
 public abstract class ApplicationResourceUsageReport {
@@ -42,15 +43,15 @@ public abstract class ApplicationResourceUsageReport {
       float clusterUsagePerc, Map<String, Long> preemtedResourceSecondsMap) {
     ApplicationResourceUsageReport report =
         Records.newRecord(ApplicationResourceUsageReport.class);
-    report.setNumUsedContainers(numUsedContainers);
-    report.setNumReservedContainers(numReservedContainers);
-    report.setUsedResources(usedResources);
-    report.setReservedResources(reservedResources);
-    report.setNeededResources(neededResources);
-    report.setResourceSecondsMap(resourceSecondsMap);
-    report.setQueueUsagePercentage(queueUsagePerc);
-    report.setClusterUsagePercentage(clusterUsagePerc);
-    report.setPreemptedResourceSecondsMap(preemtedResourceSecondsMap);
+    report.setNumUsedContainers(numUsedContainers);//已使用的容器数，表示应用当前运行的容器数量
+    report.setNumReservedContainers(numReservedContainers);//已预留的容器数，表示为应用预留的容器数量
+    report.setUsedResources(usedResources);//已使用的资源，表示应用已分配并使用的资源（如 CPU、内存）
+    report.setReservedResources(reservedResources);//预留的资源，表示为应用预留但尚未使用的资源
+    report.setNeededResources(neededResources);//所需资源，表示应用请求的总资源量
+    report.setResourceSecondsMap(resourceSecondsMap);//资源使用的时间映射，记录各资源的使用时长（以秒为单位）
+    report.setQueueUsagePercentage(queueUsagePerc);//队列使用百分比，表示应用在队列中占用的资源比例
+    report.setClusterUsagePercentage(clusterUsagePerc);//集群使用百分比，表示应用在整个集群中占用的资源比例
+    report.setPreemptedResourceSecondsMap(preemtedResourceSecondsMap);//被抢占的资源时间映射，记录被抢占的资源的使用时长
     return report;
   }
 
