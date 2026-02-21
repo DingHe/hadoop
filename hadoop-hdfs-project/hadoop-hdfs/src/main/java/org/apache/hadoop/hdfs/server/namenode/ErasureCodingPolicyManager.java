@@ -51,18 +51,26 @@ import java.util.stream.Collectors;
  *
  * This class is instantiated by the FSNamesystem.
  */
+// HDFS 中负责管理纠删码（Erasure Coding, EC）策略的核心类。它在 NameNode 进程中运行，充当了 EC 策略的“中央仓库”
+// 主要职责包括：
+// 策略生命周期管理：管理系统中所有内置策略（Built-in）和用户自定义策略（User-defined）的增加、删除、启用、禁用状态。
+// 内存索引映射：在内存中维护策略 ID 到策略对象、策略名称到策略对象的快速映射，供文件读写时查询。
+// 元数据同步：负责在 NameNode 启动时从 fsimage 和 editlog 中重新加载持久化的策略信息。
+// 参数校验：确保新添加的策略符合系统限制（如最大单元大小、Codec 是否可用等）。
 @InterfaceAudience.LimitedPrivate({"HDFS"})
 public final class ErasureCodingPolicyManager {
 
   public static Logger LOG = LoggerFactory.getLogger(
       ErasureCodingPolicyManager.class);
+  // EC 单元（Cell）的最大字节数限制。由 dfs.namenode.ec.policies.max-cellsize 配置。
   private int maxCellSize =
       DFSConfigKeys.DFS_NAMENODE_EC_POLICIES_MAX_CELLSIZE_DEFAULT;
-
+  // 是否允许用户添加自定义 EC 策略。由 dfs.namenode.ec.policies.userpolicies.allowed 配置。
   private boolean userDefinedAllowed =
       DFSConfigKeys.DFS_NAMENODE_EC_POLICIES_USERPOLICIES_ALLOWED_KEY_DEFAULT;
 
   // Supported storage policies for striped EC files
+  // 定义哪些存储策略适用于 EC（条带模式）。通常仅限 HOT, COLD, ALL_SSD。
   private static final byte[] SUITABLE_STORAGE_POLICIES_FOR_EC_STRIPED_MODE =
       new byte[]{
           HdfsConstants.HOT_STORAGE_POLICY_ID,
@@ -73,17 +81,20 @@ public final class ErasureCodingPolicyManager {
    * All policies sorted by name for fast querying, include built-in policy,
    * user defined policy, removed policy.
    */
+  // 全集索引：存储系统内所有策略（含已启用、已禁用、已删除），按名称排序。
   private Map<String, ErasureCodingPolicyInfo> policiesByName;
 
   /**
    * All policies sorted by ID for fast querying, including built-in policy,
    * user defined policy, removed policy.
    */
+  // 全集索引：存储系统内所有策略，按 ID 排序（ID 为 Byte 类型，范围 1-127）。
   private Map<Byte, ErasureCodingPolicyInfo> policiesByID;
 
   /**
    * For better performance when query all Policies.
    */
+  // 为了性能优化的数组缓存，存储所有策略的信息，减少 Map 转换开销。
   private ErasureCodingPolicyInfo[] allPolicies;
 
   /**
@@ -93,20 +104,24 @@ public final class ErasureCodingPolicyManager {
    * if a default policy is only enabled at startup,
    * it will appear as disabled in the persisted policy list and in the fsimage.
    */
+  // 持久化视图：记录最终需要写入 fsimage 的策略状态。
   private Map<Byte, ErasureCodingPolicyInfo> allPersistedPolicies;
 
   /**
    * All enabled policies sorted by name for fast querying, including built-in
    * policy, user defined policy.
    */
+
+  // 可用索引：仅包含当前状态为“ENABLED”的策略名到对象的映射。
   private Map<String, ErasureCodingPolicy> enabledPoliciesByName;
   /**
    * For better performance when query all enabled Policies.
    */
+  // 可用缓存：仅包含当前已启用的策略数组，用于快速响应 RPC 请求。
   private ErasureCodingPolicy[] enabledPolicies;
-
+  // 系统配置的默认 EC 策略名称。
   private String defaultPolicyName;
-
+  // 单例对象：确保整个 NameNode 内存中只有一个管理器实例。
   private volatile static ErasureCodingPolicyManager instance = null;
 
   public static ErasureCodingPolicyManager getInstance() {

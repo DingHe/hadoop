@@ -376,15 +376,15 @@ import org.apache.hadoop.thirdparty.com.google.common.util.concurrent.ThreadFact
  * 4)  machine {@literal -->} blocklist (inverted #2)
  * 5)  LRU cache of updated-heartbeat machines
  */
-//负责管理文件系统元数据的核心类，主要执行 NameNode 的主要逻辑。它的主要作用如下：
-//管理 NameNode 内部的各类服务：如 BlockManager（管理数据块）、DatanodeManager（管理数据节点）、LeaseManager（管理文件租约）等。
-//处理元数据相关的 RPC 请求：所有涉及文件系统操作的 RPC 请求（如创建文件、删除文件、更改权限等）都会委托给 FSNamesystem 处理。
-//管理数据块与存储映射：
-//维护文件到数据块的映射（文件 -> 数据块列表）。
-//维护数据块到数据节点的映射（数据块 -> 机器列表）。
-//维护数据节点到数据块的映射（机器 -> 数据块列表）。
-//协调文件系统操作：涉及 BlockManager 和 FSDirectory 的跨组件操作由 FSNamesystem 负责协调。
-//维护 HDFS 事务日志：所有修改 HDFS 元数据的操作都会被记录到 FSEditLog，保证文件系统的持久性。
+// 负责管理文件系统元数据的核心类，主要执行 NameNode 的主要逻辑。它的主要作用如下：
+// 管理 NameNode 内部的各类服务：如 BlockManager（管理数据块）、DatanodeManager（管理数据节点）、LeaseManager（管理文件租约）等。
+// 处理元数据相关的 RPC 请求：所有涉及文件系统操作的 RPC 请求（如创建文件、删除文件、更改权限等）都会委托给 FSNamesystem 处理。
+// 管理数据块与存储映射：
+// 维护文件到数据块的映射（文件 -> 数据块列表）。
+// 维护数据块到数据节点的映射（数据块 -> 机器列表）。
+// 维护数据节点到数据块的映射（机器 -> 数据块列表）。
+// 协调文件系统操作：涉及 BlockManager 和 FSDirectory 的跨组件操作由 FSNamesystem 负责协调。
+// 维护 HDFS 事务日志：所有修改 HDFS 元数据的操作都会被记录到 FSEditLog，保证文件系统的持久性。
 @InterfaceAudience.Private
 @Metrics(context="dfs")
 public class FSNamesystem implements Namesystem, FSNamesystemMBean,
@@ -393,18 +393,23 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   public static final Logger LOG = LoggerFactory.getLogger(FSNamesystem.class);
 
   // The following are private configurations
+  // HDFS是否启用快照回收站的配置项的键值
   public static final String DFS_NAMENODE_SNAPSHOT_TRASHROOT_ENABLED =
-      "dfs.namenode.snapshot.trashroot.enabled";  //HDFS是否启用快照回收站的配置项的键值
+      "dfs.namenode.snapshot.trashroot.enabled";
+  //快照回收站功能的默认状态，默认为false
   public static final boolean DFS_NAMENODE_SNAPSHOT_TRASHROOT_ENABLED_DEFAULT
-      = false;//快照回收站功能的默认状态，默认为false
+      = false;
+  // 设置快照回收站的共享访问权限，允许所有用户读、写、执行
   private static final FsPermission SHARED_TRASH_PERMISSION =
-      new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL, true); //设置快照回收站的共享访问权限，允许所有用户读、写、执行
+      new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL, true);
 
   private final MetricsRegistry registry = new MetricsRegistry("FSNamesystem");
+  //用于管理和注册HDFS系统的指标，便于监控和性能分析
   @Metric final MutableRatesWithAggregation detailedLockHoldTimeMetrics =
-      registry.newRatesWithAggregation("detailedLockHoldTimeMetrics"); //用于管理和注册HDFS系统的指标，便于监控和性能分析
+      registry.newRatesWithAggregation("detailedLockHoldTimeMetrics");
 
-  private final String contextFieldSeparator; //调用上下文中的字段分隔符，主要用于审计日志的上下文管理
+  //调用上下文中的字段分隔符，主要用于审计日志的上下文管理
+  private final String contextFieldSeparator;
   //检查审计日志功能是否启用
   boolean isAuditEnabled() {
     return (!isDefaultAuditLogger || AUDIT_LOG.isInfoEnabled())
@@ -461,7 +466,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       }
     }
   }
-  //检查并追加客户端的端口信息至CallerContext
+  // 检查并追加客户端的端口信息至CallerContext
   private void appendClientPortToCallerContextIfAbsent() {
     CallerContext ctx = CallerContext.getCurrent();
     if (isClientPortInfoAbsent(ctx)) {
@@ -482,11 +487,13 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
               .build());
     }
   }
+
   //客户端口是否缺失
   private boolean isClientPortInfoAbsent(CallerContext ctx){
     return ctx == null || ctx.getContext() == null
         || !ctx.getContext().contains(CallerContext.CLIENT_PORT_STR);
   }
+
   //是否是代理用户
   private boolean isFromProxyUser(CallerContext ctx) {
     return ctx != null && ctx.getContext() != null &&
@@ -507,61 +514,61 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    */
   public static final Logger AUDIT_LOG =
       LoggerFactory.getLogger(FSNamesystem.class.getName() + ".audit");
-  //返回的最大损坏文件块数
+  // 返回的最大损坏文件块数
   private final int maxCorruptFileBlocksReturn;
-  //是否启用权限检查
+  // 是否启用权限检查
   private final boolean isPermissionEnabled;
-  //是否启用存储策略（如热、温、冷数据分层）
+  // 是否启用存储策略（如热、温、冷数据分层）
   private final boolean isStoragePolicyEnabled;
-  //是否仅允许超级用户更改存储策略
+  // 是否仅允许超级用户更改存储策略
   private final boolean isStoragePolicySuperuserOnly;
   private final UserGroupInformation fsOwner;
   private final String supergroup;
-  //指示 Standby NameNode 是否应该执行 Checkpoint（检查点）
+  // 指示 Standby NameNode 是否应该执行 Checkpoint（检查点）
   private final boolean standbyShouldCheckpoint;
-  //是否为 快照删除 启用 回收站根目录（Snapshot Trash Root）
+  // 是否为 快照删除 启用 回收站根目录（Snapshot Trash Root）
   private final boolean isSnapshotTrashRootEnabled;
-  //生成 快照差异报告（Snapshot Diff Report）的最大条目数限制
+  // 生成 快照差异报告（Snapshot Diff Report）的最大条目数限制
   private final int snapshotDiffReportLimit;
 
   /**
    * Whether enable checkOperation when call getBlocks.
    * It is enabled  by default.
    */
-  //是否在调用 getBlocks 方法时启用 操作检查（checkOperation）
+  // 是否在调用 getBlocks 方法时启用 操作检查（checkOperation）
   private final boolean isGetBlocksCheckOperationEnabled;
 
   /** Interval between each check of lease to release. */
-  //租约检查的时间间隔，表示 HDFS 租约管理器 检测租约超时的频率
+  // 租约检查的时间间隔，表示 HDFS 租约管理器 检测租约超时的频率
   private final long leaseRecheckIntervalMs;
   /** Maximum time the lock is hold to release lease. */
-  //租约释放时 NameNode 持有锁的最长时间
+  // 租约释放时 NameNode 持有锁的最长时间
   private final long maxLockHoldToReleaseLeaseMs;
 
   // Batch size for open files response
-  //一次性列出 已打开文件 的最大数量
+  // 一次性列出 已打开文件 的最大数量
   private final int maxListOpenFilesResponses;
-  //是否允许 目录所有者 设置配额（Quota）
+  // 是否允许 目录所有者 设置配额（Quota）
   private final boolean allowOwnerSetQuota;
 
   // Scan interval is not configurable.
-  //委托令牌清理线程的扫描间隔，固定为 1 小时，不可配置
+  // 委托令牌清理线程的扫描间隔，固定为 1 小时，不可配置
   private static final long DELEGATION_TOKEN_REMOVER_SCAN_INTERVAL =
     TimeUnit.MILLISECONDS.convert(1, TimeUnit.HOURS);
-  //HDFS 的 委托令牌管理器，负责生成、验证和回收委托令牌
+  // HDFS 的 委托令牌管理器，负责生成、验证和回收委托令牌
   final DelegationTokenSecretManager dtSecretManager;
-  //是否在 测试环境 中始终使用委托令牌
+  // 是否在 测试环境 中始终使用委托令牌
   private final boolean alwaysUseDelegationTokensForTests;
-  //等待数据节点（DataNode）报告文件块的阶段标识
+  // 等待数据节点（DataNode）报告文件块的阶段标识
   private static final Step STEP_AWAITING_REPORTED_BLOCKS =
     new Step(StepType.AWAITING_REPORTED_BLOCKS);
 
   // Tracks whether the default audit logger is the only configured audit
   // logger; this allows isAuditEnabled() to return false in case the
   // underlying logger is disabled, and avoid some unnecessary work.
-  //是否只使用 默认审计日志记录器
+  // 是否只使用 默认审计日志记录器
   private final boolean isDefaultAuditLogger;
-  //HDFS 中配置的 审计日志记录器 列表
+  // HDFS 中配置的 审计日志记录器 列表
   private final List<AuditLogger> auditLoggers;
   //是否在审计日志中记录客户端的 远程端口号
   private final boolean auditLogWithRemotePort;
@@ -569,49 +576,49 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   /** The namespace tree. */
   //HDFS 的 命名空间目录，管理文件系统的层次结构
   FSDirectory dir;
-  //HDFS 数据块管理器，负责跟踪和管理所有数据块的状态
+  // HDFS 数据块管理器，负责跟踪和管理所有数据块的状态
   private BlockManager blockManager;
-  //HDFS 快照管理器，用于管理目录的快照操作
+  // HDFS 快照管理器，用于管理目录的快照操作
   private final SnapshotManager snapshotManager;
-  //快照删除垃圾回收器，用于回收删除快照后的无效数据
+  // 快照删除垃圾回收器，用于回收删除快照后的无效数据
   private final SnapshotDeletionGc snapshotDeletionGc;
-  //HDFS 缓存管理器，用于管理热数据的缓存操作
+  // HDFS 缓存管理器，用于管理热数据的缓存操作
   private final CacheManager cacheManager;
-  //维护所有 DataNode 的统计信息，如磁盘使用、负载等，支持集群监控和调度决策
+  // 维护所有 DataNode 的统计信息，如磁盘使用、负载等，支持集群监控和调度决策
   private final DatanodeStatistics datanodeStatistics;
-  //在 HDFS Federation（联邦模式）中，集群可以有多个 NameNode，每个 NameNode 对应一个独立的命名空间
+  // 在 HDFS Federation（联邦模式）中，集群可以有多个 NameNode，每个 NameNode 对应一个独立的命名空间
   private String nameserviceId;
-  //滚动升级的状态信息，支持在不中断服务的情况下升级 HDFS
+  // 滚动升级的状态信息，支持在不中断服务的情况下升级 HDFS
   private volatile RollingUpgradeInfo rollingUpgradeInfo = null;
   /**
    * A flag that indicates whether the checkpointer should checkpoint a rollback
    * fsimage. The edit log tailer sets this flag. The checkpoint will create a
    * rollback fsimage if the flag is true, and then change the flag to false.
    */
-  //指示是否需要生成 回滚 fsimage 文件
+  // 指示是否需要生成 回滚 fsimage 文件
   private volatile boolean needRollbackFsImage;
-  //管理 HDFS 文件租约（Lease）
+  // 管理 HDFS 文件租约（Lease）
   final LeaseManager leaseManager = new LeaseManager(this);
-  //NameNode 资源监控线程，用于检查 NameNode 资源是否充足
+  // NameNode 资源监控线程，用于检查 NameNode 资源是否充足
   Daemon nnrmthread = null; // NamenodeResourceMonitor thread
-  //EditLog 滚动线程，用于定期生成新的 编辑日志 文件
+  // EditLog 滚动线程，用于定期生成新的 编辑日志 文件
   Daemon nnEditLogRoller = null; // NameNodeEditLogRoller thread
 
   // A daemon to periodically clean up corrupt lazyPersist files
   // from the name space.
-  //延迟持久化文件清理线程，清理损坏的延迟持久化数据
+  // 延迟持久化文件清理线程，清理损坏的延迟持久化数据
   Daemon lazyPersistFileScrubber = null;
   /**
    * Timestamp marking the end time of {@link #lazyPersistFileScrubber}'s full
    * cycle. This value can be checked by the Junit tests to verify that the
    * {@link #lazyPersistFileScrubber} has run at least one full iteration.
    */
-  //记录延迟持久化清理线程 上次完成清理的时间戳
+  // 记录延迟持久化清理线程 上次完成清理的时间戳
   private final AtomicLong lazyPersistFileScrubberTS = new AtomicLong(0);
 
 
   // Executor to warm up EDEK cache
-  //在 加密文件系统 中，NameNode 需要与 密钥提供器 交互，生成 加密数据加密密钥 (EDEK)
+  // 在 加密文件系统 中，NameNode 需要与 密钥提供器 交互，生成 加密数据加密密钥 (EDEK)
   private ExecutorService edekCacheLoader = null;
   private final int edekCacheLoaderDelay;
   private final int edekCacheLoaderInterval;
@@ -656,9 +663,9 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   //ALWAYS：总是替换   NEVER：从不替换  DEFAULT：在 DataNode 故障时替换
 
   private final ReplaceDatanodeOnFailure dtpReplaceDatanodeOnFailure;
-  //HDFS 文件系统对象的最大数量，包括 文件、目录、符号链接 等
+  // HDFS 文件系统对象的最大数量，包括 文件、目录、符号链接 等
   private final long maxFsObjects;          // maximum number of fs objects
-  //HDFS 最小数据块大小，单位为字节
+  // HDFS 最小数据块大小，单位为字节
   private final long minBlockSize;         // minimum block size
   //每个 HDFS 文件的最大数据块数
   final long maxBlocksPerFile;     // maximum # of blocks per file
@@ -687,7 +694,8 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    * Used when this NN is in standby or observer state to read from the
    * shared edit log.
    */
-  //编辑日志追赶线程，用于 Standby NameNode 同步 Active NameNode 的元数据
+  //编辑日志追赶线程，
+  // 用于 Standby NameNode 同步 Active NameNode 的元数据
   private EditLogTailer editLogTailer = null;
 
   /**
@@ -714,7 +722,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   private final RetryCache retryCache;
   //加密密钥管理器
   private KeyProviderCryptoExtension provider = null;
-  //镜像文件fsimage是否加载完成
+  // 镜像文件fsimage是否加载完成
   private volatile boolean imageLoaded = false;
   //配合 ReentrantLock 使用，提供线程之间的精确 等待/通知 机制
   //主要用于等待 NameNode 加载完成或资源准备完毕
@@ -754,12 +762,12 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    * Notify that loading of this FSDirectory is complete, and
    * it is imageLoaded for use
    */
-  //设置镜像fsimage加载完成
+  // 用是通知系统：FsImage（元数据镜像）已经成功加载到内存中，文件系统目录树（FSDirectory）已经构建完成。
   void imageLoadComplete() {
     Preconditions.checkState(!imageLoaded, "FSDirectory already loaded");
     setImageLoaded();
   }
-
+  // 负责处理状态变更后的副作用（通知等待线程、初始化缓存等），它必须是线程安全的。
   void setImageLoaded() {
     if(imageLoaded) return;
     writeLock();
@@ -811,8 +819,12 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    * @return the current {@link #lazyPersistFileScrubberTS} if {@link
    *         #lazyPersistFileScrubber} is not null.
    */
+  // Lazy Persist 允许客户端将数据首先写入 DataNode 的 RAM（内存），然后异步地持久化到磁盘。
+  // 为了管理这些存储在内存中但尚未持久化的文件，NameNode 运行着一个名为 lazyPersistFileScrubber 的后台守护线程（Daemon）
   @VisibleForTesting
   public long getLazyPersistFileScrubberTS() {
+    // 检查该后台守护线程是否已经启动。
+    // 如果该线程未初始化（例如集群没有开启 Lazy Persist 功能），则返回 -1。
     return lazyPersistFileScrubber == null ? -1
         : lazyPersistFileScrubberTS.get();
   }
@@ -827,18 +839,22 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    * @throws IOException if the configuration could not be queried.
    * @throws IllegalArgumentException if the configuration is invalid.
    */
+  // 核心任务是验证**元数据存储目录（FSImage 和 Edits Log）**的配置是否合法且具备基本的安全性。
   private static void checkConfiguration(Configuration conf)
       throws IOException {
-
+    // 存储 FSImage（元数据镜像）的目录
     final Collection<URI> namespaceDirs =
         FSNamesystem.getNamespaceDirs(conf);
+    // 存储 Edits Log（编辑日志）的目录
     final Collection<URI> editsDirs =
         FSNamesystem.getNamespaceEditsDirs(conf);
+    // 强制要求必须存在的编辑日志目录
     final Collection<URI> requiredEditsDirs =
         FSNamesystem.getRequiredNamespaceEditsDirs(conf);
+    // 在高可用（HA）架构中使用的共享存储目录（如 QJM 机制），对应配置项 dfs.namenode.shared.edits.dir
     final Collection<URI> sharedEditsDirs =
         FSNamesystem.getSharedEditsDirs(conf);
-
+    // 历所有被标记为 required 的目录。
     for (URI u : requiredEditsDirs) {
       if (u.toString().compareTo(
               DFSConfigKeys.DFS_NAMENODE_EDITS_DIR_DEFAULT) == 0) {
@@ -847,6 +863,8 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
 
       // Each required directory must also be in editsDirs or in
       // sharedEditsDirs.
+      // 如果你在配置中要求某个目录 u 为“必须（Required）”的，
+      // 那么这个目录 u 必须出现在 editsDirs（普通编辑目录）或者 sharedEditsDirs（共享编辑目录）的列表中
       if (!editsDirs.contains(u) &&
           !sharedEditsDirs.contains(u)) {
         throw new IllegalArgumentException("Required edits directory " + u
@@ -858,12 +876,13 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
             + "=" + sharedEditsDirs);
       }
     }
-
+    // HDFS 建议配置多个目录（最好分布在不同的磁盘上），NameNode 会在这些目录下同步存储多份镜像副本，以防止单块磁盘损坏导致元数据丢失。
     if (namespaceDirs.size() == 1) {
       LOG.warn("Only one image storage directory ("
           + DFS_NAMENODE_NAME_DIR_KEY + ") configured. Beware of data loss"
           + " due to lack of redundant storage directories!");
     }
+    // 如果编辑日志只有一份，且存储介质发生硬件故障，NameNode 将无法恢复最新的元数据变更，面临数据丢失风险。
     if (editsDirs.size() == 1) {
       LOG.warn("Only one namespace edits storage directory ("
           + DFS_NAMENODE_EDITS_DIR_KEY + ") configured. Beware of data loss"
@@ -930,18 +949,27 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    *                         step. For Secondary NN this should be set to true.
    * @throws IOException on bad configuration
    */
+  // 负责在内存中初始化 NameNode 的各项核心管理组件（如文件目录树、数据块管理、权限控制、快照管理等），并加载数以百计的配置参数。
+  // 这个构造方法仅在内存中初始化对象结构，并不负责从磁盘加载 fsimage。
+  // 该构造函数的设计遵循了控制反转的思路：
+  // 先初始化锁和配置：为后续组件提供基础环境。
+  // 后实例化子系统：将 this 指针传给 BlockManager 和 FSDirectory，使子系统能回调主系统的功能。
   FSNamesystem(Configuration conf, FSImage fsImage, boolean ignoreRetryCache)
       throws IOException {
-    //为 HDFS 加载密钥提供程序，支持加密文件传输和存储
+    // 初始化密钥提供程序（KeyProvider），用于 HDFS 透明加密（TDE）功能。
     provider = DFSUtil.createKeyProviderCryptoExtension(conf);
     LOG.info("KeyProvider: " + provider);
+    // 检查异步日志配置；
     checkForAsyncLogEnabledByOldConfigs(conf);
+    // 设置审计日志是否记录远程端口；
     auditLogWithRemotePort =
         conf.getBoolean(DFS_NAMENODE_AUDIT_LOG_WITH_REMOTE_PORT_KEY,
             DFS_NAMENODE_AUDIT_LOG_WITH_REMOTE_PORT_DEFAULT);
+    // 设置调用者上下文（Caller Context）的分隔符，用于追踪请求来源
     this.contextFieldSeparator =
         conf.get(HADOOP_CALLER_CONTEXT_SEPARATOR_KEY,
             HADOOP_CALLER_CONTEXT_SEPARATOR_DEFAULT);
+    // 初始化 NameNode 的全局锁（fsLock），支持细粒度的持有时间监控；创建写锁条件变量 cond；初始化检查点锁 cpLock。
     fsLock = new FSNamesystemLock(conf, detailedLockHoldTimeMetrics);
     cond = fsLock.newWriteLockCondition();
     cpLock = new ReentrantLock();
@@ -951,16 +979,17 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       resourceRecheckInterval = conf.getLong(
           DFS_NAMENODE_RESOURCE_CHECK_INTERVAL_KEY,
           DFS_NAMENODE_RESOURCE_CHECK_INTERVAL_DEFAULT);
-
+      // 获取运行 NameNode 进程的系统用户作为 fsOwner；定义超级用户组（默认 supergroup）；开启或关闭 HDFS 的权限校验功能。
       this.fsOwner = UserGroupInformation.getCurrentUser();
       this.supergroup = conf.get(DFS_PERMISSIONS_SUPERUSERGROUP_KEY, 
                                  DFS_PERMISSIONS_SUPERUSERGROUP_DEFAULT);
       this.isPermissionEnabled = conf.getBoolean(DFS_PERMISSIONS_ENABLED_KEY,
                                                  DFS_PERMISSIONS_ENABLED_DEFAULT);
-
+      // 初始化存储策略（如冷、热、温存储）是否启用
       this.isStoragePolicyEnabled =
           conf.getBoolean(DFS_STORAGE_POLICY_ENABLED_KEY,
               DFS_STORAGE_POLICY_ENABLED_DEFAULT);
+      // 是否仅允许超级用户修改存储策略。
       this.isStoragePolicySuperuserOnly =
           conf.getBoolean(DFS_STORAGE_POLICY_PERMISSIONS_SUPERUSER_ONLY_KEY,
               DFS_STORAGE_POLICY_PERMISSIONS_SUPERUSER_ONLY_DEFAULT);
@@ -976,6 +1005,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
 
       // block allocation has to be persisted in HA using a shared edits directory
       // so that the standby has up-to-date namespace information
+      // 确定当前的 nameserviceId 并判断是否启用了 HA 模式。
       nameserviceId = DFSUtil.getNamenodeNameServiceId(conf);
       this.haEnabled = HAUtil.isHAEnabled(conf, nameserviceId);  
       
@@ -984,6 +1014,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
         LOG.info("Determined nameservice ID: " + nameserviceId);
       }
       LOG.info("HA Enabled: " + haEnabled);
+      // 一致性检查。如果没开 HA 却配置了共享编辑日志目录（Shared Edits Dir），则视为非法配置并抛出异常，因为共享目录是为 Active/Standby 同步设计的。
       if (!haEnabled && HAUtil.usesSharedEditsDir(conf)) {
         LOG.warn("Configured NNs:\n" + DFSUtil.nnAddressesAsString(conf));
         throw new IOException("Invalid configuration: a shared edits dir " +
@@ -991,7 +1022,9 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       }
 
       // block manager needs the haEnabled initialized
+      // 初始化 BlockManager（负责管理数据块与 DataNode 的映射）
       this.blockManager = new BlockManager(this, haEnabled, conf);
+      // 从块管理器中提取 DataNode 统计信息对象。
       this.datanodeStatistics = blockManager.getDatanodeManager().getDatanodeStatistics();
 
       // Get the checksum type from config
@@ -1013,7 +1046,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       } catch (NoSuchAlgorithmException e) {
         throw new IOException("Algorithm 'MD5' not found");
       }
-
+      // 创建一个包含所有客户端默认参数的对象（如默认块大小、副本数、校验和类型等），这些参数会通过 RPC 返回给客户端。
       this.serverDefaults = new FsServerDefaults(
           conf.getLongBytes(DFS_BLOCK_SIZE_KEY, DFS_BLOCK_SIZE_DEFAULT),
           conf.getInt(DFS_BYTES_PER_CHECKSUM_KEY, DFS_BYTES_PER_CHECKSUM_DEFAULT),
@@ -1029,6 +1062,8 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
           blockManager.getStoragePolicySuite().getDefaultPolicy().getId(),
           isSnapshotTrashRootEnabled);
 
+      //设置 NameNode 保护限制。
+      // 包括内存中允许的最大对象数（防止 OOM）、最小块大小（防止碎片化）以及单个文件允许的最大块数。
       this.maxFsObjects = conf.getLong(DFS_NAMENODE_MAX_OBJECTS_KEY, 
                                        DFS_NAMENODE_MAX_OBJECTS_DEFAULT);
 
@@ -1056,7 +1091,8 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       
       this.standbyShouldCheckpoint = conf.getBoolean(
           DFS_HA_STANDBY_CHECKPOINTS_KEY, DFS_HA_STANDBY_CHECKPOINTS_DEFAULT);
-      // # edit autoroll threshold is a multiple of the checkpoint threshold 
+      // # edit autoroll threshold is a multiple of the checkpoint threshold
+      // 自动滚动日志的事务阈值
       this.editLogRollerThreshold = (long)
           (conf.getFloat(
               DFS_NAMENODE_EDIT_LOG_AUTOROLL_MULTIPLIER_THRESHOLD,
@@ -1064,10 +1100,11 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
           conf.getLong(
               DFS_NAMENODE_CHECKPOINT_TXNS_KEY,
               DFS_NAMENODE_CHECKPOINT_TXNS_DEFAULT));
+      // 自动滚动日志的时间间隔
       this.editLogRollerInterval = conf.getInt(
           DFS_NAMENODE_EDIT_LOG_AUTOROLL_CHECK_INTERVAL_MS,
           DFS_NAMENODE_EDIT_LOG_AUTOROLL_CHECK_INTERVAL_MS_DEFAULT);
-
+      // 延迟持久化文件的清理间隔
       this.lazyPersistFileScrubIntervalSec = conf.getInt(
           DFS_NAMENODE_LAZY_PERSIST_FILE_SCRUB_INTERVAL_SEC,
           DFS_NAMENODE_LAZY_PERSIST_FILE_SCRUB_INTERVAL_SEC_DEFAULT);
@@ -1084,7 +1121,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       this.edekCacheLoaderInterval = conf.getInt(
           DFSConfigKeys.DFS_NAMENODE_EDEKCACHELOADER_INTERVAL_MS_KEY,
           DFSConfigKeys.DFS_NAMENODE_EDEKCACHELOADER_INTERVAL_MS_DEFAULT);
-
+      // 租约重试检查间隔（客户端宕机检测）
       this.leaseRecheckIntervalMs = conf.getLong(
           DFS_NAMENODE_LEASE_RECHECK_INTERVAL_MS_KEY,
           DFS_NAMENODE_LEASE_RECHECK_INTERVAL_MS_DEFAULT);
@@ -1101,20 +1138,25 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       alwaysUseDelegationTokensForTests = conf.getBoolean(
           DFS_NAMENODE_DELEGATION_TOKEN_ALWAYS_USE_KEY,
           DFS_NAMENODE_DELEGATION_TOKEN_ALWAYS_USE_DEFAULT);
-
+      // 初始化委托令牌管理器
       this.dtSecretManager = createDelegationTokenSecretManager(conf);
+      // 初始化文件目录树（FSDirectory）
       this.dir = new FSDirectory(this, conf);
+      // 初始化快照管理器
       this.snapshotManager = new SnapshotManager(conf, dir);
       this.snapshotDeletionGc = snapshotManager.isSnapshotDeletionOrdered()?
           new SnapshotDeletionGc(this, conf): null;
-
+      // 初始化缓存管理器
       this.cacheManager = new CacheManager(this, conf, blockManager);
       // Init ErasureCodingPolicyManager instance.
+      // 初始化纠删码（EC）策略
       ErasureCodingPolicyManager.getInstance().init(conf);
       this.topConf = new TopConf(conf);
+      // 初始化审计日志记录器
       this.auditLoggers = initAuditLoggers(conf);
       this.isDefaultAuditLogger = auditLoggers.size() == 1 &&
         auditLoggers.get(0) instanceof DefaultAuditLogger;
+      // 初始化重试缓存（保证 RPC 幂等性）
       this.retryCache = ignoreRetryCache ? null : initRetryCache(conf);
       Class<? extends INodeAttributeProvider> klass = conf.getClass(
           DFS_NAMENODE_INODE_ATTRIBUTES_PROVIDER_KEY,
@@ -1392,18 +1434,24 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       }
     }
   }
-  
+  // 根据 NameNode 当前的状态，智能地判断是否应该启动令牌管理器的后台线程。
+  // 状态转换的检查点，通常在 NameNode 退出安全模式或由 Standby 状态切换为 Active 状态时被调用。
   @Override
   public void startSecretManagerIfNecessary() {
+    // 确保当前线程持有 FSNamesystem 的写锁
     assert hasWriteLock() : "Starting secret manager needs write lock";
+    // 配置是否开启了令牌功能（通常在启用 Kerberos 安全认证时为 true）。
+    // 不在安全模式下。安全模式下 NameNode 只读，不产生新的元数据变更，因此不需要管理令牌。
+    // 编辑日志必须可写。这通常意味着当前节点是 Active NameNode。Standby 节点的 EditLog 是只读的，因此只有 Active 节点负责管理和生成令牌。
     boolean shouldRun = shouldUseDelegationTokens() &&
       !isInSafeMode() && getEditLog().isOpenForWrite();
     boolean running = dtSecretManager.isRunning();
+    // 如果满足所有运行条件（shouldRun），且当前并未运行（!running），则调用底层方法启动后台线程（如令牌过期清理线程）。
     if (shouldRun && !running) {
       startSecretManager();
     }
   }
-
+  // 停止安全管理器
   private void stopSecretManager() {
     if (dtSecretManager != null) {
       dtSecretManager.stopThreads();
@@ -1413,31 +1461,46 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   /** 
    * Start services common to both active and standby states
    */
+  // 启动的是 Active（处于活跃状态） 和 Standby（处于待命状态） 的 NameNode 都必须运行的基础服务。
   void startCommonServices(Configuration conf, HAContext haContext) throws IOException {
+    // 将 FSNamesystemState 注册到 JMX（Java Management Extensions）
+    // 允许外部监控工具（如 Prometheus、Nagios）通过 JMX 获取集群状态（如总容量、已用空间、存活 DataNode 数量）。
     this.registerMBean(); // register the MBean for the FSNamesystemState
+    // 获取全局写锁，并保存 HA 上下文。
     writeLock();
     this.haContext = haContext;
     try {
+      // 初始化资源检查器。
+      // 主要负责监控 NameNode 的本地磁盘空间（存放 Edits Log 的地方）。
       nnResourceChecker = new NameNodeResourceChecker(conf);
+      // 立即执行一次资源检查。
       checkAvailableResources();
+      // 确保此时 BlockManager 还没有开始构建副本队列。在基础服务启动前，不应进行任何块副本的复制调度。
       assert !blockManager.isPopulatingReplQueues();
+      // 获取启动进度管理器，并标记进入“安全模式（SAFEMODE）”阶段。
       StartupProgress prog = NameNode.getStartupProgress();
       prog.beginPhase(Phase.SAFEMODE);
+      // 获取内存中已加载的完整数据块总数。
       long completeBlocksTotal = getCompleteBlocksTotal();
+      // 设置安全模式下“等待块汇报”步骤的总量。
       prog.setTotal(Phase.SAFEMODE, STEP_AWAITING_REPORTED_BLOCKS,
           completeBlocksTotal);
+      // 激活块管理器。
       blockManager.activate(conf, completeBlocksTotal);
     } finally {
       writeUnlock("startCommonServices");
     }
-    
+    // 注册更多的度量指标（Metrics）到 Hadoop 的监控系统。
     registerMXBean();
     DefaultMetricsSystem.instance().register(this);
+    // 如果配置了外部权限/属性插件（如 Apache Ranger），则启动该插件并将其注入目录树。
     if (inodeAttributeProvider != null) {
       inodeAttributeProvider.start();
       dir.setINodeAttributeProvider(inodeAttributeProvider);
     }
+    // 为快照管理组件注册监控接口。
     snapshotManager.registerMXBean();
+    // 解析并记录当前 NameNode 的主机名信息，用于内部通信标识
     InetSocketAddress serviceAddress = NameNode.getServiceAddress(conf, true);
     this.nameNodeHostName = (serviceAddress != null) ?
         serviceAddress.getHostName() : "";
@@ -1446,12 +1509,15 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   /** 
    * Stop services common to both active and standby states
    */
+  // 负责优雅地释放资源
   void stopCommonServices() {
     writeLock();
+    // 断开目录树与外部属性插件的连接，并停止插件。
     if (inodeAttributeProvider != null) {
       dir.setINodeAttributeProvider(null);
       inodeAttributeProvider.stop();
     }
+    // 关闭 BlockManager，这会停止心跳监控、副本计算等所有与数据块相关的后台线程。
     try {
       if (blockManager != null) blockManager.close();
     } finally {
@@ -1464,27 +1530,38 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    * Start services required in active state
    * @throws IOException
    */
+  // 负责将一个 NameNode 从“观察者”状态（Standby）切换为“决策者”状态（Active）。
   void startActiveServices() throws IOException {
+    // 表示系统正在启动 Active 服务，防止此时其他操作干扰。
     startingActiveService = true;
     LOG.info("Starting services required for active state");
     writeLock();
     try {
+      // 获取编辑日志管理对象的引用。
       FSEditLog editLog = getFSImage().getEditLog();
-      
+      // 如果日志当前不是可写状态（Standby 时日志只读），则需要执行接管逻辑：
       if (!editLog.isOpenForWrite()) {
         // During startup, we're already open for write during initialization.
+        // 初始化 Journal 节点（如 QJM）的写入通道。
         editLog.initJournalsForWrite();
         // May need to recover
+        // 恢复未正常关闭的日志流。如果前任 Active 挂了，这步会强制关闭前任的日志租约，保证数据不丢失且唯一。
         editLog.recoverUnclosedStreams(true);
         
         LOG.info("Catching up to latest edits from old active before " +
             "taking over writer role in edits logs");
+        // 关键步骤！
+        // 让当前节点快速读取所有残余的 EditLog，确保内存里的元数据与前任 Active 彻底同步。
         editLogTailer.catchupDuringFailover();
-        
+        // 停止推迟来自“未来”的块汇报。在 Standby 期间，因为元数据滞后，有些汇报会被推迟，现在转为 Active 需立即处理。
         blockManager.setPostponeBlocksFromFuture(false);
+        // 将所有 DataNode 标记为“陈旧（Stale）”。这强迫 NameNode 在接管后重新通过心跳评估节点状态。
         blockManager.getDatanodeManager().markAllDatanodesStale();
+        // 清空所有的副本复制和删除队列。防止 Standby 期间产生的过期指令被错误执行。
         blockManager.clearQueues();
+        // 处理在切换期间缓存的所有 DataNode 消息（如块汇报）。
         blockManager.processAllPendingDNMessages();
+        // 应用预期的 GenerationStamp（时间戳），确保块 ID 分配的连续性。
         blockManager.getBlockIdManager().applyImpendingGenerationStamp();
 
         // Only need to re-process the queue, If not in SafeMode.
@@ -1498,7 +1575,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
               + "replication and invalidation queues during failover:\n",
               metaSaveAsString());
         }
-
+        // 计算下一个事务 ID。
         long nextTxId = getFSImage().getLastAppliedTxId() + 1;
         LOG.info("Will take over writing edit logs at txnid " + 
             nextTxId);
@@ -1508,15 +1585,19 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       }
 
       // Initialize the quota.
+      // 重新计算全系统的配额（Quota）使用量。
       dir.updateCountForQuota();
       // Enable quota checks.
+      // 开启配额检查。
       dir.enableQuotaChecks();
+      // 启动加密区（EZ）的重新加密线程。
       dir.ezManager.startReencryptThreads();
 
       if (snapshotDeletionGc != null) {
         snapshotDeletionGc.schedule();
       }
-
+      // 非常重要！ 续约所有文件的租约。
+      // 在 Standby 期间，租约不会被更新，此操作给所有正在写入的客户端一个“宽限期”，防止切换后文件被强制关闭。
       if (haEnabled) {
         // Renew all of the leases before becoming active.
         // This is because, while we were in standby mode,
@@ -1524,17 +1605,19 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
         // Give them all a fresh start here.
         leaseManager.renewAllLeases();
       }
+      // 启动租约监控线程，开始检查哪些客户端断开了连接。
       leaseManager.startMonitor();
       startSecretManagerIfNecessary();
 
       //ResourceMonitor required only at ActiveNN. See HDFS-2914
+      // 启动资源监控线程，监控本地磁盘空间。
       this.nnrmthread = new Daemon(new NameNodeResourceMonitor());
       nnrmthread.start();
-
+      // 启动日志滚动线程，定期切分 EditLog 文件。
       nnEditLogRoller = new Daemon(new NameNodeEditLogRoller(
           editLogRollerThreshold, editLogRollerInterval));
       nnEditLogRoller.start();
-
+      // 启动延迟持久化（RAM_DISK 写入）的清理线程。
       if (lazyPersistFileScrubIntervalSec > 0) {
         lazyPersistFileScrubber = new Daemon(new LazyPersistFileScrubber(
             lazyPersistFileScrubIntervalSec));
@@ -1543,8 +1626,9 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
         LOG.warn("Lazy persist file scrubber is disabled,"
             + " configured scrub interval is zero.");
       }
-
+      // 启动集中式缓存监控线程。
       cacheManager.startMonitorThread();
+      // 允许向 DataNode 发送缓存指令。
       blockManager.getDatanodeManager().setShouldSendCachingCommands(true);
       if (provider != null) {
         edekCacheLoader = Executors.newSingleThreadExecutor(
@@ -1554,6 +1638,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
         FSDirEncryptionZoneOp.warmUpEdekCache(edekCacheLoader, dir,
             edekCacheLoaderDelay, edekCacheLoaderInterval);
       }
+      // 启动存储策略满足器（SPS），负责根据策略在不同存储介质间移动数据。
       if (blockManager.getSPSManager() != null) {
         blockManager.getSPSManager().start();
       }
@@ -1641,20 +1726,30 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    * 
    * @throws IOException
    */
+  // 负责启动 Standby（备用） 或 Observer（观察者） 状态下的 NameNode 所特有的服务。
+  // 核心目标是：保持元数据同步。
   void startStandbyServices(final Configuration conf, boolean isObserver)
       throws IOException {
     LOG.info("Starting services required for " +
         (isObserver ? "observer" : "standby") + " state");
+    // 初始化对 共享编辑日志（Shared Edits Log） 的读取通道
+    // 在 HA 模式下，Active 节点将日志写入 JournalNodes (QJM)。Standby 节点必须能够读取这些日志。
+    // 如果当前日志流还未打开，则调用 initSharedJournalsForRead() 来连接 JournalNodes，准备“追赶”元数据。
     if (!getFSImage().editLog.isOpenForRead()) {
       // During startup, we're already open for read.
       getFSImage().editLog.initSharedJournalsForRead();
     }
+    // 推迟处理“未来”的数据块汇报。
+    // 由于 Standby 节点的元数据是从共享日志中异步重放的，它的元数据进度总是稍微落后于 Active。
     blockManager.setPostponeBlocksFromFuture(true);
 
     // Disable quota checks while in standby.
+    // 关闭目录配额（Quota）校验。
     dir.disableQuotaChecks();
+    // 该线程会定期（默认每分钟）从 JournalNodes 下载新的 EditLog 并在内存中重放，确保 Standby 的内存目录树与 Active 尽可能保持一致。
     editLogTailer = new EditLogTailer(this, conf);
     editLogTailer.start();
+    // 只有 Standby 节点负责 Checkpoint，Observer 节点不参与。
     if (!isObserver && standbyShouldCheckpoint) {
       standbyCheckpointer = new StandbyCheckpointer(conf, this);
       standbyCheckpointer.start();
@@ -1741,7 +1836,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
   boolean isPermissionEnabled() {
     return isPermissionEnabled;
   }
-  //获取fsimage 文件目录（存储 HDFS 文件系统的快照）
+  // 获取fsimage 文件目录（存储 HDFS 文件系统的快照）
   public static Collection<URI> getNamespaceDirs(Configuration conf) {
     return getStorageDirs(conf, DFS_NAMENODE_NAME_DIR_KEY);//dfs.namenode.name.dir
   }
@@ -1894,7 +1989,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       Supplier<String> lockReportInfoSupplier) {
     this.fsLock.readUnlock(opName, lockReportInfoSupplier);
   }
-
+  // 获取文件系统的写锁
   @Override
   public void writeLock() {
     this.fsLock.writeLock();
@@ -5208,19 +5303,26 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     getBlockManager().getDatanodeManager().setBalancerBandwidth(bandwidth);
     logAuditEvent(true, operationName, null);
   }
-  //设置系统安全模式的状态
+  // 用于手动管理 安全模式（Safe Mode） 的核心方法。
+  // 安全模式是 NameNode 的一种保护状态，此时文件系统只读，不接受删除或修改操作。
   boolean setSafeMode(SafeModeAction action) throws IOException {
+    // 将传入的枚举动作（如 SAFEMODE_ENTER）转换为小写字符串（如 "enter"），主要用于后续的权限检查和审计日志记录。
     String operationName = action.toString().toLowerCase();
     boolean error = false;
+    // 如果操作不是“获取当前状态”（GET），即涉及到修改安全模式状态（进入、离开、强退），则必须进行安全检查。
     if (action != SafeModeAction.SAFEMODE_GET) {
+      // 验证当前用户是否具有 HDFS 超级用户 权限
       checkSuperuserPrivilege(operationName);
       switch(action) {
+        // 尝试正常退出安全模式。参数 false 表示“非强制”。如果系统认为还未达到退出条件（如副本汇报率不足），可能会受到限制。
       case SAFEMODE_LEAVE: // leave safe mode
         leaveSafeMode(false);
         break;
+      // 进入安全模式
       case SAFEMODE_ENTER: // enter safe mode
         enterSafeMode(false);
         break;
+      // 强制退出安全模式
       case SAFEMODE_FORCE_EXIT:
         leaveSafeMode(true);
         break;
@@ -5232,6 +5334,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     if (!error) {
       logAuditEvent(true, operationName, null);
     }
+    // 代表操作完成后，系统当前是否仍处于安全模式。这能让客户端确认操作是否生效。
     return isInSafeMode();
   }
 
@@ -5323,19 +5426,30 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     }
   }
 
-  /**设置系统离开安全模式，如果force=true，则表示强制离开安全模式
+  /**
    * Leave safe mode.
    * @param force true if to leave safe mode forcefully with -forceExit option
    */
+  // 真正执行“退出安全模式”逻辑的方法。
+  // 它不仅改变一个标志位，更重要的是它触发了 NameNode 从“只读观察状态”向“完全服务状态”的转变。
   void leaveSafeMode(boolean force) {
     writeLock();
     try {
+      // 如果系统当前已经不在安全模式下，直接打印日志并返回，不重复执行后续的启动逻辑。
       if (!isInSafeMode()) {
         NameNode.stateChangeLog.info("STATE* Safe mode is already OFF"); 
         return;
       }
+      // 委托 BlockManager 检查块汇报情况，并执行退出动作。
+      // 如果 force 为 true：强制退出。BlockManager 不再检查已上报块是否达到比例阈值，直接清空安全模式相关状态。
+      // 如果 force 为 false：正常退出。只有当上报的数据块比例达到配置要求（默认 99.9%）且存活 DataNode 数量达标后，才会返回 true。
       if (blockManager.leaveSafeMode(force)) {
+        // 关闭手动模式标志位和资源不足标志位。
+        // 第一个 false：标记“手动安全模式”结束。
+        // 第二个 false：标记“资源低水位安全模式”结束（即便之前是因为磁盘空间不足进入的安全模式，此处也会被重置）。
         setManualAndResourceLowSafeMode(false, false);
+        // 在安全模式下，为了防止元数据不一致，通常不产生新的 Token。
+        // 退出安全模式后，必须启动该组件，以便集群能够正常处理带有 Kerberos 或 Token 的安全认证请求。
         startSecretManagerIfNecessary();
       }
     } finally {
@@ -8381,19 +8495,30 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
    * @throws UnresolvedLinkException if the path can't be resolved.
    * @throws SafeModeException       if the Namenode is in safe mode.
    */
+  // 用于在 HDFS 的特定目录上设置纠删码（Erasure Coding, EC）策略。
+  // 纠删码相比传统的 3 副本模式，能在保证可靠性的同时显著降低存储成本。
+  // 已有文件: 注意，设置策略不会改变目录下已有文件的数据布局，只对新文件生效。
   void setErasureCodingPolicy(final String srcArg, final String ecPolicyName,
       final boolean logRetryCache) throws IOException,
       UnresolvedLinkException, SafeModeException, AccessControlException {
     final String operationName = "setErasureCodingPolicy";
+    // 1. 检查操作类别
+    // 快速检查。如果当前 NameNode 处于 Standby 状态（只读），则直接抛出异常，因为设置策略属于写操作。
     checkOperation(OperationCategory.WRITE);
+    // 2. 检查系统是否支持 EC
     checkErasureCodingSupported(operationName);
     FileStatus resultingStat = null;
+    // 获取当前发起 RPC 请求的用户权限信息。
     final FSPermissionChecker pc = getPermissionChecker();
     FSPermissionChecker.setOperationType(operationName);
     writeLock();
     try {
+      // 4. 二次检查写权限（持有锁后）
       checkOperation(OperationCategory.WRITE);
+      // 5. 检查是否处于安全模式
       checkNameNodeSafeMode("Cannot set erasure coding policy on " + srcArg);
+      // 6. 执行真正的目录属性修改
+      // 将策略名称存储在目录的扩展属性（XAttrs）中。
       resultingStat = FSDirErasureCodingOp.setErasureCodingPolicy(this,
           srcArg, ecPolicyName, pc, logRetryCache);
     } catch (AccessControlException ace) {
@@ -8403,7 +8528,9 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       writeUnlock(operationName,
           getLockReportInfoSupplier(srcArg, null, resultingStat));
     }
+    // 9. 强制同步 EditLog
     getEditLog().logSync();
+    // 10. 成功审计记录
     logAuditEvent(true, operationName, srcArg, null, resultingStat);
   }
 

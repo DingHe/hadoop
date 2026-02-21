@@ -33,8 +33,9 @@ import org.apache.hadoop.classification.InterfaceAudience;
  * <p>
  * Name Node runtime activity statistic  info is reported in
  * @see org.apache.hadoop.hdfs.server.namenode.metrics.NameNodeMetrics
- * 提供 HDFS 的 FSNamesystem 的监控信息，尤其是 NameNode 的状态。接口中的每个方法都提供了与 HDFS 系统运行时性能和健康相关的指标
+ *
  */
+// 提供 HDFS 的 FSNamesystem 的监控信息，尤其是 NameNode 的状态。接口中的每个方法都提供了与 HDFS 系统运行时性能和健康相关的指标
 @InterfaceAudience.Private
 public interface FSNamesystemMBean {
 

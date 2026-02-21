@@ -28,7 +28,9 @@ import org.apache.hadoop.classification.InterfaceAudience;
  * @see FSNamesystemMBean
  * Name Node runtime activity statistic info is reported in
  * @see org.apache.hadoop.hdfs.server.namenode.metrics.NameNodeMetrics
- *///用于获取与 Hadoop HDFS 中 复制块（Replicated Blocks） 状态相关的信息。该接口定义了多个方法，提供有关复制块的状态数据，供管理和监控工具（例如 JMX）使用
+ */
+//用于获取与 Hadoop HDFS 中 复制块（Replicated Blocks） 状态相关的信息。
+// 该接口定义了多个方法，提供有关复制块的状态数据，供管理和监控工具（例如 JMX）使用
 @InterfaceAudience.Private
 public interface ReplicatedBlocksMBean {
   /**返回复制冗余度较低的块的数量。冗余度较低的块是指它们的副本数低于所期望的副本数

@@ -27,10 +27,11 @@ import org.apache.hadoop.hdfs.util.RwLock;
 /** Namesystem operations. */
 @InterfaceAudience.Private
 public interface Namesystem extends RwLock, SafeMode {
-  /**检查 NameNode 是否正在运行。
-   * 返回 true 表示 NameNode 正在运行，false 表示 NameNode 没有在运行或已经停止
+  /**
    * Is this name system running?
    */
+  // 检查 NameNode 是否正在运行。
+  // 返回 true 表示 NameNode 正在运行，false 表示 NameNode 没有在运行或已经停止
   boolean isRunning();
   // 根据块集合的 ID 获取对应的块集合。
   // 返回一个 BlockCollection 对象，该对象包含了特定 ID 下的块信息
@@ -51,11 +52,12 @@ public interface Namesystem extends RwLock, SafeMode {
   // 高可用性上下文用于管理 Hadoop 集群中的高可用性配置和状态，确保在发生故障时，NameNode 可以顺利切换
   HAContext getHAContext();
 
-  /** 检查 NameNode 是否正在进行从备份到激活状态的过渡。
-   * 这个状态通常发生在 HDFS 的高可用性模式下，当一个 NameNode 从备用模式切换到活动模式时
+  /**
    * @return Whether the namenode is transitioning to active state and is in the
    *         middle of the starting active services.
    */
+  // 检查 NameNode 是否正在进行从备份到激活状态的过渡。
+  // 这个状态通常发生在 HDFS 的高可用性模式下，当一个 NameNode 从备用模式切换到活动模式时
   boolean inTransitionToActive();
 
   /** 从 inode 中移除指定的扩展属性 (xAttr)。
@@ -67,11 +69,12 @@ public interface Namesystem extends RwLock, SafeMode {
    */
   void removeXattr(long id, String xattrName) throws IOException;
 
-  /** 检查并为所有现有的快照目录创建快照垃圾回收根目录。
-   *  如果某些目录尚未设置快照垃圾回收根目录，该方法将进行创建。
-   *  快照垃圾回收根目录用于存储被删除文件的快照副本
+  /**
    * Check if snapshot roots are created for all existing snapshottable
    * directories. Create them if not.
    */
+  // 检查并为所有现有的快照目录创建快照垃圾回收根目录。
+  // 如果某些目录尚未设置快照垃圾回收根目录，该方法将进行创建。
+  // 快照垃圾回收根目录用于存储被删除文件的快照副本
   void checkAndProvisionSnapshotTrashRoots();
 }
