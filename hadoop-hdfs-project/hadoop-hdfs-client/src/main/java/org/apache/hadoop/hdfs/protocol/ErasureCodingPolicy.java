@@ -33,14 +33,28 @@ import java.io.Serializable;
  * by {@link SystemErasureCodingPolicies}, to be returned as a part of
  * {@link HdfsFileStatus}.
  */
+// ErasureCodingPolicy（纠删码策略）定义了一个文件在 HDFS 中如何进行编码、分块和存储。
+// 传统的 HDFS 使用副本机制（Replication），
+// 而 EC 机制通过数学算法（如 Reed-Solomon）将文件切分为若干个数据单元（Data Units）并计算出校验单元（Parity Units）。
+// 主要作用包括：
+// 定义布局：确定数据块和校验块的数量（例如 RS-6-3 表示 6 个数据块，3 个校验块）。
+// 确定切片大小：定义“单元格（Cell Size）”的大小，这是数据条带化（Striping）的最小物理单位。
+// 身份标识：为每种策略提供唯一的名称和 ID，方便 NameNode 在处理文件状态（HdfsFileStatus）时快速识别。
 @InterfaceAudience.Private
 public final class ErasureCodingPolicy implements Serializable {
 
   private static final long serialVersionUID = 0x0079fe4e;
-
+  // 策略的唯一名称。
+  // 例如 RS-6-3-1024k。它是策略的可读标识，通常由算法名称、参数和单元格大小组合而成。
   private final String name;
+  // 纠删码模式定义。
+  // 包含了具体的编码器名称（如 rs）、数据单元数量、校验单元数量以及其他算法相关的特定参数。
   private final ECSchema schema;
+  // 单元格大小（字节）。
+  // 定义了在将数据分布到不同 DataNode 之前，连续数据块切片的大小。HDFS 强制要求该值必须是 1024 的倍数（1k 对齐）。
   private final int cellSize;
+  // 策略的唯一数字 ID。
+  // 用于在存储和网络传输中高效识别策略。系统预定义策略 ID 较小，用户自定义策略 ID 较大。
   private final byte id;
 
   public ErasureCodingPolicy(String name, ECSchema schema,

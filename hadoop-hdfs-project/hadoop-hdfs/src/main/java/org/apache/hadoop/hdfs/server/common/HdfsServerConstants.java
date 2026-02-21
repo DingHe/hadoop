@@ -282,20 +282,22 @@ public interface HdfsServerConstants {
     }
   }
 
-  /**HDFS 数据块副本（Replica） 在构建过程中可能经历的不同状态。这些状态用于跟踪 HDFS 中每个数据块副本的生命周期，帮助 NameNode 和 DataNode 进行副本的管理、恢复和复制操作
+  /**
    * Block replica states, which it can go through while being constructed.
    */
+  // HDFS 数据块副本（Replica） 在构建过程中可能经历的不同状态。
+  // 这些状态用于跟踪 HDFS 中每个数据块副本的生命周期，帮助 NameNode 和 DataNode 进行副本的管理、恢复和复制操作
   enum ReplicaState {
     /** Replica is finalized. The state when replica is not modified. */
     FINALIZED(0), //副本已完成（最终状态，不能再被修改）
     /** Replica is being written to. */
-    RBW(1), //副本正在写入（Replica Being Written），数据块正在写入过程中，尚未完成。DataNode 在此状态下持续接收数据。
+    RBW(1), // 副本正在写入（Replica Being Written），数据块正在写入过程中，尚未完成。DataNode 在此状态下持续接收数据。
     /** Replica is waiting to be recovered. */
-    RWR(2), //副本等待恢复（Replica Waiting for Recovery），数据块需要恢复，例如 DataNode 宕机或写入中断，等待恢复过程开始
+    RWR(2), // 副本等待恢复（Replica Waiting for Recovery），数据块需要恢复，例如 DataNode 宕机或写入中断，等待恢复过程开始
     /** Replica is under recovery. */
-    RUR(3), //副本正在恢复（Replica Under Recovery），数据块正在恢复过程中，通常涉及多个 DataNode 进行数据的同步与修复。
+    RUR(3), // 副本正在恢复（Replica Under Recovery），数据块正在恢复过程中，通常涉及多个 DataNode 进行数据的同步与修复。
     /** Temporary replica: created for replication and relocation only. */
-    TEMPORARY(4);//临时副本（仅用于复制和迁移），通常是为了副本复制、数据迁移等目的而创建的临时状态
+    TEMPORARY(4);// 临时副本（仅用于复制和迁移），通常是为了副本复制、数据迁移等目的而创建的临时状态
 
     // Since ReplicaState (de)serialization depends on ordinal, either adding
     // new value should be avoided to this enum or newly appended value should

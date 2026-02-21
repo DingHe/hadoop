@@ -55,21 +55,30 @@ import org.apache.hadoop.util.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**用于管理 HDFS 中 DataNode 节点的动态信息（如健康状态、容量、关联的块等）
- * 只能在NameNode使用
+/**
  * This class extends the DatanodeInfo class with ephemeral information (eg
  * health, capacity, what blocks are associated with the Datanode) that is
  * private to the Namenode, ie this class is not exposed to clients.
  */
+// DatanodeDescriptor 继承自 DatanodeInfo。两者的核心区别在于：
+// DatanodeInfo：主要包含节点的静态信息（ID、网络位置等），会被序列化并传递给客户端。
+// DatanodeDescriptor：专门用于 NameNode 内部管理。它增加了大量“临时性”且“私有”的状态信息，例如：
+// 健康状态：心跳时间、是否存活、负载情况。
+// 存储管理：管理该节点下所有的 DatanodeStorageInfo。
+// 任务队列：维护待复制、待删除、待恢复的数据块队列。
+// 缓存状态：管理集中式缓存（Centralized Cache）的块列表。
+// 简单来说，它是 NameNode 眼中一个 DataNode 完整生命周期的“数字化镜像”。
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class DatanodeDescriptor extends DatanodeInfo {
   public static final Logger LOG =
       LoggerFactory.getLogger(DatanodeDescriptor.class);
-  public static final DatanodeDescriptor[] EMPTY_ARRAY = {};  //创建一个空的数组，避免重复多次建设
+  public static final DatanodeDescriptor[] EMPTY_ARRAY = {};  // 创建一个空的数组，避免重复多次建设
   private static final int BLOCKS_SCHEDULED_ROLL_INTERVAL = 600*1000; //10min
 
-  /** Block and targets pair 主要用于封装一个数据块（Block）及其目标存储节点（DatanodeStorageInfo）列表，通常在数据块复制和恢复过程中使用*/
+  /** Block and targets pair */
+  // 封装了一个 Block 及其目标 DataNode 列表。
+  // 用于告诉 DataNode：“请将这个块复制到这些目标机器上”。
   @InterfaceAudience.Private
   @InterfaceStability.Evolving
   public static class BlockTargetPair {
@@ -82,7 +91,9 @@ public class DatanodeDescriptor extends DatanodeInfo {
     }
   }
 
-  /** A BlockTargetPair queue. BlockTargetPair的队列*/
+  /** A BlockTargetPair queue. */
+  // 线程安全的同步队列，
+  // 用于存放上述 BlockTargetPair 或 BlockInfo。
   private static class BlockQueue<E> {
     private final Queue<E> blockq = new LinkedList<>();
 
@@ -119,9 +130,11 @@ public class DatanodeDescriptor extends DatanodeInfo {
     }
   }
 
-  /**用于管理特定 DataNode 上的缓存数据块列表，主要与 HDFS 数据缓存机制相关
+  /**
    * A list of CachedBlock objects on this datanode.
    */
+  // 继承自 IntrusiveCollection，用于高效管理 DataNode 上的缓存块。
+  // 分为：PENDING_CACHED（准备缓存）、CACHED（已缓存）、PENDING_UNCACHED（准备取消缓存）。
   public static class CachedBlocksList extends IntrusiveCollection<CachedBlock> {
     public enum Type {
       PENDING_CACHED, //已缓存的数据块列表（DataNode 上已确认缓存的数据块）
@@ -149,15 +162,20 @@ public class DatanodeDescriptor extends DatanodeInfo {
 
   // Stores status of decommissioning.
   // If node is not decommissioning, do not use this object for anything.
+  // 专门负责监控节点在“下线（Decommission）”或“进入维护模式”时的进度（如还剩多少块没迁走）。
   private final LeavingServiceStatus leavingServiceStatus =
       new LeavingServiceStatus();
-
+  // 维护该节点所有物理存储单元。
   protected final Map<String, DatanodeStorageInfo> storageMap =
       new HashMap<>();
 
   /**
    * The blocks which we want to cache on this DataNode.
    */
+  // 三个不同状态的“集合”，通过这三个集合，NameNode 能够实现对缓存任务的状态机管理。
+  // 存储 NameNode 指令要求缓存、但 DataNode 尚未确认完成 的数据块。
+  // 当管理员下达缓存指令（如 hdfs cacheadmin -addDirective）时，NameNode 会挑选合适的 DataNode，并将相关数据块放入其 pendingCached 列表中。
+  // 在下一次心跳中，NameNode 会将此列表中的任务发送给 DataNode 执行真正的内存锁定操作。
   private final CachedBlocksList pendingCached = 
       new CachedBlocksList(this, CachedBlocksList.Type.PENDING_CACHED);
 
@@ -165,12 +183,16 @@ public class DatanodeDescriptor extends DatanodeInfo {
    * The blocks which we know are cached on this datanode.
    * This list is updated by periodic cache reports.
    */
+  // 存储 DataNode 已经成功缓存并汇报给 NameNode 的数据块。
+  // 这是 NameNode 认可的“正式缓存”状态。当 DataNode 完成内存锁定并发送 缓存报告（Cache Report） 后，NameNode 会将数据块从 pendingCached 移动到这里。
   private final CachedBlocksList cached = 
       new CachedBlocksList(this, CachedBlocksList.Type.CACHED);
 
   /**
    * The blocks which we want to uncache on this DataNode.
    */
+  // 存储 NameNode 要求 DataNode 从内存中释放 的数据块。
+  // 当缓存指令被删除、或者缓存过期时，数据块会进入此列表。
   private final CachedBlocksList pendingUncached = 
       new CachedBlocksList(this, CachedBlocksList.Type.PENDING_UNCACHED);
 
@@ -178,12 +200,21 @@ public class DatanodeDescriptor extends DatanodeInfo {
    * The time when the last batch of caching directives was sent, in
    * monotonic milliseconds.
    */
+  // 记录 NameNode 上一次向该 DataNode 发送缓存指令（如：要求缓存某个块）的单调时间（单位为毫秒）
+  // 频率控制：防止在短时间内向同一个 DataNode 发送过多的缓存请求。
+  // 超时检查：NameNode 可以利用这个时间戳来判断之前的缓存请求是否已经超时，从而决定是否需要重发。
   private long lastCachingDirectiveSentTimeMs;
 
   // isAlive == heartbeats.contains(this)
   // This is an optimization, because contains takes O(n) time on Arraylist
+  // 节点是否存活。
+  // 标记当前 DataNode 在 NameNode 眼中是否处于存活状态。
   private boolean isAlive = false;
+  // 标识该 DataNode 是否需要更新安全密钥（Block Access Token）
+  // 当 HDFS 开启安全认证时，NameNode 会定期生成新的密钥。如果该值为 true，NameNode 会在下一次心跳响应中把新的密钥分发给 DataNode。
   private boolean needKeyUpdate = false;
+  // 标识是否强制要求该 DataNode 重新进行注册。
+  // 当 NameNode 发现 DataNode 的状态异常或元数据不匹配时，会将此置为 true。DataNode 收到指令后必须重新走一遍注册流程，以确保双方信息完全一致。
   private boolean forceRegistration = false;
 
   // A system administrator can tune the balancer bandwidth parameter
@@ -192,23 +223,27 @@ public class DatanodeDescriptor extends DatanodeInfo {
   // following 'bandwidth' variable gets updated with the new value for each
   // node. Once the heartbeat command is issued to update the value on the
   // specified datanode, this value will be set back to 0.
-  //均衡器带宽，通过"dfsadmin -setBalanacerBandwidth <newbandwidth>" 设置
+  // 该变量存储了为该 DataNode 设置的 数据平衡带宽限制
+  // 动态调优：管理员可以通过 dfsadmin -setBalancerBandwidth 命令实时调整集群中每个 DataNode 用于数据块迁移（Rebalance）的带宽上限。
+  // 指令下发：当这个值被修改后，NameNode 会在下一次心跳中将该值作为指令下发给 DataNode。
   private long bandwidth;
 
   /** A queue of blocks to be replicated by this datanode */
-  //保存要在当前DataNode上复制的副本队列
+  // 保存要在当前DataNode上复制的副本队列
   private final BlockQueue<BlockTargetPair> replicateBlocks =
       new BlockQueue<>();
   /** A queue of ec blocks to be replicated by this datanode. */
+  // 纠删码（EC）副本复制任务。
   private final BlockQueue<BlockTargetPair> ecBlocksToBeReplicated = new BlockQueue<>();
   /** A queue of ec blocks to be erasure coded by this datanode. */
+  // 需要进行纠删码编码/重构的任务。
   private final BlockQueue<BlockECReconstructionInfo> ecBlocksToBeErasureCoded =
       new BlockQueue<>();
   /** A queue of blocks to be recovered by this datanode */
-  //保存要在当前DataNode上进行数据回复操作的副本队列
+  // 租约恢复（Lease Recovery）任务。
   private final BlockQueue<BlockInfo> recoverBlocks = new BlockQueue<>();
   /** A set of blocks to be invalidated by this datanode */
-  //要在DataNode上进行删除操作的副本队列
+  // 待删除块集合。NameNode 发现多余副本时，会放入此集合，随心跳下发给 DN 执行删除。
   private final LightWeightHashSet<Block> invalidateBlocks =
       new LightWeightHashSet<>();
 
@@ -217,6 +252,8 @@ public class DatanodeDescriptor extends DatanodeInfo {
    * in case of errors (e.g. datanode does not report if an error occurs
    * while writing the block).
    */
+  // 预估调度计数器。
+  // 记录最近有多少块被分配到了这个节点，用于负载均衡。
   private EnumCounters<StorageType> currApproxBlocksScheduled
       = new EnumCounters<>(StorageType.class);
   private EnumCounters<StorageType> prevApproxBlocksScheduled
@@ -229,15 +266,18 @@ public class DatanodeDescriptor extends DatanodeInfo {
    * When set to true, the node is not in include list and is not allowed
    * to communicate with the namenode
    */
+  // 是否被列入黑名单（不在 Include 列表或在 Exclude 列表）。
   private boolean disallowed = false;
 
   // The number of replication work pending before targets are determined
   private int pendingReplicationWithoutTargets = 0;
 
   // HB processing can use it to tell if it is the first HB since DN restarted
+  // 自注册以来是否收到过心跳。
   private boolean heartbeatedSinceRegistration = false;
 
   /** The number of volumes that can be written.*/
+  // 当前可用的磁盘卷数量。
   private int numVolumesAvailable = 0;
 
   /**
@@ -899,7 +939,8 @@ public class DatanodeDescriptor extends DatanodeInfo {
     // by DatanodeID
     return (this == obj) || super.equals(obj);
   }
-  //用于跟踪和管理在 HDFS 中离开服务节点的状态的类，通常用于节点正在进行 去委托（decommission） 或 维护模式 时的状态管理。该类包含了与数据块复制、状态标识和时间跟踪等相关的信息
+  // 用于跟踪和管理在 HDFS 中离开服务节点的状态的类，通常用于节点正在进行 去委托（decommission） 或 维护模式 时的状态管理。
+  // 该类包含了与数据块复制、状态标识和时间跟踪等相关的信息
   /** Leaving service status. */
   public class LeavingServiceStatus {
     private int underReplicatedBlocks;//记录离开服务的节点中 不足复制 的数据块数量

@@ -63,7 +63,9 @@ import org.apache.hadoop.classification.InterfaceStability;
  *       }
  *     }
  * </pre></blockquote>
- */// 对象序列化和反序列化 的接口。实现此接口的类可以将对象转换为字节流（序列化），也可以从字节流恢复为对象（反序列化）
+ */
+// 对象序列化和反序列化 的接口。
+// 实现此接口的类可以将对象转换为字节流（序列化），也可以从字节流恢复为对象（反序列化）
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public interface Writable {

@@ -24,10 +24,20 @@ import org.apache.hadoop.classification.InterfaceStability;
 /**
  * Identifies a Block uniquely across the block pools
  */
+// 在 HDFS 1.x 版本中，整个集群只有一个命名空间（Namespace）。
+// 但在 HDFS 2.x 引入 Federation（联邦） 之后，一个集群可以有多个独立的 NameNode，每个 NameNode 管理自己的 Block Pool（块池）。
+// ExtendedBlock 的核心作用是：在全集群范围内唯一标识一个数据块。
+// 普通 Block 类：只包含块 ID、长度和时间戳。在 Federation 环境下，不同的块池可能会出现相同的块 ID。
+// ExtendedBlock 类：在 Block 的基础上增加了 poolId（块池 ID）。
+// 唯一性公式：ExtendedBlock = Block Pool ID + Block ID。
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class ExtendedBlock {
+  // 所属块池的唯一标识符。
+  // 它通常对应一个特定的 NameNode 命名空间。
+  // 代码中使用了 poolId.intern()，这是为了通过 JVM 的字符串常量池节省内存，因为成千上万个块可能属于同一个 poolId。
   private String poolId;
+  // 实际的数据块元数据。
   private Block block;
 
   public ExtendedBlock() {

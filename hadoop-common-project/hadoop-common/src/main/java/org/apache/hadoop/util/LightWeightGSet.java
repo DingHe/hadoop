@@ -46,25 +46,33 @@ import org.apache.hadoop.classification.VisibleForTesting;
  *       (1) a subclass of K, and
  *       (2) implementing {@link LinkedElement} interface.
  */
+// 一个高性能、低内存占用的哈希集合实现，专门为处理海量元数据（如 NameNode 中的数据块 Block 管理）而设计。
+// 在 HDFS NameNode 中，需要管理数以亿计的对象（如 Block、Inode）。标准的 java.util.HashSet 会为每个元素创建一个 HashMap.Node 对象，这会带来巨大的内存开销。
+// LightWeightGSet 的核心设计目标是：极简内存消耗。
+//消除额外对象：它不使用内部的 Entry 对象。相反，它要求存储的元素本身必须实现 LinkedElement 接口（即元素自身持有 next 指针）。
+// 固定大小：初始化后数组长度固定，不进行 rehash（扩容）。这避免了扩容期间的内存抖动和性能开销。
+// 链地址法：使用简单的数组 + 单向链表来解决哈希冲突。
 @InterfaceAudience.Private
 public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
   /**
    * Elements of {@link LightWeightGSet}.
    */
-  //定义在 LightWeightGSet 集合中存储的元素。它规定了每个元素必须实现的基本操作，以便这些元素能够在集合的哈希桶中形成链表结构，从而解决哈希冲突
+  // 定义在 LightWeightGSet 集合中存储的元素。
+  // 它规定了每个元素必须实现的基本操作，以便这些元素能够在集合的哈希桶中形成链表结构，从而解决哈希冲突
+  // 通过让数据对象直接实现这个接口，GSet 就可以把数据对象直接串成链表，省去了包装类的内存。
   public interface LinkedElement {
     /**
      * Set the next element.
      * @param next inputNext.
      */
-    //设置当前元素的下一个元素，使得当前元素能够指向链表中的下一个元素
+    // 设置当前元素的下一个元素，使得当前元素能够指向链表中的下一个元素
     void setNext(LinkedElement next);
 
     /** @return Get the next element. */
     //返回当前元素的下一个元素
     LinkedElement getNext();
   }
-
+  // 定义内部数组允许的最大（$2^{30}$）和最小（1）长度，防止溢出。
   static final int MAX_ARRAY_LENGTH = 1 << 30; //prevent int overflow problem
   static final int MIN_ARRAY_LENGTH = 1;
 
@@ -75,14 +83,19 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
   //内部数组，用于存储集合中的元素，数组长度必须是 2 的幂
   protected LinkedElement[] entries;
   /** A mask for computing the array index from the hash value of an element. */
+  // 哈希掩码，等于 entries.length - 1。
+  // 由于数组长度是 2 的幂，通过 hashCode & hash_mask 可以快速定位索引。
   protected int hash_mask;
   /** The size of the set (not the entry array). */
+  // 集合中当前存储的元素总数。
   protected int size = 0;
   /** Modification version for fail-fast.
    * @see ConcurrentModificationException
    */
+  // 修改计数器，用于实现 fail-fast 机制（在迭代时如果集合被修改则抛出异常）。
   protected int modification = 0;
 
+  // 返回一个 Collection<E> 视图，方便使用增强 for 循环。
   private Collection<E> values;
 
   protected LightWeightGSet() {
@@ -91,6 +104,8 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
   /**
    * @param recommended_length Recommended size of the internal array.
    */
+  // 构造函数。
+  // 它会调用 actualArrayLength 将推荐长度向上取整为最接近的 2 的幂。
   public LightWeightGSet(final int recommended_length) {
     final int actual = actualArrayLength(recommended_length);
     if (LOG.isDebugEnabled()) {
@@ -100,7 +115,8 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
     hash_mask = entries.length - 1;
   }
 
-  //compute actual length
+  // compute actual length
+  // 确保返回的值是 2 的幂且在合法范围内。
   protected static int actualArrayLength(int recommended) {
     if (recommended > MAX_ARRAY_LENGTH) {
       return MAX_ARRAY_LENGTH;
@@ -117,6 +133,8 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
     return size;
   }
 
+  // 计算 Key 对应的数组下标。
+  // 使用位运算 & hash_mask 代替取模运算 %，性能更高。
   protected int getIndex(final K key) {
     return key.hashCode() & hash_mask;
   }
@@ -126,7 +144,7 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
     final E r = (E)e;
     return r;
   }
-
+  // 通过哈希定位桶，然后遍历单向链表，通过 equals 方法查找匹配的元素。
   @Override
   public E get(final K key) {
     //validate key
@@ -150,9 +168,11 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
     return get(key) != null;
   }
 
+
   @Override
   public E put(final E element) {
     // validate element
+    // 验证元素不为 null 且实现了 LinkedElement。
     if (element == null) {
       throw new NullPointerException("Null element is not supported.");
     }
@@ -169,6 +189,7 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
     final int index = getIndex(element);
 
     // remove if it already exists
+    // 调用 remove 检查并删除已存在的同名元素（替换逻辑）。
     final E existing = remove(index, element);
 
     // insert the element to the head of the linked list
@@ -284,6 +305,8 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
    *
    * @param out out.
    */
+  // 打印哈希表的详细分布情况，
+  // 包括每个桶位有多少个元素，常用于分析哈希冲突是否严重。
   public void printDetails(final PrintStream out) {
     out.print(this + ", entries = [");
     for(int i = 0; i < entries.length; i++) {
@@ -297,7 +320,7 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
     }
     out.println("\n]");
   }
-
+  // 返回自定义的 SetIterator。
   public class SetIterator implements Iterator<E> {
     /** The starting modification for fail-fast. */
     private int iterModification = modification;
@@ -375,6 +398,8 @@ public class LightWeightGSet<K, E extends K> implements GSet<K, E> {
    * @param percentage percentage.
    * @return compute capacity.
    */
+  // 根据 JVM 最大可用内存的一定比例（percentage）来计算最合适的集合容量。
+  // 它会检测 JVM 是 32 位还是 64 位（影响指针大小），从而估算出能存放多少个引用。
   public static int computeCapacity(double percentage, String mapName) {
     return computeCapacity(Runtime.getRuntime().maxMemory(), percentage,
         mapName);

@@ -38,23 +38,33 @@ import static org.apache.hadoop.hdfs.server.namenode.INodeId.INVALID_INODE_ID;
  * where the replicas of the block, or blocks belonging to the erasure coding
  * block group, are stored.
  */
+// BlockInfo 的核心作用是在 NameNode 内存中维护块的元数据及其物理位置映射。
+// 关联文件：它知道自己属于哪个文件（通过 bcId 关联到 INodeFile）。
+// 管理位置：它记录了该块的所有副本分别存储在哪些 DataNode 的哪个存储空间（Storage）上。
+// 高效链表结构：它不使用标准的 List 集合，而是通过一个特殊的 triplets 数组，将属于同一个 DataNode 上的所有块串联成双向链表。这种设计极大地节省了 NameNode 在管理数亿个块时的内存开销。
+// 状态管理：它维护块的状态（如：正在写入、已完成、处于恢复状态等）。
 @InterfaceAudience.Private
 public abstract class BlockInfo extends Block
     implements LightWeightGSet.LinkedElement {
-  //定义一个空的 BlockInfo 数组，通常用于返回空结果时使用，避免创建新的对象，提升效率
+  // 定义一个空的 BlockInfo 数组，
+  // 通常用于返回空结果时使用，避免创建新的对象，提升效率
   public static final BlockInfo[] EMPTY_ARRAY = {};
 
-  /**表示该块的副本数量，即该块会在多少个 DataNode 上存储副本
+  /**
    * Replication factor.
    */
+  // 副本因子。
+  // 表示该块预期的副本数。如果是纠删码（EC）块，该值为 0。
   private short replication;
 
-  /**指向与该块关联的文件（BlockCollection，通常是 INodeFile）的唯一标识
+  /**
    * Block collection ID.
    */
+  // BlockCollection ID。
+  // 对应文件的 ID，用于快速定位该块属于哪个文件。
   private volatile long bcId;
-  //这是为了实现 LightWeightGSet.LinkedElement 接口，支持将 BlockInfo 对象放入 LightWeightGSet 集合，方便在 Namenode 中对 BlockInfo 进行高效管理
   /** For implementing {@link LightWeightGSet.LinkedElement} interface. */
+  // 用于 LightWeightGSet 的链表指针，使 BlockInfo 能直接存入 HDFS 特有的高效哈希表。
   private LightWeightGSet.LinkedElement nextLinkedElement;
 
   /**
@@ -69,12 +79,13 @@ public abstract class BlockInfo extends Block
    * per replica is 42 bytes (LinkedList#Entry object per replica) versus 16
    * bytes using the triplets.
    */
-  //存储与该块相关的 DataNode 及其链表信息，结构为三元组
-  //triplets[3 * i]：对应 DataNode 存储信息（DatanodeStorageInfo）
-  //triplets[3 * i + 1]：该块在该 DataNode 上的前一个块（BlockInfo）
-  //triplets[3 * i + 2]：该块在该 DataNode 上的下一个块（BlockInfo）
+  //核心存储数组。长度为 $3 \times \text{副本数}$。每 3 个元素为一个单位：
+  // DatanodeStorageInfo: 指向存储该副本的 DN 存储。
+  // Previous BlockInfo: 该 DN 上链表的前一个块。
+  // Next BlockInfo: 该 DN 上链表的下一个块。
   protected Object[] triplets;
-  //记录该块在构建过程中的信息（如复制目标、状态等）。如果该块已经完成（COMPLETE 状态），此字段为 null
+  // 正在构建特征。
+  // 记录处于写入中或恢复中状态的块的临时信息（如租约持有者、目标节点等）。
   private BlockUnderConstructionFeature uc;
 
   /**
@@ -94,7 +105,7 @@ public abstract class BlockInfo extends Block
     this.bcId = INVALID_INODE_ID;
     this.replication = isStriped() ? 0 : size;
   }
-
+  // 获取或设置预期的副本数。
   public short getReplication() {
     return replication;
   }
@@ -102,7 +113,7 @@ public abstract class BlockInfo extends Block
   public void setReplication(short repl) {
     this.replication = repl;
   }
-
+  // 关联或获取文件 ID。
   public long getBlockCollectionId() {
     return bcId;
   }
@@ -110,7 +121,7 @@ public abstract class BlockInfo extends Block
   public void setBlockCollectionId(long id) {
     this.bcId = id;
   }
-  //删除块与文件的关联
+  // 通过将 bcId 设置为无效来标记该块已被删除。
   public void delete() {
     setBlockCollectionId(INVALID_INODE_ID);
   }
@@ -122,18 +133,18 @@ public abstract class BlockInfo extends Block
   public Iterator<DatanodeStorageInfo> getStorageInfos() {
     return new BlocksMap.StorageIterator(this);
   }
-  //获取Datanode的描述信息
+  // 获取第 index 个副本所在的 DatanodeDescriptor（数据节点描述符）。
   public DatanodeDescriptor getDatanode(int index) {
     DatanodeStorageInfo storage = getStorageInfo(index);
     return storage == null ? null : storage.getDatanodeDescriptor();
   }
-  //获取指定索引的存储信息
+  // 获取第 index 个副本所在的 DatanodeStorageInfo。
   DatanodeStorageInfo getStorageInfo(int index) {
     assert this.triplets != null : "BlockInfo is not initialized";
     assert index >= 0 && index * 3 < triplets.length : "Index is out of bound";
     return (DatanodeStorageInfo)triplets[index * 3];
   }
-  //获取前一个BlockInfo节点
+  // 在第 index 个副本所在的 DataNode 上，获取该块的前一个或下一个块。
   BlockInfo getPrevious(int index) {
     assert this.triplets != null : "BlockInfo is not initialized";
     assert index >= 0 && index * 3 + 1 < triplets.length : "Index is out of bound";
@@ -143,7 +154,7 @@ public abstract class BlockInfo extends Block
         "BlockInfo is expected at " + (index * 3 + 1);
     return info;
   }
-  //获取下一个BlockInfo节点
+  // 在第 index 个副本所在的 DataNode 上，获取该块的前一个或下一个块。
   BlockInfo getNext(int index) {
     assert this.triplets != null : "BlockInfo is not initialized";
     assert index >= 0 && index * 3 + 2 < triplets.length : "Index is out of bound";
@@ -153,7 +164,7 @@ public abstract class BlockInfo extends Block
         "BlockInfo is expected at " + (index * 3 + 2);
     return info;
   }
-  //设置指定索引的存储信息
+  // 设置存储的位置信息
   void setStorageInfo(int index, DatanodeStorageInfo storage) {
     assert this.triplets != null : "BlockInfo is not initialized";
     assert index >= 0 && index * 3 < triplets.length : "Index is out of bound";
@@ -191,17 +202,18 @@ public abstract class BlockInfo extends Block
     triplets[index * 3 + 2] = to;
     return info;
   }
-  //返回块当前可以存储的副本数（triplets 数组长度除以 3）
+  // 返回块当前可以存储的副本数（triplets 数组长度除以 3）
   public int getCapacity() {
     assert this.triplets != null : "BlockInfo is not initialized";
     assert triplets.length % 3 == 0 : "Malformed BlockInfo";
     return triplets.length / 3;
   }
 
-  /** 获取block在多少个datanode上
+  /**
    * Count the number of data-nodes the block currently belongs to (i.e., NN
    * has received block reports from the DN).
    */
+  // 获取block在多少个datanode上
   public abstract int numNodes();
 
   /**增加block的存储位置
@@ -232,10 +244,12 @@ public abstract class BlockInfo extends Block
    */
   abstract boolean isProvided();
 
-  /** 用于在当前 BlockInfo 对象的副本列表中查找与指定 DatanodeDescriptor 对应的 DatanodeStorageInfo
+  /**
    * Find specified DatanodeStorageInfo.
    * @return DatanodeStorageInfo or null if not found.
    */
+  // 查找该块是否在指定的 DataNode 上有副本，并返回对应的存储信息。
+  // 用于在当前 BlockInfo 对象的副本列表中查找与指定 DatanodeDescriptor 对应的 DatanodeStorageInfo
   DatanodeStorageInfo findStorageInfo(DatanodeDescriptor dn) {
     int len = getCapacity(); //获取当前块的副本容量
     DatanodeStorageInfo providedStorageInfo = null;
@@ -278,16 +292,28 @@ public abstract class BlockInfo extends Block
    * If the head is null then form a new list.
    * @return current block as the new head of the list.
    */
+  // 在 HDFS 中，NameNode 需要管理每个 DataNode 上存储的所有数据块。
+  // 为了节省内存，它没有使用 ArrayList 或 HashSet，而是将属于同一个 DataNode 存储（DatanodeStorageInfo）的所有 BlockInfo 对象串联成一个自定义的双向链表。
+  // listInsert 方法的作用就是将当前的 BlockInfo 对象插入到该 DataNode 维护的块链表的头部。
   BlockInfo listInsert(BlockInfo head, DatanodeStorageInfo storage) {
+    // 找到该块在 triplets 数组中的起始位置索引（dnIndex）。接下来的前驱（Previous）和后继（Next）引用都将基于这个索引进行操作。
     int dnIndex = this.findStorageInfo(storage);
     assert dnIndex >= 0 : "Data node is not found: current";
+    // 在插入之前，确保当前块在该存储对应的链表指针（前驱和后继）都是空的。
+    // 防止将一个已经在链表中的块重复插入，避免造成链表死循环或逻辑混乱。
     assert getPrevious(dnIndex) == null && getNext(dnIndex) == null :
         "Block is already in the list and cannot be inserted.";
+    // 因为是要插入到链表头部，所以当前节点的前驱必须设置为 null。
     this.setPrevious(dnIndex, null);
+    // 将当前块的下一个节点指向原有的链表头（head）
     this.setNext(dnIndex, head);
+    // 如果原链表不为空（即 head != null）
     if (head != null) {
+      // 找到原头节点在同一个存储下的索引位。
+      // 将原头节点的前驱指针指向当前块。
       head.setPrevious(head.findStorageInfo(storage), this);
     }
+    // 返回新的头节点
     return this;
   }
 
@@ -299,19 +325,25 @@ public abstract class BlockInfo extends Block
    * @return the new head of the list or null if the list becomes
    * empy after deletion.
    */
+  // 将当前的 BlockInfo 对象从特定的 DataNode 存储（DatanodeStorageInfo）所维护的双向块链表中移除。
+  // 由于这是在一个手动实现的双向链表上进行操作，它必须小心地重新连接被移除节点的前后节点。
   BlockInfo listRemove(BlockInfo head, DatanodeStorageInfo storage) {
+    // 如果传入的链表头指针为空，说明该存储下没有任何块，直接返回 null。
     if (head == null) {
       return null;
     }
+    // 首先在当前块中找到对应 storage 的副本索引。
     int dnIndex = this.findStorageInfo(storage);
     if (dnIndex < 0) { // this block is not on the data-node list
       return head;
     }
-
+    // 从 triplets 数组中取出当前块在该链表中的后继节点（next）和前驱节点（prev）。
     BlockInfo next = this.getNext(dnIndex);
     BlockInfo prev = this.getPrevious(dnIndex);
+    // 切断当前节点的连接（清理指针）
     this.setNext(dnIndex, null);
     this.setPrevious(dnIndex, null);
+    // 重新连接前驱节点的后继
     if (prev != null) {
       prev.setNext(prev.findStorageInfo(storage), next);
     }
@@ -330,6 +362,8 @@ public abstract class BlockInfo extends Block
    *
    * @return the new head of the list.
    */
+  // 将一个已经在链表中的块（this）从当前位置移除，并重新插入到该链表的头部。
+  // 这通常用于 MRU（Most Recently Used） 逻辑，或者在某些操作后为了快速访问而优化链表顺序。
   public BlockInfo moveBlockToHead(BlockInfo head, DatanodeStorageInfo storage,
       int curIndex, int headIndex) {
     if (head == this) {
@@ -400,13 +434,18 @@ public abstract class BlockInfo extends Block
   /**
    * Add/Update the under construction feature.
    */
+  // 在 HDFS 中，一个数据块并不总是静态的。当一个文件正在被写入、追加（Append）或者因为某种异常需要恢复时，数据块会从“已完成”（Complete）状态转变为“构建中”（Under Construction）状态。
+  // 为当前块添加或更新“构建中”特征（Feature），以便记录哪些 DataNode 应该是该块的存储目标。
   public void convertToBlockUnderConstruction(BlockUCState s,
       DatanodeStorageInfo[] targets) {
+    // 检查当前块是否处于 COMPLETE 状态（即 uc 属性为 null）。
     if (isComplete()) {
+      // 情况一：新创建一个构建特征（Complete -> UC）
       uc = new BlockUnderConstructionFeature(this, s, targets,
           this.getBlockType());
     } else {
       // the block is already under construction
+      // 情况二：更新已有的构建特征（UC -> 新的 UC 状态）
       uc.setBlockUCState(s);
       uc.setExpectedLocations(this, targets, this.getBlockType());
     }

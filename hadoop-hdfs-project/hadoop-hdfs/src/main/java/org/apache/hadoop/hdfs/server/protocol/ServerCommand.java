@@ -28,9 +28,14 @@ import org.apache.hadoop.classification.InterfaceStability;
  * @see DatanodeProtocol
  * @see NamenodeProtocol
  */
+// 定义了 NameNode 向集群中其他服务器（主要是 DataNode）下达指令的通用模型。
+// 在 HDFS 的主从架构中，NameNode 通常不会主动通过网络“推送”指令给 DataNode，而是通过“响应”机制：
+// 心跳响应 (Heartbeat Response)：DataNode 定期向 NameNode 发送心跳，NameNode 在心跳的返回值中携带一组指令。
+// 协议支撑：这些指令涵盖了数据块复制、块删除、数据恢复、重新注册等所有管理动作。
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public abstract class ServerCommand {
+  // 存储该指令的具体动作编号（ID）。
   private final int action;
 
   /**

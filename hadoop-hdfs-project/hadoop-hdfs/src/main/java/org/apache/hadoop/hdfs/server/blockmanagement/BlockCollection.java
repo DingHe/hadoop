@@ -29,7 +29,7 @@ import org.apache.hadoop.security.AccessControlException;
  */
 @InterfaceAudience.Private
 public interface BlockCollection {
-  /**获取块集合中的最后一个块（BlockInfo）
+  /** 获取块集合中的最后一个块（BlockInfo）
    * Get the last block of the collection.
    */
   BlockInfo getLastBlock();
@@ -56,13 +56,13 @@ public interface BlockCollection {
    */
   long getPreferredBlockSize();
 
-  /**获取块集合的 首选复制因子（即每个块存储的副本数）
+  /**  获取块集合的 首选复制因子（即每个块存储的副本数）
    * Get block replication for the collection.
    * @return block replication value. Return 0 if the file is erasure coded.
    */
   short getPreferredBlockReplication();
 
-  /**获取块集合的 存储策略 ID，指示该集合如何存储数据（热数据、冷数据等），使用场景，管理不同存储介质（SSD、HDD、ARCHIVE）的文件存储方式
+  /**  获取块集合的 存储策略 ID，指示该集合如何存储数据（热数据、冷数据等），使用场景，管理不同存储介质（SSD、HDD、ARCHIVE）的文件存储方式
    * @return the storage policy ID.
    */
   byte getStoragePolicyID();
@@ -84,12 +84,12 @@ public interface BlockCollection {
   void convertLastBlockToUC(BlockInfo lastBlock,
       DatanodeStorageInfo[] targets) throws IOException;
 
-  /**判断当前块集合是否 处于构造状态（即文件是否仍在写入）
+  /** 判断当前块集合是否 处于构造状态（即文件是否仍在写入）
    * @return whether the block collection is under construction.
    */
   boolean isUnderConstruction();
 
-  /**判断当前块集合是否 采用条带化存储（即是否使用 Erasure Coding）
+  /** 判断当前块集合是否 采用条带化存储（即是否使用 Erasure Coding）
    * @return whether the block collection is in striping format
    */
   boolean isStriped();

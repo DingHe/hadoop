@@ -26,6 +26,11 @@ import org.apache.hadoop.hdfs.protocol.BlockType;
 /**
  * Subclass of {@link BlockInfo}, used for a block with replication scheme.
  */
+// 主要用于管理 HDFS 副本机制下的数据块。
+// 所谓的“连续（Contiguous）”，是指数据在逻辑上是连续存储的副本。该类的核心职责是：
+// 副本位置跟踪：在 NameNode 内存中记录一个数据块的所有副本分别存储在哪些 DataNode 的哪些存储单元上。
+// 内存优化存储：继承自 BlockInfo，使用一种被称为 “三元组（Triplets）” 的数组结构来保存存储信息，这种结构极大地节省了 NameNode 在管理数以亿计数据块时的内存开销。
+// 状态维护：提供添加、删除、查询副本位置的方法，并判断数据块的类型（非条带化）。
 @InterfaceAudience.Private
 public class BlockInfoContiguous extends BlockInfo {
 
@@ -41,6 +46,7 @@ public class BlockInfoContiguous extends BlockInfo {
    * Ensure that there is enough  space to include num more triplets.
    * @return first free triplet index.
    */
+  // 确保 triplets 数组有足够的空间再容纳 num 个新的副本记录。
   private int ensureCapacity(int num) {
     assert this.triplets != null : "BlockInfo is not initialized";
     int last = numNodes();
@@ -54,9 +60,10 @@ public class BlockInfoContiguous extends BlockInfo {
     System.arraycopy(old, 0, triplets, 0, last * 3);
     return last;
   }
-
+  // 当 DataNode 上报自己拥有该块的副本时，将该位置信息存入内存。
   @Override
   boolean addStorage(DatanodeStorageInfo storage, Block reportedBlock) {
+    // 确保上报的块 ID 与当前对象一致。
     Preconditions.checkArgument(this.getBlockId() == reportedBlock.getBlockId(),
         "reported blk_%s is different from stored blk_%s",
         reportedBlock.getBlockId(), this.getBlockId());

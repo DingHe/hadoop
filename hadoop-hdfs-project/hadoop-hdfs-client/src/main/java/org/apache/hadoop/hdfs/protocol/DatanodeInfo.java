@@ -41,7 +41,7 @@ import static org.apache.hadoop.hdfs.DFSUtilClient.percent2String;
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class DatanodeInfo extends DatanodeID implements Node {
-  //存储相关属性
+  // 存储相关属性
   private long capacity; // DataNode 总存储容量（单位：字节）
   private long dfsUsed; // HDFS 使用的存储容量（单位：字节）
   private long nonDfsUsed;// 非 HDFS 数据使用的容量（单位：字节，如操作系统文件）

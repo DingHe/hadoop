@@ -70,12 +70,13 @@ public interface GSet<K, E extends K> extends Iterable<E> {
    * is similar to {@link java.util.Map#put(Object, Object)}
    * but is different from {@link java.util.Set#add(Object)}
    * which does not replace the existing element if there is any.
-   * 添加一个元素到集合中，如果集合中已经有与 element 相等的元素，替换掉该元素并返回原来的元素。如果没有相同元素，则将 element 添加到集合中并返回 null
    * @param element The element being put.
    * @return the previous stored element if there is any.
    *         Otherwise, return null.
    * @throws NullPointerException if element == null.
    */
+  //  添加一个元素到集合中，如果集合中已经有与 element 相等的元素，替换掉该元素并返回原来的元素。
+  //  如果没有相同元素，则将 element 添加到集合中并返回 null
   E put(E element);
 
   /** 根据给定的 key 移除集合中对应的元素。如果移除成功，则返回被移除的元素；否则返回 null

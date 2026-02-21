@@ -24,6 +24,8 @@ import org.apache.hadoop.classification.InterfaceStability;
  * Base class for data-node command.
  * Issued by the name-node to notify data-nodes what should be done.
  */
+// 专门用于定义 NameNode 向 DataNode 下达的具体指令
+// DatanodeCommand 的核心作用是分类与隔离：
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public abstract class DatanodeCommand extends ServerCommand {

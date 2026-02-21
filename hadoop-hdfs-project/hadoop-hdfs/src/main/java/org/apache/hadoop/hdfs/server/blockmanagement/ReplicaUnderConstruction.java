@@ -30,9 +30,20 @@ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
  * It is not guaranteed, but expected, that datanodes actually have
  * corresponding replicas.
  */
+// 主要用于追踪那些尚未完成写入的数据块副本状态。
+// 当一个客户端开始向 HDFS 写入文件时，该文件对应的数据块处于 UNDER_CONSTRUCTION 状态。
+// 此时，NameNode 需要记录这个块被分配到了哪些 DataNode 上，以及这些 DataNode 上副本的实时进度。
+// 流水线管理：记录副本被分配的预期位置（Expected Location），这决定了写入流水线（Pipeline）的节点顺序。
+// 状态追踪：监控副本在 DataNode 上的生命周期状态（如正在写入、等待恢复等）。
+// 故障恢复辅助：在租约恢复（Lease Recovery）期间，标记哪个副本被选为主节点（Primary）来同步其他副本的数据。
 class ReplicaUnderConstruction extends Block {
+  // 副本的预期存储位置。
+  // 这是在 NameNode 分配块时指定的 DataNode 存储单元。
+  // 虽然它是“预期的”，但在正常写入过程中，数据就应该流向这里。它不仅代表了物理位置，也隐含了它在写入流水线中的拓扑位置。
   private final DatanodeStorageInfo expectedLocation;
+  // 副本的当前状态。
   private HdfsServerConstants.ReplicaState state;
+  // 是否被选为主恢复节点。
   private boolean chosenAsPrimary;
 
   ReplicaUnderConstruction(Block block,

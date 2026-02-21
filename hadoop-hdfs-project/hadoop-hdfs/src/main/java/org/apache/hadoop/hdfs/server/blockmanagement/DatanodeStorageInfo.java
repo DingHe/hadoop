@@ -34,18 +34,27 @@ import org.apache.hadoop.classification.VisibleForTesting;
  * A Datanode has one or more storages. A storage in the Datanode is represented
  * by this class.
  */
-//代表DataNode上一个存储（storage)，一个DataNode可以定义多个存储（dfs.datanode.data.dir）定义多个目录。
-//存储是可以异构的
+// DatanodeStorageInfo 是 NameNode 内存中描述 DataNode 存储单元 的核心类。
+// 在 HDFS 中，一个 DataNode 可以挂载多块硬盘或多种存储介质。DatanodeStorageInfo 的作用就是在 NameNode 端代表 DataNode 上的一个具体存储目录（Storage）。
+// 其核心职责包括：
+// 管理异构存储：记录存储介质类型（如 SSD, DISK, ARCHIVE），支持 HDFS 的分层存储策略。
+// 维护块链表：通过一个 blockList 指针，将存放在该存储上的所有 BlockInfo 串联起来，方便遍历和管理。
+// 统计存储状态：实时记录该存储的容量、已用空间、剩余空间等动态指标。
+// 生命周期追踪：追踪块报告（Block Report）和心跳（Heartbeat）的状态，判断该存储上的数据是否“陈旧”。
+
 public class DatanodeStorageInfo {
-  public static final DatanodeStorageInfo[] EMPTY_ARRAY = {};//一个空的 DatanodeStorageInfo 数组常量，避免创建多次空数组
- //将 DatanodeStorageInfo 数组转换为对应的 DatanodeInfo 数组，主要用于在集群中传递节点信息
+  //一个空的 DatanodeStorageInfo 数组常量，避免创建多次空数组
+  public static final DatanodeStorageInfo[] EMPTY_ARRAY = {};
+  // 核心作用是将 NameNode 内部管理的详细存储对象（DatanodeStorageInfo）简化并提取为面向客户端或网络传输的节点信息对象（DatanodeInfo）。
   public static DatanodeInfo[] toDatanodeInfos(
       DatanodeStorageInfo[] storages) {
     return storages == null ? null: toDatanodeInfos(Arrays.asList(storages));
   }
   static DatanodeInfo[] toDatanodeInfos(List<DatanodeStorageInfo> storages) {
+    // 根据输入列表的大小，初始化一个等长度的 DatanodeInfo 数组。
     final DatanodeInfo[] datanodes = new DatanodeInfo[storages.size()];
     for(int i = 0; i < storages.size(); i++) {
+      // DatanodeDescriptor 是 DatanodeInfo 的子类，因此可以直接赋值给数组。
       datanodes[i] = storages.get(i).getDatanodeDescriptor();
     }
     return datanodes;
@@ -59,7 +68,8 @@ public class DatanodeStorageInfo {
     }
     return datanodes;
   }
-  //提取每个 DatanodeStorageInfo 对象的 storageID 并返回
+
+  // 提取每个 DatanodeStorageInfo 对象的 storageID 并返回
   public static String[] toStorageIDs(DatanodeStorageInfo[] storages) {
     if (storages == null) {
       return null;
@@ -70,7 +80,7 @@ public class DatanodeStorageInfo {
     }
     return storageIDs;
   }
-  //提取DatanodeStorageInfo对象中的StorageType信息
+  // 提取DatanodeStorageInfo对象中的StorageType信息
   public static StorageType[] toStorageTypes(DatanodeStorageInfo[] storages) {
     if (storages == null) {
       return null;
@@ -81,15 +91,16 @@ public class DatanodeStorageInfo {
     }
     return storageTypes;
   }
- //从传入的 DatanodeStorage 对象中更新当前存储的状态和存储类型
+  // 从传入的 DatanodeStorage 对象中更新当前存储的状态和存储类型
   public void updateFromStorage(DatanodeStorage storage) {
     state = storage.getState();
     storageType = storage.getStorageType();
   }
 
-  /**块信息迭代器
+  /**
    * Iterates over the list of blocks belonging to the data-node.
    */
+  // 块信息迭代器
   class BlockIterator implements Iterator<BlockInfo> {
     private BlockInfo current;
 
@@ -112,33 +123,44 @@ public class DatanodeStorageInfo {
       throw new UnsupportedOperationException("Sorry. can't remove.");
     }
   }
-
-  private final DatanodeDescriptor dn;//关联的 DatanodeDescriptor 对象，表示此存储所属的数据节点
-  private final String storageID;//存储的唯一标识符，由 DatanodeStorage 提供，区分同一数据节点的不同存储
-  private StorageType storageType;//存储类型，使用 StorageType 枚举（如 DISK、SSD、ARCHIVE 等），表示存储介质类型
-  private State state;//存储的状态，使用 DatanodeStorage.State 枚举，表示当前存储是否正常（NORMAL）、不可用（FAILED）等
-
-  private long capacity;//存储的总容量（字节数）
-  private long dfsUsed;//存储上被 HDFS 使用的空间
-  private long nonDfsUsed;//存储上被非 HDFS 使用的空间（如系统文件或其他应用占用）
-  private volatile long remaining;//存储的剩余可用空间
-  private long blockPoolUsed;//存储上用于保存块池（Block Pool）的空间
-
-  private volatile BlockInfo blockList = null;//该存储上管理的块链表头，类型为 BlockInfo，实现块的管理和遍历
-  private int numBlocks = 0;//当前存储上的块数量
+  // 指向该存储所属的 DataNode 节点对象。
+  private final DatanodeDescriptor dn;
+  // 该存储的全局唯一 ID。
+  private final String storageID;
+  // 存储介质类型（DISK/SSD/ARCHIVE/RAM_DISK/PROVIDED）。
+  private StorageType storageType;
+  // 存储状态（NORMAL 或 FAILED）。
+  private State state;
+  // 总容量（字节）。
+  private long capacity;
+  // HDFS 已使用的空间。
+  private long dfsUsed;
+  // 非 HDFS 占用的空间（如系统文件）。
+  private long nonDfsUsed;
+  // 剩余可用空间。
+  private volatile long remaining;
+  // 当前块池（Block Pool）使用的空间。
+  private long blockPoolUsed;
+  // 指向该存储上块链表的头部。
+  private volatile BlockInfo blockList = null;
+  // 该存储上当前存在的块总数。
+  private int numBlocks = 0;
 
   /** The number of block reports received */
-  private int blockReportCount = 0;//数据节点向 NameNode 发送的块报告数量
+  //数据节点向 NameNode 发送的块报告数量
+  private int blockReportCount = 0;
 
   /** Whether the NameNode has received block reports for this storage since it
    * was started.*/
-  private boolean hasReceivedBlockReport = false;//标识是否自 NameNode 启动以来接收了至少一次块报告
+  //标识是否自 NameNode 启动以来接收了至少一次块报告
+  private boolean hasReceivedBlockReport = false;
 
   /**
    * Set to false on any NN failover, and reset to true
    * whenever a block report is received.
    */
-  private boolean heartbeatedSinceFailover = false;//标识自 NameNode 故障切换（Failover）以来是否收到心跳，防止使用过时数据
+  //标识自 NameNode 故障切换（Failover）以来是否收到心跳，防止使用过时数据
+  private boolean heartbeatedSinceFailover = false;
 
   /**
    * At startup or at failover, the storages in the cluster may have pending
@@ -148,7 +170,9 @@ public class DatanodeStorageInfo {
    * stale. If any block has at least one stale replica, then no invalidations
    * will be processed for this block. See HDFS-1972.
    */
-  private boolean blockContentsStale = true;//指示该存储上的块内容是否处于“陈旧”状态，通常在 NameNode 重启或切换时设置为 true
+  // 块内容是否陈旧。
+  // 在 NameNode 重启或切主时为 true，收到完整块报告后转为 false。
+  private boolean blockContentsStale = true;
   //构造方法
   DatanodeStorageInfo(DatanodeDescriptor dn, DatanodeStorage s) {
     this(dn, s.getStorageID(), s.getStorageType(), s.getState());
@@ -254,21 +278,28 @@ public class DatanodeStorageInfo {
   long getBlockPoolUsed() {
     return blockPoolUsed;
   }
-  //将一个 BlockInfo 对象添加到当前 DatanodeStorageInfo 对象中，表示将一个数据块与特定的 DataNode 存储单元关联起来
+
+  // addBlock 方法是 NameNode 更新块元数据的高频操作。
+  // 它的核心任务是：建立或更新“数据块（Block）”与“物理存储单元（Storage）”之间的映射关系。
   public AddBlockResult addBlock(BlockInfo b, Block reportedBlock) {
     // First check whether the block belongs to a different storage
     // on the same DN.
+    // 默认将操作结果设置为 ADDED（新增）。如果后续发现该块已存在于其他存储中，会修改此状态。
     AddBlockResult result = AddBlockResult.ADDED;
+    // 在当前数据节点（DataNode）范围内搜索该块是否已经记录在某个存储上。
+    // HDFS 规定同一个数据块在同一个 DataNode 上只能存在一个副本（即使该节点有多个硬盘）。这行代码是为了检查是否存在“跨硬盘”重复。
     DatanodeStorageInfo otherStorage =
-        b.findStorageInfo(getDatanodeDescriptor());//查数据块是否已存在于同一个 DataNode 的其他存储单元上
-
+        b.findStorageInfo(getDatanodeDescriptor());
+    // 处理已存在的存储关系
     if (otherStorage != null) {
       if (otherStorage != this) {
         // The block belongs to a different storage. Remove it first.
+        // 块属于不同的存储，先将其移除
         otherStorage.removeBlock(b);
         result = AddBlockResult.REPLACED;
       } else {
         // The block is already associated with this storage.
+        // 块已经关联到当前存储
         return AddBlockResult.ALREADY_EXIST;
       }
     }
@@ -403,6 +434,7 @@ public class DatanodeStorageInfo {
   /** @return the first {@link DatanodeStorageInfo} corresponding to
    *          the given datanode
    */
+  //
   static DatanodeStorageInfo getDatanodeStorageInfo(
       final Iterable<DatanodeStorageInfo> infos,
       final DatanodeDescriptor datanode) {
