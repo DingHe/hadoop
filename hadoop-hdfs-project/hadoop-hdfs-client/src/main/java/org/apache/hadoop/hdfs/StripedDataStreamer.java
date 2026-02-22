@@ -43,9 +43,21 @@ import org.apache.hadoop.classification.VisibleForTesting;
  * sends an rpc call to the namenode and then populates the result for the
  * other streamers.
  */
+// StripedDataStreamer 继承自 DataStreamer。
+// 在传统的 HDFS 副本模式中，一个文件通常对应一个 DataStreamer；
+// 但在 纠删码（EC）模式 下，文件被切分为多个数据单元（Data Units）和校验单元（Parity Units）。
+// 多线程协同：一个 DFSStripedOutputStream 会同时拥有多个 StripedDataStreamer。例如，在 RS-6-3 策略下，会有 9 个 Streamer 同时工作。
+// 并行写入：每个 Streamer 负责将自己对应的那一列条带数据写入指定的 DataNode。
+// 协同机制（Coordinator）：由于多个 Streamer 共享一个“块组（Block Group）”，它们在申请新块或处理错误时需要步调一致。
+// 该类通过 Coordinator 减少了对 NameNode 的冗余 RPC 调用（仅由一个 Streamer 代表大家去申请，其余人共享结果）。
+// 与普通模式最大的不同在于，StripedDataStreamer 丧失了独立性。它的每一次“跨步”（申请块、重建管道、结束块）都必须通过 Coordinator 与兄弟 Streamer 进行“对表”。这种设计确保了分布式环境下块组（Block Group）数据的一致性。
 @InterfaceAudience.Private
 public class StripedDataStreamer extends DataStreamer {
+  // 核心协调器。
+  // 用于在多个 Streamer 之间同步状态。
+  // 例如：当所有 Streamer 都写完一个块时，协调结束块的操作；或者代表所有 Streamer 向 NameNode 申请新块。
   private final Coordinator coordinator;
+  // 索引编号。标识当前 Streamer 负责的是块组中的第几个条带（例如第 0 个是数据块，第 6 个可能是校验块）。
   private final int index;
 
   StripedDataStreamer(HdfsFileStatus stat,
@@ -60,11 +72,11 @@ public class StripedDataStreamer extends DataStreamer {
     this.index = index;
     this.coordinator = coordinator;
   }
-
+  // 获取当前 Streamer 的索引值。
   int getIndex() {
     return index;
   }
-
+  // 判断当前 Streamer 是否健康。如果不健康（线程已关闭或内部发生错误），则返回 false。
   boolean isHealthy() {
     return !streamerClosed() && !getErrorState().hasInternalError();
   }
@@ -80,6 +92,7 @@ public class StripedDataStreamer extends DataStreamer {
    * All the striped data streamer only needs to fetch from the queue, which
    * should be already be ready.
    */
+  // 这是 EC 模式的优化：它不再直接去调 NameNode 申请块，而是从协调器的队列（followingBlocks）中弹出（poll）已经由其他“先行”Streamer 申请好的块信息。
   private LocatedBlock getFollowingBlock() throws IOException {
     if (!this.isHealthy()) {
       // No internal block for this streamer, maybe no enough healthy DN.
@@ -88,7 +101,7 @@ public class StripedDataStreamer extends DataStreamer {
     }
     return coordinator.getFollowingBlocks().poll(index);
   }
-
+  // 重写父类方法。用于开启下一个块的输出流。
   @Override
   protected LocatedBlock nextBlockOutputStream() throws IOException {
     boolean success;
@@ -120,7 +133,7 @@ public class StripedDataStreamer extends DataStreamer {
   LocatedBlock peekFollowingBlock() {
     return coordinator.getFollowingBlocks().peek(index);
   }
-
+  // 当写入发生错误需要重建管道时：
   @Override
   protected void setupPipelineInternal(DatanodeInfo[] nodes,
       StorageType[] nodeStorageTypes, String[] nodeStorageIDs)
