@@ -36,17 +36,29 @@ import org.apache.hadoop.tracing.SpanContext;
  * DFSOutputStream generates packets and then ask DatStreamer
  * to send them to datanodes.
  ****************************************************************/
-
+// DFSPacket 是 HDFS 客户端在发送数据时的基本传输单元。
+// 在 HDFS 中，文件被切分为 Block（块），而 Block 在网络传输时会被进一步切分为多个 Packet（包）。
+// 生产者：DFSOutputStream 将用户写入的字节流切分成一个个 DFSPacket，并放入 dataQueue。
+// 消费者：DataStreamer 从队列中取出 DFSPacket，通过网络发送给 DataNode。
+// 核心任务是：将数据（Data）与校验和（Checksum）组装在一起，并添加 Packet Header，形成一个可以在网络上流转的二进制缓冲区。
 @InterfaceAudience.Private
 public class DFSPacket {
+  // 一个常量（-1），用于标识这是一个心跳包而非数据包。
   public static final long HEART_BEAT_SEQNO = -1L;
   private static final SpanContext[] EMPTY = new SpanContext[0];
+  // 包的序列号。用于在 Pipeline 中确认包的顺序和 ACK 回执。
   private final long seqno; // sequence number of buffer in block
+  // 该包在当前 HDFS Block 中的起始字节偏移量。
   private final long offsetInBlock; // offset in block
+  // 个标记位。如果为 true，DataNode 在收到此包后会强制将数据刷新到磁盘（fsync）。
   private boolean syncBlock; // this packet forces the current block to disk
+  // 一个 Packet 包含多个 Chunk。
+  // Chunk 是计算校验和的最小单位（默认 512 字节）。
   private int numChunks; // number of chunks currently in packet
   private final int maxChunks; // max chunks in packet
+  // 存储所有数据的字节数组（包括 Header、Checksum 和 Data）。
   private byte[] buf;
+  // 标记这是否是该 Block 的最后一个包。
   private final boolean lastPacketInBlock; // is this the last packet in block?
 
   /**
@@ -63,12 +75,16 @@ public class DFSPacket {
    * preceding the checksum data, so we make sure to keep enough space in
    * front of the checksum data to support the largest conceivable header.
    */
+  // 指向 buf 中校验和数据的开始和当前写入位置。
   private int checksumStart;
   private int checksumPos;
+  // 指向 buf 中实际负载数据的开始和当前写入位置。
   private final int dataStart;
   private int dataPos;
+  // 存储链路追踪的上下文，用于分布式监控（如 HTrace）。
   private SpanContext[] traceParents = EMPTY;
   private int traceParentsUsed;
+  // 当前包关联的追踪跨度。
   private Span span;
 
   /**
@@ -105,6 +121,7 @@ public class DFSPacket {
    * @param len the length of data to write
    * @throws ClosedChannelException
    */
+  // 将原始数据（字节数组或 ByteBuffer）写入 buf 的数据区（从 dataPos 开始）。
   synchronized void writeData(byte[] inarray, int off, int len)
       throws ClosedChannelException {
     checkBuffer();
@@ -114,7 +131,7 @@ public class DFSPacket {
     System.arraycopy(inarray, off, buf, dataPos, len);
     dataPos += len;
   }
-
+  // 将原始数据（字节数组或 ByteBuffer）写入 buf 的数据区（从 dataPos 开始）。
   public synchronized void writeData(ByteBuffer inBuffer, int len)
       throws ClosedChannelException {
     checkBuffer();
@@ -136,6 +153,7 @@ public class DFSPacket {
    * @param len the length of checksums to write
    * @throws ClosedChannelException
    */
+  // 将预先计算好的校验和写入 buf 的校验区（从 checksumPos 开始）。
   public synchronized void writeChecksum(byte[] inarray, int off, int len)
       throws ClosedChannelException {
     checkBuffer();
@@ -154,6 +172,10 @@ public class DFSPacket {
    *
    * @throws IOException
    */
+  // 该类最重要的方法。在数据发送前，它执行以下“手术”：
+  // 移动校验和：由于写入时校验和与数据之间可能有空隙，该方法将校验和数据移动到紧挨着数据区的前面。
+  // 插入 Header：根据包的大小、偏移量、序列号等生成 PacketHeader，并将其拷贝到校验和区的前面。
+  // 一次性写入：此时 buf 内部形成了 [Header][Checksum][Data] 的连续布局，直接调用 stm.write() 发往 DataNode，效率极高。
   public synchronized void writeTo(DataOutputStream stm) throws IOException {
     checkBuffer();
 

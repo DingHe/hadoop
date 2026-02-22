@@ -36,6 +36,12 @@ import org.apache.hadoop.util.Lists;
  * block, whether it is corrupt, a location is cached in memory,
  * security token, etc).
  */
+// LocatedBlock 的主要作用是将一个逻辑上的数据块（Block）与其物理存在的地址（Datanodes）关联起来。
+// 当客户端（Client）想要读写 HDFS 上的文件时，它首先会询问 NameNode。NameNode 返回的就是 LocatedBlock 的对象。它告诉客户端：
+// 这个块的具体信息是什么（ID、大小、时间戳）。
+// 这个块在文件的哪个位置（起始偏移量）。
+// 这个块的副本都在哪些 DataNode 上，以及存储在什么样的介质（SSD/HDD）上。
+// 访问这个块是否需要安全凭证（Token）。
 @InterfaceAudience.Private
 @InterfaceStability.Evolving
 public class LocatedBlock {
@@ -66,8 +72,11 @@ public class LocatedBlock {
     }
   }
 
+  // 包含块的核心元数据（Block ID、Pool ID、字节数等）。
   private final ExtendedBlock b;
+  // 该块在整个 HDFS 文件中的起始字节偏移量。
   private long offset;  // offset of the first byte of the block in the file
+  // 存储该块副本的所有 DataNode 节点信息，包括它们对应的存储空间信息。
   private final DatanodeInfoWithStorage[] locs;
   /** Cached storage ID for each replica */
   private final String[] storageIDs;
